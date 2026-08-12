@@ -129,6 +129,13 @@ const allRunning = computed(() =>
               : SERVICE[service.state].label
         }}</span>
 
+        <span
+          v-if="service.published && service.published.length > 1"
+          class="shrink-0 font-mono text-[0.625rem] text-faint"
+          :title="service.published.map((p) => `${p.service} ${p.host}->${p.container}`).join('\n')"
+          >+{{ service.published.length - 1 }} more</span
+        >
+
         <span class="ml-auto flex shrink-0 gap-1">
           <Button
             v-if="service.state === 'running' || service.state === 'starting'"

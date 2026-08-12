@@ -2,7 +2,13 @@ import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { connect } from 'node:net'
 import { resolve } from 'node:path'
-import type { LogLine, ServiceConfig, ServiceState, ServiceStatus } from '../../shared/types'
+import type {
+  LogLine,
+  PublishedPort,
+  ServiceConfig,
+  ServiceState,
+  ServiceStatus,
+} from '../../shared/types'
 import { argv, exec } from './exec'
 import { envKey } from './envfile'
 
@@ -41,6 +47,7 @@ interface Entry {
   port: number
   cwd: string
   stopCommand: string | null
+  published: PublishedPort[]
   state: ServiceState
   pid: number | null
   startedAt: string
@@ -61,6 +68,7 @@ const keyFor = (worktreeId: string, service: string) => `${worktreeId}:${service
 export interface Vars {
   port: number
   ports: Record<string, number>
+  published?: PublishedPort[]
   slug: string
   branch: string
   rootPath: string
@@ -99,6 +107,7 @@ function toStatus(entry: Entry): ServiceStatus {
     startedAt: entry.startedAt,
     exitCode: entry.exitCode,
     reachable: entry.reachable,
+    published: entry.published.length ? entry.published : undefined,
   }
 }
 
@@ -224,6 +233,7 @@ export async function start(
     port,
     cwd: resolve(worktreePath, service.cwd || '.'),
     stopCommand: service.stopCommand ? render(service.stopCommand, vars) : null,
+    published: vars.published ?? [],
     state: 'starting',
     pid: null,
     startedAt: new Date().toISOString(),

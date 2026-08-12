@@ -27,6 +27,7 @@ import {
   composeUp,
   findCompose,
   portKey,
+  primaryPort,
   publishedPorts,
 } from './compose'
 import { writeFile } from 'node:fs/promises'
@@ -230,7 +231,6 @@ export async function startService(
 
   for (const name of order) {
     const next = config.services.find((candidate) => candidate.name === name)!
-    const port = ports[name]!
 
     const live = supervisor.status(worktreeId, name)
     const already = live && (live.state === 'running' || live.state === 'starting')
@@ -238,16 +238,22 @@ export async function startService(
     const prepared = already ? null : await prepareCompose(project, next, worktreePath, basename(worktreePath))
     const spawnable = prepared ? { ...next, command: prepared.command } : next
 
+    if (prepared?.primary) {
+      ports[name] = prepared.primary
+      await writeEnvBlock(worktreePath, ports).catch(() => undefined)
+    }
+    const port = ports[name]!
+
     if (!already) {
       status = await supervisor.start(worktreeId, worktreePath, spawnable, port, {
         port,
         ports,
+        published: prepared?.published,
         slug: basename(worktreePath),
         branch: branch ?? '',
         rootPath: project.rootPath,
         worktreePath,
       })
-      if (prepared) status = { ...status, published: prepared.published }
     } else {
       status = live
     }
@@ -272,7 +278,7 @@ async function prepareCompose(
   service: ServiceConfig,
   worktreePath: string,
   slug: string,
-): Promise<{ published: PublishedPort[]; command: string } | null> {
+): Promise<{ published: PublishedPort[]; command: string; primary: number | null } | null> {
   const settings = service.compose
   if (!settings) return null
 
@@ -302,14 +308,26 @@ async function prepareCompose(
     }
   }
 
-  await writeFile(join(worktreePath, OVERRIDE_FILE), buildOverride(plans, slug), { mode: 0o644 })
+  await writeFile(
+    join(worktreePath, OVERRIDE_FILE),
+    buildOverride(stack.services, plans, slug, shared),
+    { mode: 0o644 },
+  )
 
   const only =
     settings.isolate === 'app-only'
       ? stack.services.map((s) => s.name).filter((name) => !shared.has(name))
       : []
 
-  return { published, command: composeUp(settings.file, OVERRIDE_FILE, only) }
+  const chosen = primaryPort(stack.services)
+  const primary =
+    published.find(
+      (entry) => entry.service === chosen?.service && entry.container === (chosen.port.container || chosen.port.host),
+    )?.host ??
+    published[0]?.host ??
+    null
+
+  return { published, command: composeUp(settings.file, OVERRIDE_FILE, only), primary }
 }
 
 export function startOrder(services: ServiceConfig[], target?: string): string[] {

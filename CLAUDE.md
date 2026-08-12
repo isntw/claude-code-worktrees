@@ -420,6 +420,18 @@ services:
       - "20092:80"
 ```
 
+**Every service that declares `container_name` must be renamed, not just the ones publishing
+ports.** The override was first built from the port plans alone, so a service with an explicit
+`container_name` and no `ports:` — charactersheet's PHP `app` — was left out of the override
+entirely and collided with whatever already held that name. `buildOverride` walks the service list,
+not the port list.
+
+**The stack's own port is its primary published port.** It was allocated a port of its own like any
+other service, which the reachability probe then watched while the containers published somewhere
+else — so a working stack reported "nothing is listening on port N". `prepareCompose` returns the
+primary published host port and `startService` uses that as the service's port, rewriting the env
+block so `CCWT_PORT_<STACK>` is the port you can actually open.
+
 **`!override` is load-bearing and was verified before any of this was built.** A plain merge
 *appends* to `ports`, so the stack would publish 20080 *and* the new port and still collide;
 `!override` replaces the list. It needs Compose v2.24+. `container_name` must be overridden too — an
