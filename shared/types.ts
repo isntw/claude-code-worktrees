@@ -103,6 +103,31 @@ export interface LogLine {
   text: string
 }
 
+export interface DirEntry {
+  name: string
+  path: string
+  repo: boolean
+  branch: string | null
+  known: boolean
+  noise: boolean
+  hidden: boolean
+}
+
+export interface DirListing {
+  path: string
+  parent: string | null
+  home: string
+  entries: DirEntry[]
+  truncated: boolean
+}
+
+export interface ProbeResult {
+  path: string | null
+  problem: string | null
+  known: boolean
+  branch: string | null
+}
+
 export type HookEvent =
   | 'SessionStart'
   | 'SessionEnd'

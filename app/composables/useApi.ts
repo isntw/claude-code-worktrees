@@ -1,5 +1,7 @@
 import type {
+  DirListing,
   LogLine,
+  ProbeResult,
   Project,
   ServiceStatus,
   SocketMessage,
@@ -36,6 +38,11 @@ export function useApi() {
     addProject: (rootPath: string) =>
       call<Project>('/projects', { method: 'POST', body: { rootPath } }),
     forgetProject: (id: string) => call<void>(`/projects/${id}`, { method: 'DELETE' }),
+
+    listDir: (path?: string) =>
+      call<DirListing>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+    probePath: (path: string) =>
+      call<ProbeResult>('/projects/probe', { method: 'POST', body: { path } }),
 
     listWorktrees: (projectId: string) => call<Worktree[]>(`/projects/${projectId}/worktrees`),
     createWorktree: (projectId: string, input: { name: string; branch: string; start: boolean }) =>

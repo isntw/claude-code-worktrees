@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import type { Project } from '#shared/types'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { ProbeResult, Project } from '#shared/types'
 import type { Tile } from '../components/TileGrid.vue'
 import { NAV } from '../nav'
 
@@ -18,6 +18,42 @@ const adding = ref(false)
 const rootPath = ref('')
 const addBusy = ref(false)
 const addError = ref<string | null>(null)
+const checking = ref<ProbeResult | null>(null)
+const probing = ref(false)
+
+let timer: ReturnType<typeof setTimeout> | null = null
+
+watch(rootPath, (value) => {
+  if (timer) clearTimeout(timer)
+  checking.value = null
+
+  if (!value.trim()) {
+    probing.value = false
+    return
+  }
+
+  probing.value = true
+  timer = setTimeout(async () => {
+    try {
+      checking.value = await api.probePath(value)
+    } catch {
+      checking.value = null
+    } finally {
+      probing.value = false
+    }
+  }, 250)
+})
+
+const blocked = computed(() => checking.value?.problem ?? null)
+const ready = computed(() => Boolean(checking.value?.path) && !blocked.value)
+
+const pick = (path: string) => {
+  rootPath.value = path
+}
+
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer)
+})
 
 const load = async () => {
   loading.value = true
@@ -109,21 +145,36 @@ const FIELD =
   </main>
 
   <ModalPanel v-if="adding" title="Register a project" @close="adding = false">
-    <form class="flex flex-col gap-4" @submit.prevent="add">
-      <label class="flex flex-col gap-1.5">
+    <div class="flex flex-col gap-4">
+      <div class="flex flex-col gap-1.5">
+        <span class="t-eyebrow">Browse</span>
+        <PathBrowser @pick="pick" />
+      </div>
+
+      <form class="flex flex-col gap-1.5" @submit.prevent="add">
         <span class="t-eyebrow">Repository root</span>
         <input
           v-model="rootPath"
           :class="FIELD"
-          placeholder="/Users/you/workspace/projects/your-repo"
-          autofocus
+          placeholder="~/workspace/projects/your-repo"
+          spellcheck="false"
+          autocapitalize="off"
+          autocorrect="off"
         />
-        <span class="font-sans text-[0.625rem] text-faint"
+
+        <span v-if="blocked" class="font-sans text-[0.6875rem] text-caution">{{ blocked }}</span>
+        <span v-else-if="probing" class="font-sans text-[0.6875rem] text-faint">checking…</span>
+        <span v-else-if="checking?.path" class="font-mono text-[0.625rem] text-dim">
+          resolves to {{ checking.path }}
+          <template v-if="checking.branch"> · {{ checking.branch }}</template>
+        </span>
+        <span v-else class="font-sans text-[0.625rem] text-faint"
           >Any path inside the repository works — ccwt resolves it to the top level.</span
         >
-      </label>
+      </form>
+
       <p v-if="addError" class="font-sans text-[0.6875rem] text-alarm">{{ addError }}</p>
-    </form>
+    </div>
 
     <template #footer>
       <Button size="sm" @click="adding = false">cancel</Button>
@@ -131,7 +182,7 @@ const FIELD =
         size="sm"
         variation="success"
         :outline="false"
-        :disabled="!rootPath.trim() || addBusy"
+        :disabled="!ready || addBusy"
         @click="add"
         >{{ addBusy ? 'reading…' : 'register' }}</Button
       >

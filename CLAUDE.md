@@ -141,6 +141,16 @@ execution. Vite shipped CVE-2025-24010 for exactly this shape of bug.
 A restart issues a new token, so an already-open tab starts failing with `Unauthorized` until the
 new launch URL is opened. That is the design, not a bug; the error bar says so plainly.
 
+**`GET /api/fs/list` is deliberately outside §9's containment rule and needs its own gate.** Every
+other path ccwt touches must be inside a registered project; a directory browser cannot be, because
+its whole purpose is finding a repository that is not registered yet. It is therefore a
+filesystem-read primitive on the network, and it carries `assertBrowsable()`
+(`server/utils/browsable.ts`) on top of the Host check and the token: if the process is bound to
+anything other than loopback, browsing is refused outright rather than merely token-gated. Two
+further limits are part of the design, not decoration — it returns **directories only, never files
+and never contents**, and it caps at 500 entries with a visible "narrow the path" notice rather than
+truncating silently.
+
 ### `bin/ccwt.mjs` probes the port before it claims anything
 
 It used to print "listening on…" and then die on an unhandled `EADDRINUSE` from deep inside Nitro,
