@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { CcwtConfig, PackageManager, ServiceConfig } from '../../shared/types'
+import type { ConfigIssue } from '../../shared/config-schema'
+import { parseConfigText } from '../../shared/config-schema'
 import { pathExists, readJsonSafe } from './fs'
 
 const LOCKFILES: [string, PackageManager][] = [
@@ -105,29 +107,26 @@ export async function suggestConfig(rootPath: string): Promise<CcwtConfig> {
   return defaultConfig(services)
 }
 
-export async function loadConfig(rootPath: string): Promise<CcwtConfig | null> {
-  const path = join(rootPath, 'ccwt.config.json')
-  const raw = await readFile(path, 'utf8').catch(() => null)
-  if (raw === null) return null
+export type ConfigSource =
+  | { state: 'absent' }
+  | { state: 'ok'; config: CcwtConfig; text: string }
+  | { state: 'invalid'; issues: ConfigIssue[]; text: string }
 
-  let parsed: Partial<CcwtConfig>
-  try {
-    parsed = JSON.parse(raw) as Partial<CcwtConfig>
-  } catch {
-    return null
-  }
+export function configPath(rootPath: string): string {
+  return join(rootPath, 'ccwt.config.json')
+}
 
-  const fallback = await suggestConfig(rootPath)
+export async function loadConfig(rootPath: string): Promise<ConfigSource> {
+  const raw = await readFile(configPath(rootPath), 'utf8').catch(() => null)
+  if (raw === null) return { state: 'absent' }
 
-  return {
-    worktreesDir: parsed.worktreesDir ?? fallback.worktreesDir,
-    packageManager: parsed.packageManager ?? fallback.packageManager,
-    provision: { ...fallback.provision, ...parsed.provision },
-    services: parsed.services?.length ? parsed.services : fallback.services,
-    claude: { ...fallback.claude, ...parsed.claude },
-  }
+  const parsed = parseConfigText(raw)
+  if (!parsed.ok) return { state: 'invalid', issues: parsed.issues, text: raw }
+
+  return { state: 'ok', config: parsed.config, text: raw }
 }
 
 export async function resolveConfig(rootPath: string): Promise<CcwtConfig> {
-  return (await loadConfig(rootPath)) ?? (await suggestConfig(rootPath))
+  const source = await loadConfig(rootPath)
+  return source.state === 'ok' ? source.config : suggestConfig(rootPath)
 }

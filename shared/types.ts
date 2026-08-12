@@ -103,6 +103,16 @@ export interface LogLine {
   text: string
 }
 
+export interface ConfigView {
+  path: string
+  exists: boolean
+  text: string
+  mtimeMs: number | null
+  config: CcwtConfig
+  issues: { path: string; message: string }[]
+  detected: boolean
+}
+
 export interface DirEntry {
   name: string
   path: string

@@ -1,4 +1,6 @@
 import type {
+  CcwtConfig,
+  ConfigView,
   DirListing,
   LogLine,
   ProbeResult,
@@ -43,6 +45,17 @@ export function useApi() {
       call<DirListing>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ''}`),
     probePath: (path: string) =>
       call<ProbeResult>('/projects/probe', { method: 'POST', body: { path } }),
+
+    getConfig: (projectId: string) => call<ConfigView>(`/projects/${projectId}/config`),
+    saveConfig: (projectId: string, text: string, mtimeMs: number | null) =>
+      call<ConfigView>(`/projects/${projectId}/config`, {
+        method: 'PUT',
+        body: { text, mtimeMs },
+      }),
+    suggestConfig: (projectId: string) =>
+      call<{ config: CcwtConfig; text: string }>(`/projects/${projectId}/config/suggest`, {
+        method: 'POST',
+      }),
 
     listWorktrees: (projectId: string) => call<Worktree[]>(`/projects/${projectId}/worktrees`),
     createWorktree: (projectId: string, input: { name: string; branch: string; start: boolean }) =>

@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import type { Diagnostic, Project } from '../../shared/types'
-import { detectDevScript, detectPackageManager, projectName, resolveConfig } from './detect'
+import { detectDevScript, detectPackageManager, loadConfig, projectName, suggestConfig } from './detect'
 import { defaultBranch, idFor, repoRoot } from './git'
 import { pathExists } from './fs'
 import { addRecord, findRecord, listRecords, removeRecord } from './store'
@@ -30,9 +30,21 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     }
   }
 
-  const config = await resolveConfig(record.rootPath)
+  const source = await loadConfig(record.rootPath)
+  const config = source.state === 'ok' ? source.config : await suggestConfig(record.rootPath)
   const configPath = resolve(record.rootPath, 'ccwt.config.json')
-  const declared = await pathExists(configPath)
+  const declared = source.state !== 'absent'
+
+  if (source.state === 'invalid') {
+    for (const issue of source.issues.slice(0, 5)) {
+      issues.push({
+        code: 'project.config-invalid',
+        severity: 'error',
+        message: `ccwt.config.json — ${issue.path}: ${issue.message}`,
+        hint: 'Until this parses, ccwt falls back to what it can detect.',
+      })
+    }
+  }
 
   if (config.services.length === 0) {
     issues.push({
