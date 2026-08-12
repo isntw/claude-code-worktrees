@@ -1,5 +1,6 @@
 import type { CcwtConfig, Setup, SetupNote } from '../../shared/types'
 import { ENV_FILE, envKey } from './envfile'
+import { findCompose } from './compose'
 import { findHardcodedAddresses } from './inspect'
 
 export async function describeSetup(rootPath: string, config: CcwtConfig): Promise<Setup> {
@@ -40,16 +41,85 @@ export async function describeSetup(rootPath: string, config: CcwtConfig): Promi
       .join('\n'),
   })
 
+  const compose = await findCompose(rootPath)
+  const stack = compose[0]
+  let composeFixed: string[] = []
+
+  if (stack) {
+    const KIND: Record<string, string> = {
+      app: 'the app',
+      database: 'a database',
+      cache: 'a cache',
+      proxy: 'a web server',
+      support: 'a supporting service',
+      other: '',
+    }
+
+    const lines = stack.services.map((service) => {
+      const what = service.image ?? (service.built ? 'built here' : 'unknown image')
+      const published = service.ports.length
+        ? service.ports.map((port) => `${port.host}→${port.container}`).join(', ')
+        : 'no published port'
+      const role = KIND[service.kind]
+      return `${service.name}  ${what}${role ? `  (${role})` : ''}  ${published}`
+    })
+
+    notes.push({
+      tone: 'info',
+      title: `${stack.file} runs ${stack.services.length} containers`,
+      body: `ccwt starts the whole stack as one service and gives it a per-worktree project name, so containers, networks and volumes do not collide between worktrees.`,
+      snippet: lines.join('\n'),
+    })
+
+    const fixedPorts = stack.services.flatMap((service) =>
+      service.ports.filter((port) => port.fixed).map((port) => `${service.name} ${port.host}`),
+    )
+    composeFixed = fixedPorts
+    const varPorts = stack.services.flatMap((service) =>
+      service.ports.filter((port) => port.variable).map((port) => `${service.name} ${port.host}`),
+    )
+
+    if (varPorts.length) {
+      notes.push({
+        tone: 'good',
+        title: 'Some published ports are already configurable',
+        body: 'These read from the environment, and Docker Compose loads `.env` from the project directory — so ccwt can give each worktree its own.',
+        snippet: varPorts.join('\n'),
+      })
+    }
+
+    if (fixedPorts.length) {
+      notes.push({
+        tone: 'caution',
+        title: 'Some published ports are written into the compose file',
+        body: 'A published port fixed in the file is the same in every worktree, so two worktrees cannot run this stack at once. Only the ports below are affected.',
+        snippet: fixedPorts.join('\n'),
+      })
+      notes.push({
+        tone: 'info',
+        title: 'Optional — to run stacks side by side',
+        body: 'Give those ports a default-valued variable. Compose substitutes it from `.env`, which ccwt already writes, and the value below keeps today behaviour when ccwt is not involved.',
+        snippet: `- "20080:80"\n+ "\${WEB_PORT:-20080}:80"`,
+      })
+    }
+  }
+
   const { addresses } = await findHardcodedAddresses(rootPath)
   const ours = new Set(config.services.flatMap((service) => service.portRange))
   const crossService = addresses.filter((address) => !ours.has(address.port))
 
   if (crossService.length === 0) {
-    return {
-      portMode: 'allocated',
-      headline: 'Nothing to configure — worktrees run side by side.',
-      notes,
-    }
+    return composeFixed.length
+      ? {
+          portMode: 'fixed',
+          headline: `Works as-is — one worktree at a time, because ${composeFixed.length === 1 ? 'a published port is' : 'some published ports are'} fixed in the compose file.`,
+          notes,
+        }
+      : {
+          portMode: 'allocated',
+          headline: 'Nothing to configure — worktrees run side by side.',
+          notes,
+        }
   }
 
   const first = crossService[0]!

@@ -375,3 +375,33 @@ same `{{slug}}` / `{{branch}}` / `{{worktreePath}}` substitutions, which is what
 Note that `argv()` strips top-level quotes exactly as a shell would, so a command like
 `node -e require("fs")…` loses its inner quotes and fails. That is faithful, not a bug — but it
 means postRemove commands should be plain argv, not shell one-liners.
+
+### Compose is detected and reported, not driven
+
+`compose.ts` reads the well-known compose filenames from the root, `docker/` and `.docker/`, parses
+them with `yaml`, and pulls out each service's image, whether it is built here, its published ports
+and a coarse `kind` from the image name (`mysql` → database, `nginx` → proxy, a `build:` → app).
+That is what lets a Laravel-plus-MySQL project stop reporting "one service, nothing to configure"
+when it actually runs three containers.
+
+Detection then proposes **one ccwt service for the whole stack**, not one per container:
+`docker compose -f <file> up --remove-orphans` with `COMPOSE_PROJECT_NAME=ccwt-{{slug}}`, so
+containers, networks and volumes are namespaced per worktree without touching the file. Its port
+range comes from the stack's primary published port — the first port of the first proxy, then app,
+then anything — so the reachability probe watches the port you would actually open.
+
+**The published-port distinction is the whole point of the report.** A literal `"20080:80"` is the
+same in every worktree, so two worktrees cannot run the stack at once; a `"${WEB_PORT:-20080}:80"`
+reads from the environment, and Compose loads `.env` from the project directory — which ccwt already
+writes — so each worktree can have its own. Where the primary port is a variable, `composeService`
+wires `{{port}}` into it and the stack really does become per-worktree. Where it is a literal, the
+Setup panel names the offending service and port and offers the one-line change as optional.
+
+`portMode` has to account for both sources. It was computed only from `inspect.ts`'s scan of
+JavaScript config files, so a project whose *only* fixed port lived in a compose file reported
+"nothing to configure — worktrees run side by side" directly above a caution saying they could not.
+Any fixed published port now sets `fixed` too.
+
+Not done, and deliberately: nothing parses or rewrites the compose file, nothing chooses between
+several compose files beyond taking the first match, and `depends_on` inside compose is Compose's
+business rather than ccwt's `dependsOn`. `SPEC.md` §2 still files real Compose support under Later.

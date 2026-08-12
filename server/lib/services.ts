@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PackageManager, ServiceConfig } from '../../shared/types'
 import { DEFAULT_PORT_RANGE, devCommand, isMultiProcess } from './detect'
+import { composeCommand, findCompose, primaryPort } from './compose'
 import { argv } from './exec'
 import { isDirectory, readJsonSafe } from './fs'
 
@@ -164,7 +165,46 @@ export function toServices(candidates: Candidate[], manager: PackageManager): Se
   })
 }
 
+export async function composeService(rootPath: string): Promise<ServiceConfig | null> {
+  const files = await findCompose(rootPath)
+  const chosen = files[0]
+  if (!chosen) return null
+
+  const primary = primaryPort(chosen.services)
+  const service: ServiceConfig = {
+    name: 'compose',
+    cwd: '.',
+    command: composeCommand(chosen.file),
+    portRange: DEFAULT_PORT_RANGE,
+    env: { COMPOSE_PROJECT_NAME: 'ccwt-{{slug}}' },
+  }
+
+  if (!primary) return service
+
+  if (primary.port.variable) {
+    service.env![primary.port.variable] = '{{port}}'
+    const base = Number.parseInt(primary.port.fallback ?? '', 10)
+    if (Number.isFinite(base)) service.portRange = [base, base + 99]
+    return service
+  }
+
+  const fixed = Number.parseInt(primary.port.host, 10)
+  if (Number.isFinite(fixed)) service.portRange = [fixed, fixed]
+
+  return service
+}
+
 export async function detectServices(
+  rootPath: string,
+  manager: PackageManager,
+): Promise<ServiceConfig[]> {
+  const compose = await composeService(rootPath)
+  const node = await detectNodeServices(rootPath, manager)
+
+  return compose ? [compose, ...node] : node
+}
+
+async function detectNodeServices(
   rootPath: string,
   manager: PackageManager,
 ): Promise<ServiceConfig[]> {
