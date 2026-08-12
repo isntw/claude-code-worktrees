@@ -1,0 +1,37 @@
+import { FolderGit2, SwatchBook } from 'lucide-vue-next'
+import type { Component } from 'vue'
+
+export interface NavPage {
+  name: string
+  path: string
+  title: string
+  blurb: string
+  nav: 'page' | 'pinned'
+  icon: Component
+}
+
+export const NAV: NavPage[] = [
+  {
+    name: 'index',
+    path: '/',
+    title: 'Projects',
+    blurb: 'Every repository ccwt knows how to build a worktree for.',
+    nav: 'page',
+    icon: FolderGit2,
+  },
+  {
+    name: 'preview',
+    path: '/preview',
+    title: 'Console preview',
+    blurb: 'Every primitive in every state, so the shell cannot drift unseen.',
+    nav: 'pinned',
+    icon: SwatchBook,
+  },
+]
+
+export const DETAIL_PAGES: Record<string, { title: string; blurb: string }> = {
+  'project-id': {
+    title: 'Worktrees',
+    blurb: 'What exists, what is running, and which agent is in it.',
+  },
+}

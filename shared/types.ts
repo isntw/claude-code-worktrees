@@ -1,0 +1,122 @@
+export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
+
+export type DependencyStrategy = 'auto' | 'install' | 'hardlink' | 'copy' | 'none'
+
+export type WorktreeOrigin = 'manual' | 'ccwt' | 'claude'
+
+export type ServiceState = 'stopped' | 'starting' | 'running' | 'crashed'
+
+export type AgentState = 'idle' | 'running' | 'waiting' | 'done'
+
+export type Severity = 'info' | 'warning' | 'error'
+
+export interface Diagnostic {
+  code: string
+  severity: Severity
+  message: string
+  hint?: string
+}
+
+export interface ServiceConfig {
+  name: string
+  cwd: string
+  command: string
+  portRange: [number, number]
+}
+
+export interface ProvisionConfig {
+  dependencies: DependencyStrategy
+  copy: string[]
+  postCreate: string[]
+}
+
+export interface ClaudeConfig {
+  trackSessions: boolean
+  ownWorktreeCreation: boolean
+  launchCommand: string
+}
+
+export interface CcwtConfig {
+  worktreesDir: string
+  packageManager: PackageManager | 'auto'
+  provision: ProvisionConfig
+  services: ServiceConfig[]
+  claude: ClaudeConfig
+}
+
+export interface Project {
+  id: string
+  name: string
+  rootPath: string
+  packageManager: PackageManager | null
+  defaultBranch: string | null
+  config: CcwtConfig | null
+  configPath: string | null
+  addedAt: string
+  issues: Diagnostic[]
+}
+
+export interface ServiceStatus {
+  name: string
+  state: ServiceState
+  port: number | null
+  url: string | null
+  pid: number | null
+  startedAt: string | null
+  exitCode: number | null
+}
+
+export interface AgentStatus {
+  state: AgentState
+  sessionId: string | null
+  subagents: number
+  updatedAt: string | null
+}
+
+export interface Worktree {
+  id: string
+  projectId: string
+  name: string
+  path: string
+  branch: string | null
+  head: string | null
+  origin: WorktreeOrigin
+  detached: boolean
+  bare: boolean
+  locked: boolean
+  lockReason: string | null
+  prunable: boolean
+  provisioned: boolean
+  services: ServiceStatus[]
+  agent: AgentStatus
+  issues: Diagnostic[]
+}
+
+export interface LogLine {
+  worktreeId: string
+  service: string
+  stream: 'stdout' | 'stderr'
+  at: string
+  text: string
+}
+
+export type HookEvent =
+  | 'SessionStart'
+  | 'SessionEnd'
+  | 'Notification'
+  | 'SubagentStart'
+  | 'SubagentStop'
+
+export interface HookPayload {
+  hook_event_name: HookEvent
+  session_id: string
+  cwd: string
+  matcher?: string
+  message?: string
+}
+
+export type SocketMessage =
+  | { type: 'log'; line: LogLine }
+  | { type: 'service'; worktreeId: string; status: ServiceStatus }
+  | { type: 'agent'; worktreeId: string; status: AgentStatus }
+  | { type: 'worktrees'; projectId: string }

@@ -1,0 +1,207 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { AgentState, ServiceState, Worktree } from '#shared/types'
+import type { Variation } from '../components/variation'
+import { NAV } from '../nav'
+
+const page = NAV.find((item) => item.name === 'preview')!
+
+const VARIATIONS: Variation[] = ['neutral', 'info', 'success', 'live', 'warning', 'error']
+
+const checked = ref(true)
+const mixed = ref(false)
+const switched = ref(true)
+const tab = ref<'a' | 'b' | 'c'>('a')
+const modal = ref(false)
+
+const AGENTS: AgentState[] = ['idle', 'running', 'waiting', 'done']
+const SERVICES: ServiceState[] = ['stopped', 'starting', 'running', 'crashed']
+
+const sample = (index: number, service: ServiceState, agent: AgentState): Worktree => ({
+  id: `w${index}`,
+  projectId: 'p',
+  name: ['checkout-rewrite', 'flaky-tests', 'worktree-a11y', 'bump-nuxt'][index] ?? 'sample',
+  path: `/Users/you/workspace/projects/app/../.worktrees/sample-${index}`,
+  branch: ['feature/checkout', 'fix/flaky', 'worktree-a11y', null][index] ?? null,
+  head: '9f2c1ab4e7d3',
+  origin: (['ccwt', 'manual', 'claude', 'claude'] as const)[index] ?? 'manual',
+  detached: index === 3,
+  bare: false,
+  locked: index === 2,
+  lockReason: index === 2 ? 'an agent is working here' : null,
+  prunable: false,
+  provisioned: true,
+  services: [
+    {
+      name: 'web',
+      state: service,
+      port: service === 'stopped' ? null : 5200 + index,
+      url: service === 'running' ? `http://127.0.0.1:${5200 + index}` : null,
+      pid: service === 'running' ? 40000 + index : null,
+      startedAt: null,
+      exitCode: service === 'crashed' ? 1 : null,
+    },
+  ],
+  agent: {
+    state: agent,
+    sessionId: agent === 'idle' ? null : 'a1b2c3d4',
+    subagents: agent === 'running' ? 2 : 0,
+    updatedAt: null,
+  },
+  issues: index === 3 ? [{ code: 'worktree.drift', severity: 'error', message: 'env drift' }] : [],
+})
+
+const CARDS = SERVICES.map((service, index) => sample(index, service, AGENTS[index]!))
+
+const SECTION = 'border border-line bg-surface'
+const HEAD = 'border-b border-line px-3 py-2'
+const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
+</script>
+
+<template>
+  <ConsoleHeader :title="page.title" :blurb="page.blurb">
+    <Button @click="modal = true">open a dialog</Button>
+  </ConsoleHeader>
+
+  <main class="grid min-h-0 flex-1 gap-3 overflow-y-auto p-4 xl:grid-cols-2">
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Type</p></header>
+      <div class="flex flex-col gap-2 px-3 py-3">
+        <p class="t-eyebrow">eyebrow — what this is</p>
+        <p class="t-numeral">1,284</p>
+        <p class="t-data text-dim">t-data · 127.0.0.1:5200 · 22ms</p>
+        <p class="font-sans text-xs text-dim">
+          Sans is what we think about it. Mono is what the machine said.
+        </p>
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Palette</p></header>
+      <div class="grid grid-cols-4 gap-2 px-3 py-3 sm:grid-cols-6">
+        <div
+          v-for="name in [
+            'canvas',
+            'surface',
+            'raised',
+            'line',
+            'line-strong',
+            'dim',
+            'faint',
+            'ink',
+            'live',
+            'caution',
+            'alarm',
+          ]"
+          :key="name"
+          class="flex flex-col gap-1"
+        >
+          <span class="h-8 border border-line" :style="{ background: `var(--ccwt-${name})` }" />
+          <span class="truncate font-mono text-[0.5625rem] text-faint">{{ name }}</span>
+        </div>
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Badge</p></header>
+      <div :class="BODY">
+        <Badge v-for="v in VARIATIONS" :key="v" :variation="v">{{ v }}</Badge>
+        <Badge variation="selected">selected</Badge>
+        <Badge mono>mono</Badge>
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Button</p></header>
+      <div :class="BODY">
+        <Button v-for="v in VARIATIONS" :key="v" :variation="v">{{ v }}</Button>
+      </div>
+      <div :class="BODY">
+        <Button v-for="v in VARIATIONS" :key="v" :variation="v" :outline="false">{{ v }}</Button>
+      </div>
+      <div :class="BODY">
+        <Button size="sm">small</Button>
+        <Button size="md">medium</Button>
+        <Button disabled>disabled</Button>
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Controls</p></header>
+      <div :class="BODY">
+        <Checkbox v-model="checked">checked</Checkbox>
+        <Checkbox v-model="mixed" indeterminate>indeterminate</Checkbox>
+        <Checkbox disabled>disabled</Checkbox>
+        <Toggle v-model="switched">toggle</Toggle>
+        <Tabs
+          v-model="tab"
+          :options="[
+            { value: 'a', label: 'all', count: 12 },
+            { value: 'b', label: 'running', count: 3 },
+            { value: 'c', label: 'agent' },
+          ]"
+        />
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Agent state</p></header>
+      <div class="flex flex-col gap-3 px-3 py-3">
+        <AgentBadge
+          v-for="state in AGENTS"
+          :key="state"
+          :status="{
+            state,
+            sessionId: null,
+            subagents: state === 'running' ? 2 : 0,
+            updatedAt: null,
+          }"
+        />
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Tiles</p></header>
+      <div class="px-3 py-3">
+        <TileGrid
+          dense
+          :tiles="[
+            { key: '1', label: 'app', total: 7, errors: 0, note: 'pnpm', go: () => {} },
+            { key: '2', label: 'api', total: 3, errors: 2, note: 'npm', go: () => {} },
+            { key: '3', label: 'legacy', total: 0, errors: 0, note: 'archived', inert: true, go: () => {} },
+          ]"
+        />
+      </div>
+    </section>
+
+    <section class="xl:col-span-2">
+      <p class="t-eyebrow mb-2">Worktree cards</p>
+      <div class="grid gap-2 lg:grid-cols-2 2xl:grid-cols-4">
+        <WorktreeCard v-for="card in CARDS" :key="card.id" :worktree="card" />
+      </div>
+    </section>
+
+    <section class="xl:col-span-2">
+      <p class="t-eyebrow mb-2">Log viewer</p>
+      <LogViewer
+        height="10rem"
+        :lines="[
+          { worktreeId: 'w', service: 'web', stream: 'stdout', at: '', text: '➜  Local:   http://127.0.0.1:5200/' },
+          { worktreeId: 'w', service: 'web', stream: 'stdout', at: '', text: 'ready in 412 ms' },
+          { worktreeId: 'w', service: 'web', stream: 'stderr', at: '', text: 'ENOENT: no such file or directory, open \'.env.local\'' },
+        ]"
+      />
+    </section>
+  </main>
+
+  <ModalPanel v-if="modal" title="Dialog" @close="modal = false">
+    <p class="font-sans text-xs text-dim">
+      Escape closes it, focus returns to whatever opened it, and the panel is square like everything
+      else.
+    </p>
+    <template #footer>
+      <Button size="sm" @click="modal = false">cancel</Button>
+      <Button size="sm" variation="error" :outline="false" @click="modal = false">remove</Button>
+    </template>
+  </ModalPanel>
+</template>
