@@ -33,14 +33,22 @@ export async function isFree(port: number): Promise<boolean> {
   return true
 }
 
+export function withinRange(port: number, [low, high]: [number, number]): boolean {
+  return port >= low && port <= high
+}
+
 export async function readAllocated(
   worktreePath: string,
   service: string,
+  range?: [number, number],
 ): Promise<number | null> {
   const raw = await readWorktreeConfig(worktreePath, KEY(service))
   if (!raw) return null
+
   const port = Number.parseInt(raw, 10)
-  return Number.isFinite(port) ? port : null
+  if (!Number.isFinite(port)) return null
+
+  return range && !withinRange(port, range) ? null : port
 }
 
 export async function allocate(
@@ -48,7 +56,7 @@ export async function allocate(
   service: string,
   range: [number, number],
 ): Promise<number> {
-  const existing = await readAllocated(worktreePath, service)
+  const existing = await readAllocated(worktreePath, service, range)
   if (existing !== null) return existing
 
   const [low, high] = range

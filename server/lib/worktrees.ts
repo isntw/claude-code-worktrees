@@ -71,9 +71,9 @@ async function servicesFor(
   return Promise.all(
     config.services.map(async (service) => {
       const live = supervisor.status(worktreeId, service.name)
-      if (live) return live
+      if (live && live.state !== 'stopped') return live
 
-      const port = await readAllocated(worktreePath, service.name)
+      const port = await readAllocated(worktreePath, service.name, service.portRange)
       return {
         name: service.name,
         state: 'stopped' as const,

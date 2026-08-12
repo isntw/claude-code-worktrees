@@ -327,3 +327,16 @@ root and not in the worktree.
 One thing that looks like a bug and is not: with `dependencies: "hardlink"` the install runs after
 the link to reconcile, and npm will prune anything in the linked tree that the manifest does not
 declare. Use `"copy"` to link without reconciling.
+
+### A persisted port must still satisfy the range
+
+`allocate()` returned the port stored in `git config --worktree ccwt.port.<service>` without
+checking it against the range it was asked for, so narrowing a service's range in the recipe did
+nothing to a worktree that already had a port — it kept starting on the old one, and the card kept
+advertising it. `readAllocated` now takes the range and returns `null` for a stored port outside it,
+which makes `allocate()` fall through and rewrite the value. The range in the recipe is the
+constraint; a stored port is a cache of a past decision, not a fact that outranks it.
+
+`servicesFor` consults the supervisor's live entry only when the service is **not** stopped. A
+stopped entry keeps the port it last ran on, which is stale the moment the range changes, so a
+stopped service reports what it would use next — or nothing, if that has yet to be decided.
