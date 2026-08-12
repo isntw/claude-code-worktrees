@@ -114,10 +114,11 @@ would flash `running`.
 `supervisor.note()` writes a synthetic log line under the service name `provision` — that is how
 worktree creation streams progress to the dashboard before the card it belongs to exists.
 
-`store.ts` holds only `{id, rootPath, addedAt}` per project. Everything else on `Project` — name,
-package manager, default branch, config, diagnostics — is **re-derived on every read** by
-`projects.hydrate()`, so editing `ccwt.config.json` or switching branches shows up without
-re-registering and nothing in `~/.ccwt/state.json` can go stale.
+`store.ts` holds `{id, rootPath, addedAt}` per project, plus the recipe once you edit one.
+Everything else on `Project` — name, package manager, default branch, diagnostics, the detected
+recipe — is **re-derived on every read** by `projects.hydrate()`, so changing a dev script or
+switching branches shows up without re-registering. Only what you deliberately customised is
+persisted, which is why *forget customisations* can always return a project to detection.
 
 ### Security is not optional, and the loopback bind is not the control
 
@@ -270,3 +271,32 @@ These are not implemented yet (Milestone 2 onward) but they constrain what may b
 - **`.worktreeinclude` is a config source, not a competitor.** A file is copied only if it matches a
   pattern *and* is gitignored, so tracked files are never duplicated. `provision.copy` merges with
   it rather than replacing it.
+
+### The recipe is ccwt's, not the project's
+
+`writeConfig` stores the recipe on the project's record in `~/.ccwt/state.json`. **There is no code
+path that writes a file into a registered repository, and there must not be one.** This was built
+the other way first — a committed `ccwt.config.json`, per `SPEC.md` §6 — and reversed, because a
+tool that makes you carry its config file in your repo is a tool people have to accommodate. The
+argument for the file was that a project could ship its recipe to teammates; §2 puts team features
+out of scope, and detection rebuilds the recipe from `package.json` anyway, which a committed file
+would only go stale against.
+
+Reading order, in `readConfig`:
+
+1. the recipe stored on the project record — what the editor writes;
+2. a committed `ccwt.config.json`, **read only**, if a project chose to ship one;
+3. detection.
+
+`resetConfig` drops the stored recipe, which is what *forget customisations* does — it returns the
+project to whatever detection makes of it, so there is always a way back from a bad edit.
+
+The mtime precondition went with the file. It guarded against clobbering another editor's write to
+a shared file on disk; ccwt's own state has one writer.
+
+### A button beside an input must be the same height
+
+`.t-input` is `1.75rem` and `Button`'s **`md`** size is `h-7`, which is the same. `sm` is `h-6` and
+does **not** line up — an `sm` button next to an input sits 4px short at the bottom. So any button
+in a row with an input keeps the default size, and `sm` is for buttons that stand on their own.
+Both are on `/preview`; check there before changing either number.

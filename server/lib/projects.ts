@@ -32,8 +32,10 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     }
   }
 
-  const source = await loadConfig(record.rootPath)
-  const config = source.state === 'ok' ? source.config : await suggestConfig(record.rootPath)
+  const source = record.config ? { state: 'stored' as const } : await loadConfig(record.rootPath)
+  const config =
+    record.config ??
+    (source.state === 'ok' ? source.config : await suggestConfig(record.rootPath))
   const configPath = resolve(record.rootPath, 'ccwt.config.json')
 
   if (source.state === 'invalid') {

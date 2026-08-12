@@ -38,7 +38,7 @@ const add = () => {
         :label="placeholder"
         @update:model-value="(value) => update(index, value)"
       />
-      <Button size="sm" icon title="Remove" @click="remove(index)">
+      <Button icon title="Remove" @click="remove(index)">
         <X :size="12" aria-hidden="true" />
       </Button>
     </div>

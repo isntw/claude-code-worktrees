@@ -47,11 +47,10 @@ export function useApi() {
       call<ProbeResult>('/projects/probe', { method: 'POST', body: { path } }),
 
     getConfig: (projectId: string) => call<ConfigView>(`/projects/${projectId}/config`),
-    saveConfig: (projectId: string, text: string, mtimeMs: number | null) =>
-      call<ConfigView>(`/projects/${projectId}/config`, {
-        method: 'PUT',
-        body: { text, mtimeMs },
-      }),
+    saveConfig: (projectId: string, text: string) =>
+      call<ConfigView>(`/projects/${projectId}/config`, { method: 'PUT', body: { text } }),
+    resetConfig: (projectId: string) =>
+      call<ConfigView>(`/projects/${projectId}/config`, { method: 'DELETE' }),
     suggestConfig: (projectId: string) =>
       call<{ config: CcwtConfig; text: string }>(`/projects/${projectId}/config/suggest`, {
         method: 'POST',

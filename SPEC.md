@@ -167,7 +167,14 @@ A `WorktreeCreate` hook replaces Claude Code's git logic entirely, so `claude --
 
 ## 6. Configuration
 
-One committed file per project, `ccwt.config.json`:
+> **As built:** the recipe lives in ccwt's own storage (`~/.ccwt/state.json`), **not** in the
+> project. ccwt has no code path that writes a file into a repository. A committed
+> `ccwt.config.json` is still *read* if a project chooses to ship one, but ccwt never creates it.
+> The original decision below assumed a committed file; it was reversed once "never modify the
+> user's project" became a hard constraint, since the sharing it bought is a team feature §2 puts
+> out of scope, and detection reconstructs the recipe anyway.
+
+The shape, wherever it is stored:
 
 ```jsonc
 {

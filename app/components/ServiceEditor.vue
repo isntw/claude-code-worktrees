@@ -121,7 +121,6 @@ const FIELD = 'flex flex-col gap-1'
             @update:model-value="(next) => updateEnv(at, key, next)"
           />
           <Button
-            size="sm"
             icon
             title="Remove variable"
             @click="setEnv(envRows.filter((_, index) => index !== at))"

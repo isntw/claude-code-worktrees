@@ -24,8 +24,8 @@ const serialise = (config: CcwtConfig) => `${JSON.stringify(config, null, 2)}\n`
 const payload = computed(() => (mode.value === 'json' ? raw.value : draft.value ? serialise(draft.value) : ''))
 
 const diff = computed(() => diffLines(view.value?.text ?? '', payload.value))
-const dirty = computed(() => Boolean(view.value) && (changed(diff.value) || !view.value!.exists))
-const creating = computed(() => Boolean(view.value) && !view.value!.exists)
+const dirty = computed(() => Boolean(view.value) && changed(diff.value))
+const stored = computed(() => view.value?.source === 'ccwt')
 const preview = computed(() => collapse(diff.value))
 
 const load = async () => {
@@ -61,6 +61,18 @@ watch(mode, (next, previous) => {
   }
 })
 
+const reset = async () => {
+  error.value = null
+  try {
+    const next = await api.resetConfig(projectId.value)
+    view.value = next
+    draft.value = structuredClone(next.config)
+    raw.value = next.text
+  } catch (cause) {
+    error.value = (cause as Error).message
+  }
+}
+
 const detect = async () => {
   error.value = null
   try {
@@ -76,7 +88,7 @@ const save = async () => {
   saving.value = true
   error.value = null
   try {
-    const next = await api.saveConfig(projectId.value, payload.value, view.value?.mtimeMs ?? null)
+    const next = await api.saveConfig(projectId.value, payload.value)
     view.value = next
     draft.value = structuredClone(next.config)
     raw.value = next.text
@@ -149,7 +161,7 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
       :outline="false"
       :disabled="!dirty || saving"
       @click="confirming = true"
-      >{{ saving ? 'saving…' : creating ? 'create' : 'save' }}</Button
+      >{{ saving ? 'saving…' : 'save' }}</Button
     >
   </ConsoleHeader>
 
@@ -169,9 +181,14 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
         <ArrowLeft :size="12" aria-hidden="true" />
         worktrees
       </NuxtLink>
-      <code v-if="view" class="truncate font-mono text-[0.625rem] text-faint">{{ view.path }}</code>
-      <Badge v-if="view && !view.exists" variation="info">not created yet</Badge>
+      <Badge v-if="view?.source === 'detected'" variation="info">detected</Badge>
+      <Badge v-else-if="view?.source === 'project'" variation="info">from the project</Badge>
+      <Badge v-else-if="stored" variation="neutral">saved in ccwt</Badge>
+      <code v-if="view?.path" class="truncate font-mono text-[0.625rem] text-faint">{{
+        view.path
+      }}</code>
       <Badge v-if="dirty" variation="warning">unsaved</Badge>
+      <Button v-if="stored" size="sm" class="ml-auto" @click="reset">forget customisations</Button>
     </div>
 
     <div
@@ -265,10 +282,9 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
     </div>
   </main>
 
-  <ModalPanel v-if="confirming" :title="creating ? 'Create recipe' : 'Save recipe'" @close="confirming = false">
-    <p class="mb-3 font-sans text-xs text-dim">
-      Writing <code class="font-mono text-ink">{{ view?.path }}</code
-      >.
+  <ModalPanel v-if="confirming" title="Save recipe" @close="confirming = false">
+    <p class="mb-3 max-w-prose font-sans text-xs text-dim">
+      Kept in ccwt's own storage — your repository is not touched.
     </p>
 
     <pre class="ccwt-log overflow-x-auto border border-line bg-canvas px-2 py-2"><span
@@ -281,7 +297,7 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
     <template #footer>
       <Button size="sm" @click="confirming = false">cancel</Button>
       <Button size="sm" variation="success" :outline="false" :disabled="saving" @click="save">{{
-        saving ? 'writing…' : creating ? 'create file' : 'write file'
+        saving ? 'saving…' : 'save recipe'
       }}</Button>
     </template>
   </ModalPanel>

@@ -1,11 +1,8 @@
-import { open, rename, rm, stat } from 'node:fs/promises'
-import { randomUUID } from 'node:crypto'
-import { dirname, join, resolve } from 'node:path'
 import type { CcwtConfig, ConfigView, Project } from '../../shared/types'
 import type { ConfigIssue } from '../../shared/config-schema'
 import { parseConfig } from '../../shared/config-schema'
 import { configPath, loadConfig, suggestConfig } from './detect'
-import { isInside } from './git'
+import { findRecord, updateRecord } from './store'
 
 const MAX_BYTES = 256 * 1024
 
@@ -14,50 +11,52 @@ export function serialise(config: CcwtConfig): string {
 }
 
 export async function readConfig(project: Project): Promise<ConfigView> {
-  const path = configPath(project.rootPath)
-  const source = await loadConfig(project.rootPath)
-  const info = await stat(path).catch(() => null)
+  const record = await findRecord(project.id)
 
-  if (source.state === 'absent') {
-    const suggested = await suggestConfig(project.rootPath)
+  if (record?.config) {
     return {
-      path,
-      exists: false,
-      text: serialise(suggested),
-      mtimeMs: null,
-      config: suggested,
+      source: 'ccwt',
+      path: null,
+      text: serialise(record.config),
+      config: record.config,
       issues: [],
-      detected: true,
+      detected: false,
     }
   }
 
-  if (source.state === 'invalid') {
+  const file = await loadConfig(project.rootPath)
+
+  if (file.state === 'ok') {
     return {
-      path,
-      exists: true,
-      text: source.text,
-      mtimeMs: info?.mtimeMs ?? null,
-      config: await suggestConfig(project.rootPath),
-      issues: source.issues,
+      source: 'project',
+      path: configPath(project.rootPath),
+      text: file.text,
+      config: file.config,
+      issues: [],
+      detected: false,
+    }
+  }
+
+  const suggested = await suggestConfig(project.rootPath)
+
+  if (file.state === 'invalid') {
+    return {
+      source: 'project',
+      path: configPath(project.rootPath),
+      text: file.text,
+      config: suggested,
+      issues: file.issues,
       detected: false,
     }
   }
 
   return {
-    path,
-    exists: true,
-    text: source.text,
-    mtimeMs: info?.mtimeMs ?? null,
-    config: source.config,
+    source: 'detected',
+    path: null,
+    text: serialise(suggested),
+    config: suggested,
     issues: [],
-    detected: false,
-  }
-}
-
-export class ConfigConflict extends Error {
-  constructor() {
-    super('This file changed on disk since you opened it. Reload before saving.')
-    this.name = 'ConfigConflict'
+    detected: true,
   }
 }
 
@@ -71,47 +70,14 @@ export class ConfigInvalid extends Error {
   }
 }
 
-async function target(project: Project): Promise<string> {
-  const path = resolve(configPath(project.rootPath))
-
-  if (!isInside(project.rootPath, path) || dirname(path) !== resolve(project.rootPath)) {
-    throw new Error('Refusing to write outside the project root.')
-  }
-
-  return path
-}
-
-async function writeAtomic(path: string, content: string): Promise<number> {
-  const temp = join(dirname(path), `.ccwt-${randomUUID()}.tmp`)
-
-  try {
-    const handle = await open(temp, 'w', 0o644)
-    await handle.writeFile(content, 'utf8')
-    await handle.sync()
-    await handle.close()
-    await rename(temp, path)
-  } catch (cause) {
-    await rm(temp, { force: true })
-    throw cause
-  }
-
-  const info = await stat(path)
-  return info.mtimeMs
-}
-
-export interface WriteInput {
-  text: string
-  mtimeMs: number | null
-}
-
-export async function writeConfig(project: Project, input: WriteInput): Promise<ConfigView> {
-  if (input.text.length > MAX_BYTES) {
-    throw new Error(`A recipe over ${Math.round(MAX_BYTES / 1024)} KB is not something ccwt writes.`)
+export async function writeConfig(project: Project, text: string): Promise<ConfigView> {
+  if (text.length > MAX_BYTES) {
+    throw new Error(`A recipe over ${Math.round(MAX_BYTES / 1024)} KB is not something ccwt keeps.`)
   }
 
   let value: unknown
   try {
-    value = JSON.parse(input.text)
+    value = JSON.parse(text)
   } catch (cause) {
     throw new ConfigInvalid([{ path: '(root)', message: (cause as Error).message }])
   }
@@ -119,14 +85,14 @@ export async function writeConfig(project: Project, input: WriteInput): Promise<
   const parsed = parseConfig(value)
   if (!parsed.ok) throw new ConfigInvalid(parsed.issues)
 
-  const path = await target(project)
-  const info = await stat(path).catch(() => null)
-  const current = info?.mtimeMs ?? null
-
-  if (current === null ? input.mtimeMs !== null : Math.abs(current - (input.mtimeMs ?? -1)) > 1) {
-    throw new ConfigConflict()
+  if (!(await updateRecord(project.id, { config: parsed.config }))) {
+    throw new Error('No such project.')
   }
 
-  await writeAtomic(path, serialise(parsed.config))
+  return readConfig(project)
+}
+
+export async function resetConfig(project: Project): Promise<ConfigView> {
+  await updateRecord(project.id, { config: undefined })
   return readConfig(project)
 }

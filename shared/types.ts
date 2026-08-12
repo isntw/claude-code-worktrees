@@ -119,11 +119,12 @@ export interface Setup {
   notes: SetupNote[]
 }
 
+export type ConfigSourceKind = 'ccwt' | 'project' | 'detected'
+
 export interface ConfigView {
-  path: string
-  exists: boolean
+  source: ConfigSourceKind
+  path: string | null
   text: string
-  mtimeMs: number | null
   config: CcwtConfig
   issues: { path: string; message: string }[]
   detected: boolean

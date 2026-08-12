@@ -1,11 +1,13 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import type { CcwtConfig } from '../../shared/types'
 
 export interface ProjectRecord {
   id: string
   rootPath: string
   addedAt: string
+  config?: CcwtConfig
 }
 
 export interface State {
@@ -65,6 +67,19 @@ export async function addRecord(record: ProjectRecord): Promise<ProjectRecord> {
   if (existing) return existing
 
   state.projects.push(record)
+  await writeState(state)
+  return record
+}
+
+export async function updateRecord(
+  id: string,
+  change: Partial<Omit<ProjectRecord, 'id'>>,
+): Promise<ProjectRecord | null> {
+  const state = await readState()
+  const record = state.projects.find((project) => project.id === id)
+  if (!record) return null
+
+  Object.assign(record, change)
   await writeState(state)
   return record
 }
