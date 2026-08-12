@@ -2,7 +2,6 @@ import { basename, join, resolve } from 'node:path'
 import type {
   AgentStatus,
   Project,
-  PublishedPort,
   ServiceConfig,
   ServiceStatus,
   Worktree,
@@ -21,16 +20,6 @@ import { isSymlink, pathExists, readJsonSafe } from './fs'
 import { allocate, readAllocated, release } from './ports'
 import { provision, runPostRemove, worktreePathFor, worktreesDirFor } from './provision'
 import { ENV_FILE, writeEnvBlock } from './envfile'
-import {
-  OVERRIDE_FILE,
-  buildOverride,
-  composeUp,
-  findCompose,
-  portKey,
-  primaryPort,
-  publishedPorts,
-} from './compose'
-import { writeFile } from 'node:fs/promises'
 import * as supervisor from './supervisor'
 
 const IDLE: AgentStatus = { state: 'idle', sessionId: null, subagents: 0, updatedAt: null }
@@ -57,6 +46,19 @@ export function slugify(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+async function allocateDeclared(
+  worktreePath: string,
+  service: ServiceConfig,
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {}
+
+  for (const [name, range] of Object.entries(service.ports ?? {})) {
+    out[name] = await allocate(worktreePath, `${service.name}-${name}`, range)
+  }
+
+  return out
 }
 
 async function allocateAll(
@@ -299,20 +301,15 @@ export async function startService(
     const live = supervisor.status(worktreeId, name)
     const already = live && (live.state === 'running' || live.state === 'starting')
 
-    const prepared = already ? null : await prepareCompose(project, next, worktreePath, basename(worktreePath))
-    const spawnable = prepared ? { ...next, command: prepared.command } : next
-
-    if (prepared?.primary) {
-      ports[name] = prepared.primary
-      await writeEnvBlock(worktreePath, ports).catch(() => undefined)
-    }
-    const port = ports[name]!
+    const declared = await allocateDeclared(worktreePath, next)
+    const port = declared[next.primary ?? ''] ?? ports[name]!
 
     if (!already) {
-      status = await supervisor.start(worktreeId, worktreePath, spawnable, port, {
+      status = await supervisor.start(worktreeId, worktreePath, next, port, {
+        project: slugify(project.name),
         port,
         ports,
-        published: prepared?.published,
+        declared,
         slug: basename(worktreePath),
         branch: branch ?? '',
         rootPath: project.rootPath,
@@ -335,63 +332,6 @@ export async function startService(
   }
 
   return status!
-}
-
-async function prepareCompose(
-  project: Project,
-  service: ServiceConfig,
-  worktreePath: string,
-  slug: string,
-): Promise<{ published: PublishedPort[]; command: string; primary: number | null } | null> {
-  const settings = service.compose
-  if (!settings) return null
-
-  const stacks = await findCompose(project.rootPath)
-  const stack = stacks.find((candidate) => candidate.file === settings.file) ?? stacks[0]
-  if (!stack) return null
-
-  const shared = new Set(settings.isolate === 'app-only' ? settings.shared : [])
-  const plans = []
-  const published: PublishedPort[] = []
-
-  for (const entry of publishedPorts(stack)) {
-    const isShared = shared.has(entry.service)
-    const host = isShared
-      ? 0
-      : await allocate(worktreePath, portKey(service.name, entry.service, entry.container), service.portRange)
-
-    plans.push({ service: entry.service, container: entry.container, host, shared: isShared })
-    if (!isShared) {
-      published.push({
-        service: entry.service,
-        host,
-        container: entry.container,
-        url: `http://localhost:${host}`,
-        shared: false,
-      })
-    }
-  }
-
-  await writeFile(
-    join(worktreePath, OVERRIDE_FILE),
-    buildOverride(stack.services, plans, slug, shared),
-    { mode: 0o644 },
-  )
-
-  const only =
-    settings.isolate === 'app-only'
-      ? stack.services.map((s) => s.name).filter((name) => !shared.has(name))
-      : []
-
-  const chosen = primaryPort(stack.services)
-  const primary =
-    published.find(
-      (entry) => entry.service === chosen?.service && entry.container === (chosen.port.container || chosen.port.host),
-    )?.host ??
-    published[0]?.host ??
-    null
-
-  return { published, command: composeUp(settings.file, OVERRIDE_FILE, only), primary }
 }
 
 export function startOrder(services: ServiceConfig[], target?: string): string[] {
@@ -455,6 +395,7 @@ export async function remove(project: Project, worktreeId: string): Promise<void
 
   for (const command of config?.provision.postRemove ?? []) {
     const rendered = supervisor.render(command, {
+      project: slugify(project.name),
       port: 0,
       ports: {},
       slug: basename(worktree.path),

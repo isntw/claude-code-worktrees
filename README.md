@@ -97,29 +97,31 @@ Anything you already have in that file is kept; only the marked block is rewritt
 
 ### Docker Compose
 
-A compose file publishes fixed host ports, so two worktrees of one stack would collide. ccwt writes
-a small override into each worktree and starts the stack with it:
+Commit a compose file whose published ports come from the environment, and ccwt gives each worktree
+its own:
 
 ```yaml
-# .ccwt.compose.yml — generated, recreated on every start
+# docker-compose.ccwt.yml — yours, committed
 services:
-  webserver:
-    container_name: ccwt-my-branch-webserver
-    ports: !override
-      - "20092:80"
+  web:
+    image: nginx:alpine
+    ports: ["${WEB_PORT:-20080}:80"]
+  db:
+    image: mysql:8
+    ports: ["${DB_PORT:-13306}:3306"]
 ```
 
-```bash
-docker compose -f docker-compose.yml -f .ccwt.compose.yml up
-```
+ccwt reads those variable names out of your file, allocates one port each per worktree, and exports
+them when it runs `docker compose up`. Compose interpolates from the environment, so **nothing is
+generated and nothing of yours is rewritten**. `COMPOSE_PROJECT_NAME` separates containers, networks
+and volumes per project and worktree.
 
-Every published port gets a free one, every container a namespaced name, and `COMPOSE_PROJECT_NAME`
-separates networks and volumes. **Your compose file is never edited.** Needs Compose v2.24+ for the
-`!override` tag.
+**Only the host side moves.** `"${WEB_PORT}:80"` leaves the container port alone, so `DB_HOST=db`,
+`REDIS_HOST=redis` and all container-to-container traffic keep working exactly as before. The
+allocated port is only what *you* open in a browser or a database client.
 
-By default every container is per-worktree, so a migration in one branch cannot reach another. Set
-`isolate: "app-only"` on the service and list the containers to share if you would rather one
-database served every worktree.
+If your compose file still has a number where a variable should be, the Setup panel names the
+service and port and shows the one-line change.
 
 ### The one case that still needs a decision
 

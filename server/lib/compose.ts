@@ -3,7 +3,15 @@ import { basename, join } from 'node:path'
 import { parse } from 'yaml'
 import { pathExists } from './fs'
 
+export const WORKTREE_FILES = [
+  'docker-compose.ccwt.yml',
+  'docker-compose.ccwt.yaml',
+  'compose.ccwt.yml',
+  'docker-compose.worktree.yml',
+]
+
 const FILES = [
+  ...WORKTREE_FILES,
   'docker-compose.yml',
   'docker-compose.yaml',
   'compose.yml',
@@ -37,6 +45,7 @@ export interface ComposeService {
   name: string
   image: string | null
   containerName: string | null
+  networks: string[]
   built: boolean
   kind: 'app' | 'database' | 'cache' | 'proxy' | 'support' | 'other'
   ports: ComposePort[]
@@ -58,10 +67,21 @@ function readPort(entry: unknown): ComposePort | null {
   let container = ''
 
   if (typeof entry === 'string') {
-    const parts = entry.split(':')
-    if (parts.length === 1) return null
-    container = parts[parts.length - 1]!
-    host = parts[parts.length - 2]!
+    // ${VAR:-default} contains a colon, so mask the blocks before splitting on it
+    const blocks: string[] = []
+    const masked = entry.replace(/\$\{[^}]*\}/g, (block) => {
+      blocks.push(block)
+      return `\u0000${blocks.length - 1}\u0000`
+    })
+    const restore = (value: string) =>
+      value.replace(/\u0000(\d+)\u0000/g, (_, index: string) => blocks[Number(index)] ?? '')
+
+    const parts = masked.split(':')
+    if (parts.length === 1) {
+      return { host: '', container: restore(parts[0]!), variable: null, fallback: null, fixed: false }
+    }
+    container = restore(parts[parts.length - 1]!)
+    host = restore(parts[parts.length - 2]!)
   } else if (entry && typeof entry === 'object') {
     const long = entry as { published?: string | number; target?: string | number }
     if (long.published === undefined) return null
@@ -112,6 +132,7 @@ export function parseCompose(text: string): ComposeService[] {
       build?: unknown
       ports?: unknown[]
       container_name?: string
+      networks?: unknown
     }
     const image = typeof value.image === 'string' ? value.image : null
     const containerName = typeof value.container_name === 'string' ? value.container_name : null
@@ -121,7 +142,21 @@ export function parseCompose(text: string): ComposeService[] {
       ? value.ports.map(readPort).filter((port): port is ComposePort => port !== null)
       : []
 
-    return { name, image, containerName, built, kind: classify(image, built), ports }
+    const networks = Array.isArray(value.networks)
+      ? value.networks.filter((n): n is string => typeof n === 'string')
+      : value.networks && typeof value.networks === 'object'
+        ? Object.keys(value.networks as Record<string, unknown>)
+        : []
+
+    return {
+      name,
+      image,
+      containerName,
+      networks: networks.length ? networks : ['default'],
+      built,
+      kind: classify(image, built),
+      ports,
+    }
   })
 }
 
@@ -186,75 +221,80 @@ export function primaryPort(services: ComposeService[]): { service: string; port
   return null
 }
 
-export function composeCommand(file: string): string {
-  return `docker compose -f ${file} up --remove-orphans`
-}
-
 export function fileLabel(path: string): string {
   return basename(path)
 }
 
-export interface PortPlan {
+
+export interface PortVariable {
+  name: string
+  fallback: number | null
   service: string
   container: string
-  host: number
-  shared: boolean
 }
 
-export function portKey(serviceName: string, composeService: string, container: string): string {
-  return `${serviceName}-${composeService}-${container}`.replace(/[^A-Za-z0-9-]+/g, '-')
+export function portVariables(stack: ComposeFile): PortVariable[] {
+  const seen = new Set<string>()
+  const out: PortVariable[] = []
+
+  for (const service of stack.services) {
+    for (const port of service.ports) {
+      if (!port.variable || seen.has(port.variable)) continue
+      seen.add(port.variable)
+
+      const fallback = Number.parseInt(port.fallback ?? '', 10)
+      out.push({
+        name: port.variable,
+        fallback: Number.isFinite(fallback) ? fallback : null,
+        service: service.name,
+        container: port.container || '',
+      })
+    }
+  }
+
+  return out
 }
 
-export function publishedPorts(stack: ComposeFile): { service: string; container: string }[] {
+export function fixedPorts(stack: ComposeFile): { service: string; host: string }[] {
   return stack.services.flatMap((service) =>
-    service.ports.map((port) => ({
-      service: service.name,
-      container: port.container || port.host,
-    })),
+    service.ports.filter((port) => port.fixed).map((port) => ({ service: service.name, host: port.host })),
   )
 }
 
-export function buildOverride(
-  services: ComposeService[],
-  plans: PortPlan[],
-  slug: string,
-  shared: Set<string>,
-): string {
-  const byService = new Map<string, PortPlan[]>()
+export function isWorktreeReady(file: string): boolean {
+  return WORKTREE_FILES.some((name) => file.endsWith(name))
+}
 
-  for (const plan of plans) {
-    if (plan.shared) continue
-    byService.set(plan.service, [...(byService.get(plan.service) ?? []), plan])
-  }
+export function composeUp(file: string): string {
+  return `docker compose -f ${file} up --remove-orphans`
+}
 
-  const lines = ['# generated by ccwt — recreated on every start, edits are lost', 'services:']
+export function composeDown(file: string): string {
+  return `docker compose -f ${file} down --remove-orphans`
+}
 
-  for (const service of services) {
-    if (shared.has(service.name)) continue
+export function scaffold(stack: ComposeFile): string {
+  const lines = [
+    '# Worktree-ready compose file for ccwt.',
+    '# Published ports read from the environment; ccwt gives each worktree its own.',
+    '# Container-side ports are untouched, so DB_HOST=db / REDIS_HOST=redis keep working.',
+    'services:',
+  ]
 
-    const ports = byService.get(service.name)
-    const rename = service.containerName !== null
-
-    if (!ports && !rename) continue
-
+  for (const service of stack.services) {
     lines.push(`  ${service.name}:`)
-    if (rename) lines.push(`    container_name: ccwt-${slug}-${service.name}`)
-    if (ports) {
-      lines.push('    ports: !override')
-      for (const port of ports) lines.push(`      - "${port.host}:${port.container}"`)
+    if (service.image) lines.push(`    image: ${service.image}`)
+    else if (service.built) lines.push('    build: .')
+
+    if (service.ports.length) {
+      lines.push('    ports:')
+      for (const port of service.ports) {
+        const variable = port.variable ?? `${service.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_PORT`
+        const fallback = port.variable ? (port.fallback ?? '') : port.host
+        lines.push(`      - "\${${variable}${fallback ? `:-${fallback}` : ''}}:${port.container}"`)
+      }
     }
   }
 
   return `${lines.join('\n')}\n`
-}
-
-export const OVERRIDE_FILE = '.ccwt.compose.yml'
-
-export function composeUp(file: string, override: string, only: string[]): string {
-  const services = only.length ? ` ${only.join(' ')}` : ''
-  return `docker compose -f ${file} -f ${override} up --remove-orphans${services}`
-}
-
-export function composeDown(file: string, override: string): string {
-  return `docker compose -f ${file} -f ${override} down --remove-orphans`
 }

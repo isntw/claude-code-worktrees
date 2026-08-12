@@ -406,49 +406,46 @@ Not done, and deliberately: nothing parses or rewrites the compose file, nothing
 several compose files beyond taking the first match, and `depends_on` inside compose is Compose's
 business rather than ccwt's `dependsOn`. `SPEC.md` §2 still files real Compose support under Later.
 
-### Compose is isolated with a generated override, never by editing their file
+### Compose: ccwt allocates ports, the project's file spends them
 
-A compose file publishes fixed host ports, so two worktrees of the same stack collide. The fix is
-Compose's own merge: ccwt writes `.ccwt.compose.yml` into the worktree and starts the stack with
-`-f <theirs> -f <ours>`. The override carries, per service that publishes anything:
+This was built twice. The first attempt parsed the compose file and generated an override at start
+time — `ports: !override`, renamed containers, network aliases to keep the old names resolvable. It
+worked for the project it was written against and **failed on three of five other compose shapes**:
+a container-only `"6379"` produced an invalid override, a stack publishing nothing probed a dead port
+forever, and aliases on an *external* network would collide between worktrees. All that machinery
+existed to infer something the user can simply say.
 
-```yaml
-services:
-  webserver:
-    container_name: ccwt-<slug>-webserver
-    ports: !override
-      - "20092:80"
-```
+So the override generator is gone. The contract is now:
 
-**Every service that declares `container_name` must be renamed, not just the ones publishing
-ports.** The override was first built from the port plans alone, so a service with an explicit
-`container_name` and no `ports:` — charactersheet's PHP `app` — was left out of the override
-entirely and collided with whatever already held that name. `buildOverride` walks the service list,
-not the port list.
+1. the project commits a worktree-ready compose file whose published ports read from the
+   environment — `ports: ["${WEB_PORT:-20080}:80"]`;
+2. `portVariables()` reads those variable names **out of that file**, so nothing has to be declared
+   twice, and the recipe records them as `ports: { WEB_PORT: [20080, 20179] }`;
+3. ccwt allocates one per worktree, persists it like any other port, and exports it when spawning
+   `docker compose`.
 
-**The stack's own port is its primary published port.** It was allocated a port of its own like any
-other service, which the reachability probe then watched while the containers published somewhere
-else — so a working stack reported "nothing is listening on port N". `prepareCompose` returns the
-primary published host port and `startService` uses that as the service's port, rewriting the env
-block so `CCWT_PORT_<STACK>` is the port you can actually open.
+**Compose interpolates from the process environment, which beats `.env`** — verified before this was
+built, along with the fallback applying when nothing is set. So ccwt writes no file and mutates
+nothing. `COMPOSE_PROJECT_NAME=ccwt-{{project}}-{{slug}}` namespaces containers, networks and volumes,
+and carries the repository name because a worktree slug alone collides across projects.
 
-**`!override` is load-bearing and was verified before any of this was built.** A plain merge
-*appends* to `ports`, so the stack would publish 20080 *and* the new port and still collide;
-`!override` replaces the list. It needs Compose v2.24+. `container_name` must be overridden too — an
-explicit `container_name:` in the project's file defeats `COMPOSE_PROJECT_NAME`, which otherwise
-namespaces networks, volumes and default container names for free.
+**Only the host side of a port is dynamic.** `"${WEB_PORT}:80"` leaves 80 alone, so `DB_HOST=db`,
+`REDIS_HOST=redis` and container-to-container traffic are untouched — which is the property that
+makes this safe for any stack. Verified with two worktrees of an nginx + Redis + MySQL stack: six
+containers, six distinct host ports, all serving, and `db` resolving to a *different* address inside
+each stack.
 
-Every published port gets its own ccwt port, allocated and persisted like any other under the key
-`<service>-<composeService>-<containerPort>`. That key shape matters: git config keys may not start
-with a digit, so the container port cannot be the last dotted segment.
+Two traps found while building it, both worth keeping:
 
-`isolate: 'app-only'` runs `docker compose up <non-shared services>` and leaves the shared ones
-alone on their original ports — for the case where worktrees should share one database. `'all'` is
-the default because it is the safe one: a migration in an isolated worktree cannot reach a sibling.
+- **`${VAR:-default}` contains a colon**, so splitting a port string on `:` mangles the very syntax
+  this design recommends. `readPort` masks `${…}` blocks before splitting and restores them after.
+  All five forms are covered: default syntax, bare variable, plain number, bind address, container-only.
+- **A git config key may not contain an underscore.** `ccwt.port.stack-WEB_PORT` is rejected outright
+  by git, so port keys are lowercased and non-alphanumerics collapse to dashes.
 
-`stopCommand` exists because of this and is not Docker-specific: `docker compose up` attached stops
-containers on SIGTERM but leaves them defined, so stopping has to run `docker compose down`. Any
-service may declare one; it runs after the process group is signalled.
+What remains of `compose.ts` is read-only: parsing for the Setup panel, and `scaffold()` which
+generates a starting worktree-ready file for the user to review and commit.
+
 
 ### A stored recipe can silently miss what ccwt learned later
 

@@ -4,7 +4,6 @@ import { connect } from 'node:net'
 import { resolve } from 'node:path'
 import type {
   LogLine,
-  PublishedPort,
   ServiceConfig,
   ServiceState,
   ServiceStatus,
@@ -47,7 +46,7 @@ interface Entry {
   port: number
   cwd: string
   stopCommand: string | null
-  published: PublishedPort[]
+  declared: Record<string, number>
   state: ServiceState
   pid: number | null
   startedAt: string
@@ -66,9 +65,10 @@ const statusListeners = new Set<StatusListener>()
 const keyFor = (worktreeId: string, service: string) => `${worktreeId}:${service}`
 
 export interface Vars {
+  project: string
   port: number
   ports: Record<string, number>
-  published?: PublishedPort[]
+  declared?: Record<string, number>
   slug: string
   branch: string
   rootPath: string
@@ -90,6 +90,7 @@ export function render(template: string, vars: Vars): string {
       return urlFor(port)
     })
     .replaceAll('{{port}}', String(vars.port))
+    .replaceAll('{{project}}', vars.project)
     .replaceAll('{{slug}}', vars.slug)
     .replaceAll('{{branch}}', vars.branch)
     .replaceAll('{{rootPath}}', vars.rootPath)
@@ -107,7 +108,7 @@ function toStatus(entry: Entry): ServiceStatus {
     startedAt: entry.startedAt,
     exitCode: entry.exitCode,
     reachable: entry.reachable,
-    published: entry.published.length ? entry.published : undefined,
+    allocated: Object.keys(entry.declared).length ? entry.declared : undefined,
   }
 }
 
@@ -233,7 +234,7 @@ export async function start(
     port,
     cwd: resolve(worktreePath, service.cwd || '.'),
     stopCommand: service.stopCommand ? render(service.stopCommand, vars) : null,
-    published: vars.published ?? [],
+    declared: vars.declared ?? {},
     state: 'starting',
     pid: null,
     startedAt: new Date().toISOString(),
@@ -251,6 +252,10 @@ export async function start(
   for (const [name, allocated] of Object.entries(vars.ports)) {
     declared[envKey('CCWT_PORT', name)] = String(allocated)
     declared[envKey('CCWT_URL', name)] = urlFor(allocated)
+  }
+
+  for (const [name, allocated] of Object.entries(vars.declared ?? {})) {
+    declared[name] = String(allocated)
   }
 
   for (const [key, value] of Object.entries(service.env ?? {})) {

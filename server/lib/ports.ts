@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { createServer } from 'node:net'
 import { clearWorktreeConfig, readWorktreeConfig, writeWorktreeConfig } from './git'
 
-const KEY = (service: string) => `ccwt.port.${service}`
+const KEY = (service: string) =>
+  `ccwt.port.${service.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}`
 
 export function hashToRange(seed: string, range: [number, number]): number {
   const [low, high] = range

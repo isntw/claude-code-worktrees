@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PackageManager, ServiceConfig } from '../../shared/types'
 import { DEFAULT_PORT_RANGE, devCommand, isMultiProcess } from './detect'
-import { OVERRIDE_FILE, composeDown, composeUp, findCompose, primaryPort } from './compose'
+import { composeDown, composeUp, findCompose, portVariables, primaryPort } from './compose'
 import { argv } from './exec'
 import { isDirectory, readJsonSafe } from './fs'
 
@@ -170,18 +170,27 @@ export async function composeService(rootPath: string): Promise<ServiceConfig | 
   const chosen = files[0]
   if (!chosen) return null
 
+  const variables = portVariables(chosen)
+  const ports: Record<string, [number, number]> = {}
+
+  for (const variable of variables) {
+    const base = variable.fallback ?? DEFAULT_PORT_RANGE[0]
+    ports[variable.name] = [base, base + 99]
+  }
+
   const primary = primaryPort(chosen.services)
-  const base = primary?.port.fallback ?? primary?.port.host ?? ''
-  const start = Number.parseInt(base, 10)
+  const primaryName =
+    variables.find((variable) => variable.service === primary?.service)?.name ?? variables[0]?.name
 
   return {
-    name: 'compose',
+    name: 'stack',
     cwd: '.',
-    command: composeUp(chosen.file, OVERRIDE_FILE, []),
-    stopCommand: composeDown(chosen.file, OVERRIDE_FILE),
-    portRange: Number.isFinite(start) ? [start, start + 99] : DEFAULT_PORT_RANGE,
-    env: { COMPOSE_PROJECT_NAME: 'ccwt-{{slug}}' },
-    compose: { file: chosen.file, isolate: 'all', shared: [] },
+    command: composeUp(chosen.file),
+    stopCommand: composeDown(chosen.file),
+    portRange: DEFAULT_PORT_RANGE,
+    env: { COMPOSE_PROJECT_NAME: 'ccwt-{{project}}-{{slug}}' },
+    ...(Object.keys(ports).length ? { ports } : {}),
+    ...(primaryName ? { primary: primaryName } : {}),
   }
 }
 

@@ -18,13 +18,8 @@ export const serviceSchema = z
     env: z.record(z.string(), z.string()).optional(),
     dependsOn: z.array(z.string()).optional(),
     stopCommand: z.string().optional(),
-    compose: z
-      .strictObject({
-        file: z.string().min(1),
-        isolate: z.enum(['all', 'app-only']).default('all'),
-        shared: z.array(z.string()).default([]),
-      })
-      .optional(),
+    ports: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.tuple([port, port])).optional(),
+    primary: z.string().optional(),
   })
   .describe('service')
 

@@ -1,7 +1,7 @@
 import type { CcwtConfig, Setup, SetupNote } from '../../shared/types'
 import { ENV_FILE, envKey } from './envfile'
-import { OVERRIDE_FILE } from './compose'
-import { findCompose } from './compose'
+
+import { findCompose, fixedPorts, isWorktreeReady, portVariables } from './compose'
 import { findHardcodedAddresses } from './inspect'
 
 export async function describeSetup(rootPath: string, config: CcwtConfig): Promise<Setup> {
@@ -72,29 +72,31 @@ export async function describeSetup(rootPath: string, config: CcwtConfig): Promi
       snippet: lines.join('\n'),
     })
 
-    const fixedPorts = stack.services.flatMap((service) =>
-      service.ports.filter((port) => port.fixed).map((port) => `${service.name} ${port.host}`),
-    )
-    composeFixed = config.services.some((service) => service.compose?.isolate === 'all') ? [] : fixedPorts
-    const varPorts = stack.services.flatMap((service) =>
-      service.ports.filter((port) => port.variable).map((port) => `${service.name} ${port.host}`),
-    )
+    const variables = portVariables(stack)
+    const fixed = fixedPorts(stack)
+    const ready = isWorktreeReady(stack.file)
+    composeFixed = fixed.map((entry) => `${entry.service} ${entry.host}`)
 
-    const isolating = config.services.some((service) => service.compose?.isolate === 'all')
-
-    if (isolating) {
+    if (variables.length) {
       notes.push({
         tone: 'good',
-        title: 'Published ports are replaced per worktree',
-        body: `ccwt writes a small override file into each worktree and starts the stack with \`-f ${stack.file} -f ${OVERRIDE_FILE}\`. Every published port gets a free one and every container a namespaced name, so two worktrees of this stack run at the same time. Your compose file is never edited.`,
-        snippet: [...fixedPorts, ...varPorts].map((entry) => `${entry} → allocated`).join('\n'),
+        title: 'Published ports come from the environment',
+        body: `ccwt gives each worktree its own value for these and exports them when it starts the stack, so Compose substitutes them. Container-side ports are untouched, which is why \`DB_HOST=db\` and \`REDIS_HOST=redis\` keep working.`,
+        snippet: variables.map((v) => `${v.name} → ${v.service}:${v.container}`).join('\n'),
       })
-    } else if (fixedPorts.length) {
+    }
+
+    if (fixed.length) {
       notes.push({
         tone: 'caution',
-        title: 'Published ports are fixed and isolation is off',
-        body: 'These ports are the same in every worktree, so only one worktree can run this stack. Turn isolation on in the recipe to have ccwt override them.',
-        snippet: fixedPorts.join('\n'),
+        title: ready ? 'Some ports are still written into the file' : 'This compose file is not worktree-ready',
+        body: `A published port written as a number is the same in every worktree, so two worktrees cannot run the stack at once. Give each one a variable with a default and ccwt will allocate it.`,
+        snippet: fixed
+          .map(
+            (entry) =>
+              `${entry.service}  "${entry.host}:…"  →  "\${${entry.service.toUpperCase()}_PORT:-${entry.host}}:…"`,
+          )
+          .join('\n'),
       })
     }
 

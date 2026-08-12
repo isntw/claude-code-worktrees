@@ -24,6 +24,11 @@ const SERVICE: Record<ServiceStatus['state'], { variation: Variation; label: str
 
 const errors = computed(() => props.worktree.issues.filter((i) => i.severity === 'error').length)
 
+const extraPorts = (service: ServiceStatus) =>
+  Object.entries(service.allocated ?? {})
+    .filter(([, value]) => value !== service.port)
+    .map(([name, value]) => `${name}=${value}`)
+
 const allRunning = computed(() =>
   props.worktree.services.every(
     (service) => service.state === 'running' || service.state === 'starting',
@@ -130,10 +135,10 @@ const allRunning = computed(() =>
         }}</span>
 
         <span
-          v-if="service.published && service.published.length > 1"
+          v-if="extraPorts(service).length"
           class="shrink-0 font-mono text-[0.625rem] text-faint"
-          :title="service.published.map((p) => `${p.service} ${p.host}->${p.container}`).join('\n')"
-          >+{{ service.published.length - 1 }} more</span
+          :title="extraPorts(service).join('\n')"
+          >+{{ extraPorts(service).length }} port{{ extraPorts(service).length === 1 ? '' : 's' }}</span
         >
 
         <span class="ml-auto flex shrink-0 gap-1">
