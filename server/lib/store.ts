@@ -8,6 +8,7 @@ export interface ProjectRecord {
   rootPath: string
   addedAt: string
   config?: CcwtConfig
+  configRevision?: number
 }
 
 export interface State {

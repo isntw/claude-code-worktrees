@@ -1,5 +1,6 @@
 import type { CcwtConfig, Setup, SetupNote } from '../../shared/types'
 import { ENV_FILE, envKey } from './envfile'
+import { OVERRIDE_FILE } from './compose'
 import { findCompose } from './compose'
 import { findHardcodedAddresses } from './inspect'
 
@@ -74,32 +75,35 @@ export async function describeSetup(rootPath: string, config: CcwtConfig): Promi
     const fixedPorts = stack.services.flatMap((service) =>
       service.ports.filter((port) => port.fixed).map((port) => `${service.name} ${port.host}`),
     )
-    composeFixed = fixedPorts
+    composeFixed = config.services.some((service) => service.compose?.isolate === 'all') ? [] : fixedPorts
     const varPorts = stack.services.flatMap((service) =>
       service.ports.filter((port) => port.variable).map((port) => `${service.name} ${port.host}`),
     )
 
-    if (varPorts.length) {
+    const isolating = config.services.some((service) => service.compose?.isolate === 'all')
+
+    if (isolating) {
       notes.push({
         tone: 'good',
-        title: 'Some published ports are already configurable',
-        body: 'These read from the environment, and Docker Compose loads `.env` from the project directory — so ccwt can give each worktree its own.',
-        snippet: varPorts.join('\n'),
+        title: 'Published ports are replaced per worktree',
+        body: `ccwt writes a small override file into each worktree and starts the stack with \`-f ${stack.file} -f ${OVERRIDE_FILE}\`. Every published port gets a free one and every container a namespaced name, so two worktrees of this stack run at the same time. Your compose file is never edited.`,
+        snippet: [...fixedPorts, ...varPorts].map((entry) => `${entry} → allocated`).join('\n'),
+      })
+    } else if (fixedPorts.length) {
+      notes.push({
+        tone: 'caution',
+        title: 'Published ports are fixed and isolation is off',
+        body: 'These ports are the same in every worktree, so only one worktree can run this stack. Turn isolation on in the recipe to have ccwt override them.',
+        snippet: fixedPorts.join('\n'),
       })
     }
 
-    if (fixedPorts.length) {
+    if (stack.externalNetworks.length) {
       notes.push({
         tone: 'caution',
-        title: 'Some published ports are written into the compose file',
-        body: 'A published port fixed in the file is the same in every worktree, so two worktrees cannot run this stack at once. Only the ports below are affected.',
-        snippet: fixedPorts.join('\n'),
-      })
-      notes.push({
-        tone: 'info',
-        title: 'Optional — to run stacks side by side',
-        body: 'Give those ports a default-valued variable. Compose substitutes it from `.env`, which ccwt already writes, and the value below keeps today behaviour when ccwt is not involved.',
-        snippet: `- "20080:80"\n+ "\${WEB_PORT:-20080}:80"`,
+        title: 'The stack needs a network it does not create',
+        body: `Compose refuses to start when an external network is missing. Create it once with \`docker network create <name>\` if a worktree fails to come up.`,
+        snippet: stack.externalNetworks.join('\n'),
       })
     }
   }

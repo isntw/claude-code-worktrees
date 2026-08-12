@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { connect } from 'node:net'
 import { resolve } from 'node:path'
 import type { LogLine, ServiceConfig, ServiceState, ServiceStatus } from '../../shared/types'
-import { argv } from './exec'
+import { argv, exec } from './exec'
 import { envKey } from './envfile'
 
 const MAX_LINES = 1000
@@ -39,6 +39,8 @@ interface Entry {
   worktreeId: string
   service: string
   port: number
+  cwd: string
+  stopCommand: string | null
   state: ServiceState
   pid: number | null
   startedAt: string
@@ -220,6 +222,8 @@ export async function start(
     worktreeId,
     service: service.name,
     port,
+    cwd: resolve(worktreePath, service.cwd || '.'),
+    stopCommand: service.stopCommand ? render(service.stopCommand, vars) : null,
     state: 'starting',
     pid: null,
     startedAt: new Date().toISOString(),
@@ -357,6 +361,7 @@ export async function stop(worktreeId: string, service: string): Promise<Service
 
   if (!entry.child) {
     entry.state = 'stopped'
+    await runStopCommand(entry)
     return toStatus(entry)
   }
 
@@ -377,7 +382,25 @@ export async function stop(worktreeId: string, service: string): Promise<Service
     signal(entry, 'SIGTERM')
   })
 
+  await runStopCommand(entry)
   return toStatus(entry)
+}
+
+async function runStopCommand(entry: Entry): Promise<void> {
+  if (!entry.stopCommand) return
+
+  const parts = argv(entry.stopCommand)
+  const head = parts[0]
+  if (!head) return
+
+  note(entry.worktreeId, entry.service, `stopping: ${entry.stopCommand}`)
+  const result = await exec(head, parts.slice(1), { cwd: entry.cwd, timeoutMs: 120_000 }).catch(
+    () => null,
+  )
+
+  if (result && result.code !== 0) {
+    note(entry.worktreeId, entry.service, result.stderr.trim().split('\n').slice(-3).join('\n'), 'stderr')
+  }
 }
 
 export async function stopWorktree(worktreeId: string): Promise<void> {

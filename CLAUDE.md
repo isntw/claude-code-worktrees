@@ -405,3 +405,44 @@ Any fixed published port now sets `fixed` too.
 Not done, and deliberately: nothing parses or rewrites the compose file, nothing chooses between
 several compose files beyond taking the first match, and `depends_on` inside compose is Compose's
 business rather than ccwt's `dependsOn`. `SPEC.md` §2 still files real Compose support under Later.
+
+### Compose is isolated with a generated override, never by editing their file
+
+A compose file publishes fixed host ports, so two worktrees of the same stack collide. The fix is
+Compose's own merge: ccwt writes `.ccwt.compose.yml` into the worktree and starts the stack with
+`-f <theirs> -f <ours>`. The override carries, per service that publishes anything:
+
+```yaml
+services:
+  webserver:
+    container_name: ccwt-<slug>-webserver
+    ports: !override
+      - "20092:80"
+```
+
+**`!override` is load-bearing and was verified before any of this was built.** A plain merge
+*appends* to `ports`, so the stack would publish 20080 *and* the new port and still collide;
+`!override` replaces the list. It needs Compose v2.24+. `container_name` must be overridden too — an
+explicit `container_name:` in the project's file defeats `COMPOSE_PROJECT_NAME`, which otherwise
+namespaces networks, volumes and default container names for free.
+
+Every published port gets its own ccwt port, allocated and persisted like any other under the key
+`<service>-<composeService>-<containerPort>`. That key shape matters: git config keys may not start
+with a digit, so the container port cannot be the last dotted segment.
+
+`isolate: 'app-only'` runs `docker compose up <non-shared services>` and leaves the shared ones
+alone on their original ports — for the case where worktrees should share one database. `'all'` is
+the default because it is the safe one: a migration in an isolated worktree cannot reach a sibling.
+
+`stopCommand` exists because of this and is not Docker-specific: `docker compose up` attached stops
+containers on SIGTERM but leaves them defined, so stopping has to run `docker compose down`. Any
+service may declare one; it runs after the process group is signalled.
+
+### A stored recipe can silently miss what ccwt learned later
+
+`RECIPE_REVISION` in the schema is bumped whenever a field is added, and `writeConfig` stamps it on
+the record. A recipe stored under an older revision raises `project.recipe-stale` telling you to
+press detect — it is **not** migrated or overwritten, because the stored recipe is the user's and
+guessing at their intent is worse than telling them. This was found the honest way: charactersheet
+had a recipe saved between compose *detection* and compose *isolation* landing, so it kept running
+the old command with no override and nothing said so.

@@ -17,6 +17,12 @@ export interface Diagnostic {
   hint?: string
 }
 
+export interface ComposeSettings {
+  file: string
+  isolate: 'all' | 'app-only'
+  shared: string[]
+}
+
 export interface ServiceConfig {
   name: string
   cwd: string
@@ -24,6 +30,8 @@ export interface ServiceConfig {
   portRange: [number, number]
   env?: Record<string, string>
   dependsOn?: string[]
+  stopCommand?: string
+  compose?: ComposeSettings
 }
 
 export interface ProvisionConfig {
@@ -61,6 +69,14 @@ export interface Project {
   issues: Diagnostic[]
 }
 
+export interface PublishedPort {
+  service: string
+  host: number
+  container: string
+  url: string
+  shared: boolean
+}
+
 export interface ServiceStatus {
   name: string
   state: ServiceState
@@ -70,6 +86,7 @@ export interface ServiceStatus {
   startedAt: string | null
   exitCode: number | null
   reachable: boolean | null
+  published?: PublishedPort[]
 }
 
 export interface AgentStatus {

@@ -2,6 +2,7 @@ import { basename, join, resolve } from 'node:path'
 import type {
   AgentStatus,
   Project,
+  PublishedPort,
   ServiceConfig,
   ServiceStatus,
   Worktree,
@@ -20,6 +21,15 @@ import { pathExists, readJsonSafe } from './fs'
 import { allocate, readAllocated, release } from './ports'
 import { provision, runPostRemove, worktreePathFor, worktreesDirFor } from './provision'
 import { ENV_FILE, writeEnvBlock } from './envfile'
+import {
+  OVERRIDE_FILE,
+  buildOverride,
+  composeUp,
+  findCompose,
+  portKey,
+  publishedPorts,
+} from './compose'
+import { writeFile } from 'node:fs/promises'
 import * as supervisor from './supervisor'
 
 const IDLE: AgentStatus = { state: 'idle', sessionId: null, subagents: 0, updatedAt: null }
@@ -225,8 +235,11 @@ export async function startService(
     const live = supervisor.status(worktreeId, name)
     const already = live && (live.state === 'running' || live.state === 'starting')
 
+    const prepared = already ? null : await prepareCompose(project, next, worktreePath, basename(worktreePath))
+    const spawnable = prepared ? { ...next, command: prepared.command } : next
+
     if (!already) {
-      status = await supervisor.start(worktreeId, worktreePath, next, port, {
+      status = await supervisor.start(worktreeId, worktreePath, spawnable, port, {
         port,
         ports,
         slug: basename(worktreePath),
@@ -234,6 +247,7 @@ export async function startService(
         rootPath: project.rootPath,
         worktreePath,
       })
+      if (prepared) status = { ...status, published: prepared.published }
     } else {
       status = live
     }
@@ -251,6 +265,51 @@ export async function startService(
   }
 
   return status!
+}
+
+async function prepareCompose(
+  project: Project,
+  service: ServiceConfig,
+  worktreePath: string,
+  slug: string,
+): Promise<{ published: PublishedPort[]; command: string } | null> {
+  const settings = service.compose
+  if (!settings) return null
+
+  const stacks = await findCompose(project.rootPath)
+  const stack = stacks.find((candidate) => candidate.file === settings.file) ?? stacks[0]
+  if (!stack) return null
+
+  const shared = new Set(settings.isolate === 'app-only' ? settings.shared : [])
+  const plans = []
+  const published: PublishedPort[] = []
+
+  for (const entry of publishedPorts(stack)) {
+    const isShared = shared.has(entry.service)
+    const host = isShared
+      ? 0
+      : await allocate(worktreePath, portKey(service.name, entry.service, entry.container), service.portRange)
+
+    plans.push({ service: entry.service, container: entry.container, host, shared: isShared })
+    if (!isShared) {
+      published.push({
+        service: entry.service,
+        host,
+        container: entry.container,
+        url: `http://localhost:${host}`,
+        shared: false,
+      })
+    }
+  }
+
+  await writeFile(join(worktreePath, OVERRIDE_FILE), buildOverride(plans, slug), { mode: 0o644 })
+
+  const only =
+    settings.isolate === 'app-only'
+      ? stack.services.map((s) => s.name).filter((name) => !shared.has(name))
+      : []
+
+  return { published, command: composeUp(settings.file, OVERRIDE_FILE, only) }
 }
 
 export function startOrder(services: ServiceConfig[], target?: string): string[] {

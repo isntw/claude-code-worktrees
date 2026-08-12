@@ -3,6 +3,8 @@ import type { CcwtConfig } from './types'
 
 const NAME = /^[a-z0-9][a-z0-9_-]*$/i
 
+export const RECIPE_REVISION = 2
+
 const port = z.number().int().min(1).max(65535)
 
 export const serviceSchema = z
@@ -15,6 +17,14 @@ export const serviceSchema = z
       .refine(([low, high]) => low <= high, 'The range must start at or below its end.'),
     env: z.record(z.string(), z.string()).optional(),
     dependsOn: z.array(z.string()).optional(),
+    stopCommand: z.string().optional(),
+    compose: z
+      .strictObject({
+        file: z.string().min(1),
+        isolate: z.enum(['all', 'app-only']).default('all'),
+        shared: z.array(z.string()).default([]),
+      })
+      .optional(),
   })
   .describe('service')
 

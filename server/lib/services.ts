@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PackageManager, ServiceConfig } from '../../shared/types'
 import { DEFAULT_PORT_RANGE, devCommand, isMultiProcess } from './detect'
-import { composeCommand, findCompose, primaryPort } from './compose'
+import { OVERRIDE_FILE, composeDown, composeUp, findCompose, primaryPort } from './compose'
 import { argv } from './exec'
 import { isDirectory, readJsonSafe } from './fs'
 
@@ -171,27 +171,18 @@ export async function composeService(rootPath: string): Promise<ServiceConfig | 
   if (!chosen) return null
 
   const primary = primaryPort(chosen.services)
-  const service: ServiceConfig = {
+  const base = primary?.port.fallback ?? primary?.port.host ?? ''
+  const start = Number.parseInt(base, 10)
+
+  return {
     name: 'compose',
     cwd: '.',
-    command: composeCommand(chosen.file),
-    portRange: DEFAULT_PORT_RANGE,
+    command: composeUp(chosen.file, OVERRIDE_FILE, []),
+    stopCommand: composeDown(chosen.file, OVERRIDE_FILE),
+    portRange: Number.isFinite(start) ? [start, start + 99] : DEFAULT_PORT_RANGE,
     env: { COMPOSE_PROJECT_NAME: 'ccwt-{{slug}}' },
+    compose: { file: chosen.file, isolate: 'all', shared: [] },
   }
-
-  if (!primary) return service
-
-  if (primary.port.variable) {
-    service.env![primary.port.variable] = '{{port}}'
-    const base = Number.parseInt(primary.port.fallback ?? '', 10)
-    if (Number.isFinite(base)) service.portRange = [base, base + 99]
-    return service
-  }
-
-  const fixed = Number.parseInt(primary.port.host, 10)
-  if (Number.isFinite(fixed)) service.portRange = [fixed, fixed]
-
-  return service
 }
 
 export async function detectServices(

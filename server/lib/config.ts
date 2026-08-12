@@ -1,6 +1,6 @@
 import type { CcwtConfig, ConfigView, Project } from '../../shared/types'
 import type { ConfigIssue } from '../../shared/config-schema'
-import { parseConfig } from '../../shared/config-schema'
+import { RECIPE_REVISION, parseConfig } from '../../shared/config-schema'
 import { configPath, loadConfig, suggestConfig } from './detect'
 import { findRecord, updateRecord } from './store'
 
@@ -85,7 +85,7 @@ export async function writeConfig(project: Project, text: string): Promise<Confi
   const parsed = parseConfig(value)
   if (!parsed.ok) throw new ConfigInvalid(parsed.issues)
 
-  if (!(await updateRecord(project.id, { config: parsed.config }))) {
+  if (!(await updateRecord(project.id, { config: parsed.config, configRevision: RECIPE_REVISION }))) {
     throw new Error('No such project.')
   }
 
@@ -93,6 +93,6 @@ export async function writeConfig(project: Project, text: string): Promise<Confi
 }
 
 export async function resetConfig(project: Project): Promise<ConfigView> {
-  await updateRecord(project.id, { config: undefined })
+  await updateRecord(project.id, { config: undefined, configRevision: undefined })
   return readConfig(project)
 }

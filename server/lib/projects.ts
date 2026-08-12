@@ -3,6 +3,7 @@ import type { Diagnostic, Project } from '../../shared/types'
 import { detectPackageManager, loadConfig, projectName, suggestConfig } from './detect'
 import { defaultBranch, idFor, repoRoot } from './git'
 import { pathExists } from './fs'
+import { RECIPE_REVISION } from '../../shared/config-schema'
 import { describeSetup } from './setup'
 import { addRecord, findRecord, listRecords, removeRecord } from './store'
 import type { ProjectRecord } from './store'
@@ -49,6 +50,15 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     }
   }
 
+  if (record.config && (record.configRevision ?? 0) < RECIPE_REVISION) {
+    issues.push({
+      code: 'project.recipe-stale',
+      severity: 'warning',
+      message: 'This recipe was saved by an older ccwt and is missing settings it now knows about.',
+      hint: 'Open the recipe and press detect to refresh it — your customisations are shown as a diff before anything is saved.',
+    })
+  }
+
   if (config.services.length === 0) {
     issues.push({
       code: 'project.no-dev-script',
@@ -59,7 +69,7 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
   }
 
   for (const service of config.services) {
-    if (service.command.includes('{{port}}')) continue
+    if (service.compose || service.command.includes('{{port}}')) continue
 
     issues.push({
       code: 'project.service-ignores-port',
