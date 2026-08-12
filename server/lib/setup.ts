@@ -1,7 +1,7 @@
 import type { CcwtConfig, Setup, SetupNote } from '../../shared/types'
 import { ENV_FILE, envKey } from './envfile'
 
-import { findCompose, fixedPorts, isWorktreeReady, portVariables } from './compose'
+import { findCompose, fixedPorts, isWorktreeReady, portVariables, runnableFromWorktree } from './compose'
 import { findHardcodedAddresses } from './inspect'
 
 export async function describeSetup(rootPath: string, config: CcwtConfig): Promise<Setup> {
@@ -97,6 +97,24 @@ export async function describeSetup(rootPath: string, config: CcwtConfig): Promi
               `${entry.service}  "${entry.host}:…"  →  "\${${entry.service.toUpperCase()}_PORT:-${entry.host}}:…"`,
           )
           .join('\n'),
+      })
+    }
+
+    for (const other of compose.filter((c) => c !== stack && !runnableFromWorktree(c))) {
+      notes.push({
+        tone: 'info',
+        title: `${other.file} was skipped`,
+        body: `It reaches into \`.worktrees/\`, so it is written to be started from the repository root with the worktree named in a variable. ccwt starts a stack from inside the worktree, where that path does not exist.`,
+        snippet: other.rootOriented.join('\n'),
+      })
+    }
+
+    if (!runnableFromWorktree(stack)) {
+      notes.push({
+        tone: 'caution',
+        title: `${stack.file} is written to run from the repository root`,
+        body: `It reaches into \`.worktrees/\`, so it expects to be started from the root with the worktree named in a variable. ccwt starts a stack from inside the worktree, where those paths do not exist. Commit a \`docker-compose.ccwt.yml\` whose paths are relative to the worktree itself and ccwt will prefer it.`,
+        snippet: stack.rootOriented.join('\n'),
       })
     }
 

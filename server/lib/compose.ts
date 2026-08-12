@@ -7,7 +7,6 @@ export const WORKTREE_FILES = [
   'docker-compose.ccwt.yml',
   'docker-compose.ccwt.yaml',
   'compose.ccwt.yml',
-  'docker-compose.worktree.yml',
 ]
 
 const FILES = [
@@ -56,6 +55,7 @@ export interface ComposeFile {
   path: string
   services: ComposeService[]
   externalNetworks: string[]
+  rootOriented: string[]
 }
 
 function readPort(entry: unknown): ComposePort | null {
@@ -160,6 +160,20 @@ export function parseCompose(text: string): ComposeService[] {
   })
 }
 
+const WORKTREE_PATH = /^\s*(?:-\s*|context:\s*|dockerfile:\s*)?["']?\.?[./]*\.worktrees\//
+
+export function rootOriented(text: string): string[] {
+  const reasons: string[] = []
+
+  for (const line of text.split('\n')) {
+    if (WORKTREE_PATH.test(line) || /\.worktrees\/\$\{/.test(line)) {
+      reasons.push(line.trim().slice(0, 100))
+    }
+  }
+
+  return [...new Set(reasons)]
+}
+
 export function externalNetworks(text: string): string[] {
   let document: unknown
   try {
@@ -174,6 +188,10 @@ export function externalNetworks(text: string): string[] {
   return Object.entries(networks)
     .filter(([, value]) => (value as { external?: unknown } | null)?.external === true)
     .map(([name]) => name)
+}
+
+export function runnableFromWorktree(stack: ComposeFile): boolean {
+  return stack.rootOriented.length === 0
 }
 
 export async function findCompose(rootPath: string): Promise<ComposeFile[]> {
@@ -194,12 +212,17 @@ export async function findCompose(rootPath: string): Promise<ComposeFile[]> {
           path,
           services,
           externalNetworks: externalNetworks(text),
+          rootOriented: rootOriented(text),
         })
       }
     }
   }
 
-  return found
+  return found.sort((a, b) => {
+    const score = (stack: ComposeFile) =>
+      (isWorktreeReady(stack.file) ? 0 : 2) + (runnableFromWorktree(stack) ? 0 : 4)
+    return score(a) - score(b)
+  })
 }
 
 export function primaryPort(services: ComposeService[]): { service: string; port: ComposePort } | null {

@@ -174,7 +174,9 @@ export async function composeService(rootPath: string): Promise<ServiceConfig | 
   const ports: Record<string, [number, number]> = {}
 
   for (const variable of variables) {
-    const base = variable.fallback ?? DEFAULT_PORT_RANGE[0]
+    const inside = Number.parseInt(variable.container, 10)
+    const base =
+      variable.fallback ?? (Number.isFinite(inside) && inside > 1023 ? inside : DEFAULT_PORT_RANGE[0])
     ports[variable.name] = [base, base + 99]
   }
 

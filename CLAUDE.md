@@ -475,3 +475,21 @@ work at all — a warm start measures 0.1s and logs nothing.
 exists" and skip. It now removes the symlink and links the real tree, saying so in the log. A
 symlink holds no data, so replacing it loses nothing, and `SPEC.md` §7 is explicit that a symlinked
 dependency directory can corrupt the root checkout as well.
+
+### A filename is not a contract
+
+`docker-compose.worktree.yml` was in ccwt's preferred list, on the assumption that the name meant
+"written for worktrees". In the project it was found in, it meant something else entirely: run *from
+the repository root* with `WORKTREE=<name>`, building from `.worktrees/${WORKTREE}`. ccwt starts a
+stack from inside the worktree, so that path resolved to `<worktree>/.worktrees` and the build failed
+with `unable to prepare context`.
+
+Only `*.ccwt.*` names may be assumed to follow ccwt's contract, because only ccwt uses them. Every
+other compose file is inspected instead of trusted: `rootOriented()` looks for paths reaching into
+`.worktrees/`, `runnableFromWorktree()` refuses those, and `findCompose()` sorts them last. A skipped
+file is reported with the offending lines, because a file being silently ignored is worse than one
+that fails.
+
+When a port variable has no default — `${DB_DOCKER_PORT}` — the range is derived from the
+**container** port (3306 → 3306-3405), not from an arbitrary constant. The container port is the one
+piece of information that is always present and always meaningful.
