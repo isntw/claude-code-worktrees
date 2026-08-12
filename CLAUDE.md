@@ -300,3 +300,30 @@ a shared file on disk; ccwt's own state has one writer.
 does **not** line up — an `sm` button next to an input sits 4px short at the bottom. So any button
 in a row with an input keeps the default size, and `sm` is for buttons that stand on their own.
 Both are on `/preview`; check there before changing either number.
+
+### Copy and link are different promises, and the editor has to say so
+
+`provision.copy` makes an independent copy; `provision.link` makes a **hardlink — the same inode**,
+so editing a linked file inside a worktree edits the root checkout. That is right for dependencies
+and large fixtures and wrong for anything hand-edited, which is why they are two lists rather than
+one list with a mode toggle: the dangerous option should not sit one dropdown away from the safe one
+on every row. The editor states the consequence in the caution colour above the link list.
+
+`copyFiles` used `copyFile`, which **throws on a directory**, and `provision()` had no per-step
+guard — so a single directory entry aborted the whole chain and the worktree came out with no
+dependencies and no `postCreate`, visible only in the log stream. Both lists now collect per-entry
+outcomes into a `ProvisionReport` (`copied` / `linked` / `pruned` / `skipped` / `failed`) instead of
+throwing, and every one of those is surfaced as a provisioning log line with its reason. Entries
+that escape the project, contain a glob, or already exist in the worktree are skipped and say why;
+a missing source is silent, because listing `.env.local` in a project that has none is not an error.
+
+**`ALWAYS_PER_WORKTREE` is live now.** It was declared and referenced by nothing while
+`hardlinkModules` linked all of `node_modules`, including `node_modules/.vite` — directly against
+`SPEC.md` §7. Linking one of those paths is refused outright, and any of them nested inside
+something that *was* linked is removed from the worktree afterwards. Verified: a linked
+`node_modules` shares inodes with the root and costs 0 B, and `node_modules/.vite` exists in the
+root and not in the worktree.
+
+One thing that looks like a bug and is not: with `dependencies: "hardlink"` the install runs after
+the link to reconcile, and npm will prune anything in the linked tree that the manifest does not
+declare. Use `"copy"` to link without reconciling.

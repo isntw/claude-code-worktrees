@@ -28,6 +28,7 @@ export interface ServiceConfig {
 export interface ProvisionConfig {
   dependencies: DependencyStrategy
   copy: string[]
+  link: string[]
   postCreate: string[]
 }
 

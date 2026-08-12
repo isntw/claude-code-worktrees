@@ -25,6 +25,7 @@ export const configSchema = z
       .strictObject({
         dependencies: z.enum(['auto', 'install', 'hardlink', 'copy', 'none']).default('auto'),
         copy: z.array(z.string()).default([]),
+        link: z.array(z.string()).default([]),
         postCreate: z.array(z.string()).default([]),
       })
       .prefault({}),

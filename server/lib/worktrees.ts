@@ -159,13 +159,16 @@ export async function create(project: Project, input: CreateInput): Promise<Work
 
   supervisor.note(id, 'provision', 'provisioning…')
   try {
-    const copied = await provision(
-      project.rootPath,
-      path,
-      project.packageManager ?? 'npm',
-      config,
-    )
-    if (copied.length) supervisor.note(id, 'provision', `copied ${copied.join(', ')}`)
+    const report = await provision(project.rootPath, path, project.packageManager ?? 'npm', config)
+
+    if (report.copied.length) supervisor.note(id, 'provision', `copied ${report.copied.join(', ')}`)
+    if (report.linked.length) supervisor.note(id, 'provision', `linked ${report.linked.join(', ')}`)
+    if (report.pruned.length)
+      supervisor.note(id, 'provision', `kept per-worktree: ${report.pruned.join(', ')}`)
+    for (const skip of report.skipped)
+      supervisor.note(id, 'provision', `skipped ${skip.path} — ${skip.reason}`)
+    for (const failure of report.failed)
+      supervisor.note(id, 'provision', `${failure.path} — ${failure.message}`, 'stderr')
   } catch (cause) {
     supervisor.note(id, 'provision', (cause as Error).message, 'stderr')
   }

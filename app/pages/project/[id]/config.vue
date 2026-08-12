@@ -127,7 +127,7 @@ const addService = () => {
   }
 }
 
-const setProvision = (key: 'copy' | 'postCreate', value: string[]) => {
+const setProvision = (key: 'copy' | 'link' | 'postCreate', value: string[]) => {
   if (!draft.value) return
   draft.value = { ...draft.value, provision: { ...draft.value.provision, [key]: value } }
 }
@@ -246,6 +246,21 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
               empty="Nothing copied."
               add-label="file"
               @update:model-value="(value) => setProvision('copy', value)"
+            />
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <span class="t-eyebrow">Hardlink into each worktree</span>
+            <p class="font-sans text-[0.625rem] text-caution">
+              The same file, not a copy — editing a linked file in a worktree edits the root
+              checkout too. Right for dependencies and big fixtures, wrong for anything you hand-edit.
+            </p>
+            <ListEditor
+              :model-value="draft.provision.link"
+              placeholder="vendor"
+              empty="Nothing linked. node_modules is handled by the dependency strategy."
+              add-label="path"
+              @update:model-value="(value) => setProvision('link', value)"
             />
           </div>
 
