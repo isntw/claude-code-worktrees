@@ -458,3 +458,23 @@ press detect — it is **not** migrated or overwritten, because the stored recip
 guessing at their intent is worse than telling them. This was found the honest way: charactersheet
 had a recipe saved between compose *detection* and compose *isolation* landing, so it kept running
 the old command with no override and nothing said so.
+
+### Provisioning repairs itself on start, and there is no button for it
+
+A recipe's `copy` and `link` lists used to be applied once, at creation. Adding an entry afterwards
+did nothing to worktrees that already existed, and an adopted worktree — Claude Code's — was never
+provisioned at all. There was briefly a *provision* button; it was removed, because a button you
+have to know about is a worse design than a thing that just happens.
+
+`startService` calls `needsProvisioning` first and only provisions when something is actually
+missing: an entry from `copy`/`link` absent from the worktree while present in the root, dependencies
+absent, **or a symlink standing where real content belongs**. When nothing is missing it does no
+work at all — a warm start measures 0.1s and logs nothing.
+
+**A symlink in the way is replaced, not skipped.** This came from a real failure: a worktree had
+`vendor -> /Users/…/charactersheet/vendor` from months earlier, which looks fine on the host and is
+*invisible inside a container* — the bind mount carries the link, not its target, so PHP saw
+`/var/www/vendor` dangle and could not find `autoload.php`. Provisioning used to see "a path already
+exists" and skip. It now removes the symlink and links the real tree, saying so in the log. A
+symlink holds no data, so replacing it loses nothing, and `SPEC.md` §7 is explicit that a symlinked
+dependency directory can corrupt the root checkout as well.

@@ -2,7 +2,7 @@ import { cp, link, mkdir, rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { CcwtConfig, DependencyStrategy, PackageManager } from '../../shared/types'
 import { argv, exec } from './exec'
-import { isDirectory, pathExists } from './fs'
+import { isDirectory, isSymlink, pathExists } from './fs'
 import { stub } from './stub'
 
 export const ALWAYS_PER_WORKTREE = [
@@ -20,13 +20,14 @@ export type Strategy = Exclude<DependencyStrategy, 'auto'>
 export interface ProvisionReport {
   copied: string[]
   linked: string[]
+  replaced: string[]
   pruned: string[]
   skipped: { path: string; reason: string }[]
   failed: { path: string; message: string }[]
 }
 
 function emptyReport(): ProvisionReport {
-  return { copied: [], linked: [], pruned: [], skipped: [], failed: [] }
+  return { copied: [], linked: [], replaced: [], pruned: [], skipped: [], failed: [] }
 }
 
 export function resolveStrategy(manager: PackageManager, requested: DependencyStrategy): Strategy {
@@ -63,10 +64,7 @@ export async function copyFiles(
     if (!(await pathExists(source))) continue
 
     const target = join(worktreePath, entry)
-    if (await pathExists(target)) {
-      report.skipped.push({ path: entry, reason: 'already in the worktree' })
-      continue
-    }
+    if (await replaceSymlink(target, entry, report)) continue
 
     try {
       await mkdir(dirname(target), { recursive: true })
@@ -76,6 +74,25 @@ export async function copyFiles(
       report.failed.push({ path: entry, message: (cause as Error).message })
     }
   }
+}
+
+async function replaceSymlink(
+  target: string,
+  entry: string,
+  report: ProvisionReport,
+): Promise<boolean> {
+  if (await isSymlink(target)) {
+    await rm(target, { force: true })
+    report.replaced.push(entry)
+    return false
+  }
+
+  if (await pathExists(target)) {
+    report.skipped.push({ path: entry, reason: 'already in the worktree' })
+    return true
+  }
+
+  return false
 }
 
 async function hardlinkTree(source: string, target: string): Promise<void> {
@@ -111,10 +128,7 @@ export async function linkPaths(
     if (!(await pathExists(source))) continue
 
     const target = join(worktreePath, entry)
-    if (await pathExists(target)) {
-      report.skipped.push({ path: entry, reason: 'already in the worktree' })
-      continue
-    }
+    if (await replaceSymlink(target, entry, report)) continue
 
     try {
       await mkdir(dirname(target), { recursive: true })

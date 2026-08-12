@@ -59,7 +59,7 @@ const allRunning = computed(() =>
       </button>
 
       <span class="flex shrink-0 items-center gap-1.5 self-center">
-        <Badge v-if="!worktree.provisioned" variation="warning" title="No dependencies installed"
+        <Badge v-if="!worktree.provisioned" variation="warning" title="Dependencies are not in place yet — starting a service will put them there"
           >unprovisioned</Badge
         >
         <Badge>{{ worktree.origin }}</Badge>

@@ -17,7 +17,7 @@ import {
   pruneWorktrees,
   removeWorktree,
 } from './git'
-import { pathExists, readJsonSafe } from './fs'
+import { isSymlink, pathExists, readJsonSafe } from './fs'
 import { allocate, readAllocated, release } from './ports'
 import { provision, runPostRemove, worktreePathFor, worktreesDirFor } from './provision'
 import { ENV_FILE, writeEnvBlock } from './envfile'
@@ -178,6 +178,8 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   try {
     const report = await provision(project.rootPath, path, project.packageManager ?? 'npm', config)
 
+    if (report.replaced.length)
+      supervisor.note(id, 'provision', `replaced symlinks: ${report.replaced.join(', ')}`)
     if (report.copied.length) supervisor.note(id, 'provision', `copied ${report.copied.join(', ')}`)
     if (report.linked.length) supervisor.note(id, 'provision', `linked ${report.linked.join(', ')}`)
     if (report.pruned.length)
@@ -211,6 +213,62 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   return created
 }
 
+async function needsProvisioning(project: Project, worktreePath: string): Promise<boolean> {
+  const config = project.config
+  if (!config) return false
+
+  for (const entry of [...config.provision.copy, ...config.provision.link]) {
+    const target = join(worktreePath, entry)
+
+    if (await isSymlink(target)) return true
+    if (!(await pathExists(target)) && (await pathExists(join(project.rootPath, entry)))) return true
+  }
+
+  return !(await isProvisioned(worktreePath))
+}
+
+export async function reprovision(project: Project, worktreeId: string): Promise<Worktree> {
+  const config = project.config
+  if (!config) throw new Error('This project has no resolvable configuration.')
+
+  const worktree = await find(project, worktreeId)
+  if (!worktree) throw new Error('No such worktree.')
+
+  supervisor.note(worktreeId, 'provision', 'provisioning…')
+
+  try {
+    const report = await provision(
+      project.rootPath,
+      worktree.path,
+      project.packageManager ?? 'npm',
+      config,
+    )
+
+    if (report.replaced.length)
+      supervisor.note(
+        worktreeId,
+        'provision',
+        `replaced symlinks: ${report.replaced.join(', ')} — a symlink is invisible to a container and can corrupt the root checkout`,
+      )
+    if (report.copied.length) supervisor.note(worktreeId, 'provision', `copied ${report.copied.join(', ')}`)
+    if (report.linked.length) supervisor.note(worktreeId, 'provision', `linked ${report.linked.join(', ')}`)
+    if (report.pruned.length)
+      supervisor.note(worktreeId, 'provision', `kept per-worktree: ${report.pruned.join(', ')}`)
+    for (const skip of report.skipped)
+      supervisor.note(worktreeId, 'provision', `skipped ${skip.path} — ${skip.reason}`)
+    for (const failure of report.failed)
+      supervisor.note(worktreeId, 'provision', `${failure.path} — ${failure.message}`, 'stderr')
+  } catch (cause) {
+    supervisor.note(worktreeId, 'provision', (cause as Error).message, 'stderr')
+  }
+
+  await allocateAll(project, worktree.path)
+  supervisor.note(worktreeId, 'provision', 'ready')
+
+  const refreshed = await find(project, worktreeId)
+  return refreshed ?? worktree
+}
+
 export async function startService(
   project: Project,
   worktreeId: string,
@@ -223,6 +281,12 @@ export async function startService(
 
   const service = config.services.find((candidate) => candidate.name === serviceName)
   if (!service) throw new Error(`No service named \`${serviceName}\` in this project.`)
+
+  if (await needsProvisioning(project, worktreePath)) {
+    await reprovision(project, worktreeId).catch((cause: Error) => {
+      supervisor.note(worktreeId, 'provision', cause.message, 'stderr')
+    })
+  }
 
   const ports = await allocateAll(project, worktreePath)
   const order = startOrder(config.services, service.name)

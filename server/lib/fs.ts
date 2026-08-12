@@ -1,4 +1,4 @@
-import { access, copyFile, mkdir, readFile, stat } from 'node:fs/promises'
+import { access, copyFile, lstat, mkdir, readFile, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 export async function pathExists(path: string): Promise<boolean> {
@@ -11,6 +11,13 @@ export async function pathExists(path: string): Promise<boolean> {
 export async function isDirectory(path: string): Promise<boolean> {
   return stat(path).then(
     (info) => info.isDirectory(),
+    () => false,
+  )
+}
+
+export async function isSymlink(path: string): Promise<boolean> {
+  return lstat(path).then(
+    (info) => info.isSymbolicLink(),
     () => false,
   )
 }
