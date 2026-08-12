@@ -91,20 +91,9 @@ export function defaultConfig(services: ServiceConfig[]): CcwtConfig {
 
 export async function suggestConfig(rootPath: string): Promise<CcwtConfig> {
   const manager = (await detectPackageManager(rootPath)) ?? 'npm'
-  const script = await detectDevScript(rootPath)
+  const { detectServices } = await import('./services')
 
-  const services: ServiceConfig[] = script
-    ? [
-        {
-          name: 'web',
-          cwd: '.',
-          command: devCommand(manager, script.name, script.body),
-          portRange: DEFAULT_PORT_RANGE,
-        },
-      ]
-    : []
-
-  return defaultConfig(services)
+  return defaultConfig(await detectServices(rootPath, manager))
 }
 
 export type ConfigSource =

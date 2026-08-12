@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import type { Diagnostic, Project } from '../../shared/types'
-import { detectDevScript, detectPackageManager, loadConfig, projectName, suggestConfig } from './detect'
+import { detectPackageManager, loadConfig, projectName, suggestConfig } from './detect'
 import { defaultBranch, idFor, repoRoot } from './git'
 import { pathExists } from './fs'
 import { describeSetup } from './setup'
@@ -35,7 +35,6 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
   const source = await loadConfig(record.rootPath)
   const config = source.state === 'ok' ? source.config : await suggestConfig(record.rootPath)
   const configPath = resolve(record.rootPath, 'ccwt.config.json')
-  const declared = source.state !== 'absent'
 
   if (source.state === 'invalid') {
     for (const issue of source.issues.slice(0, 5)) {
@@ -57,16 +56,15 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     })
   }
 
-  if (!declared) {
-    const script = await detectDevScript(record.rootPath)
-    if (script?.multiProcess) {
-      issues.push({
-        code: 'project.multi-process-dev-script',
-        severity: 'warning',
-        message: `\`${script.name}\` starts more than one process, so ccwt cannot tell it which port to use.`,
-        hint: 'Declare one service per process in ccwt.config.json, each with its own {{port}}.',
-      })
-    }
+  for (const service of config.services) {
+    if (service.command.includes('{{port}}')) continue
+
+    issues.push({
+      code: 'project.service-ignores-port',
+      severity: 'warning',
+      message: `\`${service.name}\` runs a command that takes no port, so ccwt cannot place it.`,
+      hint: 'Give its command a {{port}} placeholder, or split the script into one service per process.',
+    })
   }
 
   return {
