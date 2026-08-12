@@ -152,7 +152,10 @@ export async function writeWorktreeConfig(
   key: string,
   value: string,
 ): Promise<void> {
-  await git(worktreePath, ['config', '--worktree', key, value])
+  const result = await git(worktreePath, ['config', '--worktree', key, value])
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || `git config --worktree ${key} exited ${result.code}`)
+  }
 }
 
 export async function clearWorktreeConfig(worktreePath: string, key: string): Promise<void> {

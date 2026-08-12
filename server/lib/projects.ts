@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import type { Diagnostic, Project } from '../../shared/types'
-import { detectPackageManager, projectName, resolveConfig } from './detect'
+import { detectDevScript, detectPackageManager, projectName, resolveConfig } from './detect'
 import { defaultBranch, idFor, repoRoot } from './git'
 import { pathExists } from './fs'
 import { addRecord, findRecord, listRecords, removeRecord } from './store'
@@ -31,6 +31,8 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
   }
 
   const config = await resolveConfig(record.rootPath)
+  const configPath = resolve(record.rootPath, 'ccwt.config.json')
+  const declared = await pathExists(configPath)
 
   if (config.services.length === 0) {
     issues.push({
@@ -41,7 +43,17 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     })
   }
 
-  const configPath = resolve(record.rootPath, 'ccwt.config.json')
+  if (!declared) {
+    const script = await detectDevScript(record.rootPath)
+    if (script?.multiProcess) {
+      issues.push({
+        code: 'project.multi-process-dev-script',
+        severity: 'warning',
+        message: `\`${script.name}\` starts more than one process, so ccwt cannot tell it which port to use.`,
+        hint: 'Declare one service per process in ccwt.config.json, each with its own {{port}}.',
+      })
+    }
+  }
 
   return {
     id: record.id,

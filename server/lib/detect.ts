@@ -29,22 +29,38 @@ export async function detectPackageManager(rootPath: string): Promise<PackageMan
   return (await pathExists(join(rootPath, 'package.json'))) ? 'npm' : null
 }
 
-export async function detectDevScript(rootPath: string): Promise<string | null> {
+export interface DevScript {
+  name: string
+  body: string
+  multiProcess: boolean
+}
+
+export async function detectDevScript(rootPath: string): Promise<DevScript | null> {
   const manifest = await readJsonSafe<{ scripts?: Record<string, string> }>(
     join(rootPath, 'package.json'),
   )
   if (!manifest?.scripts) return null
 
   for (const name of DEV_SCRIPTS) {
-    if (manifest.scripts[name]) return name
+    const body = manifest.scripts[name]
+    if (body) return { name, body, multiProcess: isMultiProcess(body) }
   }
   return null
 }
 
-export function devCommand(manager: PackageManager, script: string): string {
-  if (manager === 'npm') return `npm run ${script} -- --port {{port}}`
-  if (manager === 'bun') return `bun run ${script} --port {{port}}`
-  return `${manager} ${script} --port {{port}}`
+const MULTI_PROCESS = /(^|[\s"'])(concurrently|npm-run-all|run-p|run-s|turbo|nx|foreman|overmind)([\s"']|$)|&&|\|\|/
+
+export function isMultiProcess(body: string): boolean {
+  return MULTI_PROCESS.test(body)
+}
+
+export function devCommand(manager: PackageManager, script: string, body: string): string {
+  const run = manager === 'npm' ? `npm run ${script}` : manager === 'bun' ? `bun run ${script}` : `${manager} ${script}`
+
+  if (isMultiProcess(body)) return run
+
+  const sep = manager === 'npm' ? ' -- ' : ' '
+  return `${run}${sep}--port {{port}}`
 }
 
 export async function projectName(rootPath: string): Promise<string> {
@@ -80,7 +96,7 @@ export async function suggestConfig(rootPath: string): Promise<CcwtConfig> {
         {
           name: 'web',
           cwd: '.',
-          command: devCommand(manager, script),
+          command: devCommand(manager, script.name, script.body),
           portRange: DEFAULT_PORT_RANGE,
         },
       ]

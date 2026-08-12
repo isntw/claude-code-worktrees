@@ -98,8 +98,18 @@ const errors = computed(() => props.worktree.issues.filter((i) => i.severity ===
           class="truncate font-mono text-[0.6875rem] text-ink underline decoration-line-strong underline-offset-2 hover:decoration-ink"
           >{{ service.url.replace(/^https?:\/\//, '') }}</a
         >
+        <span
+          v-else-if="service.reachable === false"
+          class="truncate font-sans text-[0.6875rem] text-caution"
+          :title="`ccwt assigned port ${service.port}, but nothing is listening there. The command probably does not take that port.`"
+          >not on port {{ service.port }}</span
+        >
         <span v-else class="truncate font-mono text-[0.6875rem] text-faint">{{
-          service.port ? `port ${service.port}` : SERVICE[service.state].label
+          service.state === 'starting' && service.port
+            ? `waiting on ${service.port}…`
+            : service.port
+              ? `port ${service.port}`
+              : SERVICE[service.state].label
         }}</span>
 
         <span class="ml-auto flex shrink-0 gap-1">

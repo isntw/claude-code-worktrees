@@ -1,12 +1,28 @@
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
+import { connect } from 'node:net'
 import { resolve } from 'node:path'
 import type { LogLine, ServiceConfig, ServiceState, ServiceStatus } from '../../shared/types'
 import { argv } from './exec'
 
 const MAX_LINES = 1000
-const SETTLE_MS = 750
 const KILL_AFTER_MS = 4000
+const PROBE_EVERY_MS = 300
+const PROBE_FOR_MS = 25_000
+
+function canConnect(port: number): Promise<boolean> {
+  return new Promise((done) => {
+    const socket = connect({ port, host: '127.0.0.1' })
+    const finish = (answer: boolean) => {
+      socket.destroy()
+      done(answer)
+    }
+    socket.setTimeout(1000)
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+  })
+}
 
 export type LogListener = (line: LogLine) => void
 export type StatusListener = (worktreeId: string, status: ServiceStatus) => void
@@ -19,9 +35,10 @@ interface Entry {
   pid: number | null
   startedAt: string
   exitCode: number | null
+  reachable: boolean | null
   child: ChildProcess | null
   stopping: boolean
-  settle: NodeJS.Timeout | null
+  probing: boolean
 }
 
 const entries = new Map<string, Entry>()
@@ -54,10 +71,11 @@ function toStatus(entry: Entry): ServiceStatus {
     name: entry.service,
     state: entry.state,
     port: entry.port || null,
-    url: entry.state === 'running' && entry.port ? `http://127.0.0.1:${entry.port}` : null,
+    url: entry.reachable && entry.port ? `http://127.0.0.1:${entry.port}` : null,
     pid: entry.pid,
     startedAt: entry.startedAt,
     exitCode: entry.exitCode,
+    reachable: entry.reachable,
   }
 }
 
@@ -164,9 +182,10 @@ export async function start(
     pid: null,
     startedAt: new Date().toISOString(),
     exitCode: null,
+    reachable: null,
     child: null,
     stopping: false,
-    settle: null,
+    probing: false,
   }
 
   entries.set(key, entry)
@@ -194,25 +213,50 @@ export async function start(
   })
 
   child.on('exit', (code, signal) => {
-    if (entry.settle) clearTimeout(entry.settle)
-    entry.settle = null
+    entry.probing = false
     entry.child = null
     entry.pid = null
     entry.exitCode = code
+    entry.reachable = null
     entry.state = entry.stopping || code === 0 || signal === 'SIGTERM' ? 'stopped' : 'crashed'
     entry.stopping = false
     emitStatus(entry)
   })
 
-  entry.settle = setTimeout(() => {
-    entry.settle = null
-    if (entry.state !== 'starting') return
-    entry.state = 'running'
-    emitStatus(entry)
-  }, SETTLE_MS)
+  void probe(entry)
 
   emitStatus(entry)
   return toStatus(entry)
+}
+
+async function probe(entry: Entry): Promise<void> {
+  entry.probing = true
+  const deadline = Date.now() + PROBE_FOR_MS
+
+  while (entry.probing && entry.child) {
+    if (await canConnect(entry.port)) {
+      if (!entry.probing) return
+      entry.reachable = true
+      entry.state = 'running'
+      emitStatus(entry)
+      return
+    }
+
+    if (Date.now() > deadline) break
+    await new Promise((wait) => setTimeout(wait, PROBE_EVERY_MS))
+  }
+
+  if (!entry.probing || !entry.child) return
+
+  entry.reachable = false
+  entry.state = 'running'
+  note(
+    entry.worktreeId,
+    entry.service,
+    `nothing is listening on port ${entry.port} — this command does not appear to take the port ccwt assigned it`,
+    'stderr',
+  )
+  emitStatus(entry)
 }
 
 function signal(entry: Entry, sig: NodeJS.Signals): void {
@@ -245,6 +289,7 @@ export async function stop(worktreeId: string, service: string): Promise<Service
       state: 'stopped',
       port: null,
       url: null,
+      reachable: null,
       pid: null,
       startedAt: null,
       exitCode: null,
@@ -257,6 +302,7 @@ export async function stop(worktreeId: string, service: string): Promise<Service
   }
 
   entry.stopping = true
+  entry.probing = false
   const child = entry.child
 
   await new Promise<void>((done) => {

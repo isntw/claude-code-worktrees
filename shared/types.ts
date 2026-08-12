@@ -64,6 +64,7 @@ export interface ServiceStatus {
   pid: number | null
   startedAt: string | null
   exitCode: number | null
+  reachable: boolean | null
 }
 
 export interface AgentStatus {

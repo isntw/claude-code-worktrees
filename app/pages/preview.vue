@@ -41,6 +41,7 @@ const sample = (index: number, service: ServiceState, agent: AgentState): Worktr
       pid: service === 'running' ? 40000 + index : null,
       startedAt: null,
       exitCode: service === 'crashed' ? 1 : null,
+      reachable: service === 'running' ? true : null,
     },
   ],
   agent: {

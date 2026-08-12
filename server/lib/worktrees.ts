@@ -12,7 +12,7 @@ import {
 } from './git'
 import { pathExists, readJsonSafe } from './fs'
 import { allocate, readAllocated, release } from './ports'
-import { provision, worktreesDirFor } from './provision'
+import { provision, worktreePathFor, worktreesDirFor } from './provision'
 import * as supervisor from './supervisor'
 
 const IDLE: AgentStatus = { state: 'idle', sessionId: null, subagents: 0, updatedAt: null }
@@ -73,6 +73,7 @@ async function servicesFor(
         pid: null,
         startedAt: null,
         exitCode: null,
+        reachable: null,
       }
     }),
   )
@@ -134,8 +135,7 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   const slug = slugify(input.name)
   if (!slug) throw new Error('That name has no usable characters in it.')
 
-  const dir = worktreesDirFor(project.rootPath, config)
-  const path = join(dir, slug)
+  const path = worktreePathFor(project.rootPath, config, slugify(project.name), slug)
 
   if (await pathExists(path)) {
     throw new Error(`${path} already exists.`)
@@ -194,6 +194,7 @@ export async function startService(
   const service = config.services.find((candidate) => candidate.name === serviceName)
   if (!service) throw new Error(`No service named \`${serviceName}\` in this project.`)
 
+  await enableWorktreeConfig(project.rootPath)
   const port = await allocate(worktreePath, service.name, service.portRange)
 
   return supervisor.start(

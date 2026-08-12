@@ -114,3 +114,12 @@ export async function provision(
 export function worktreesDirFor(rootPath: string, config: CcwtConfig): string {
   return resolve(rootPath, config.worktreesDir)
 }
+
+export function worktreePathFor(
+  rootPath: string,
+  config: CcwtConfig,
+  projectSlug: string,
+  slug: string,
+): string {
+  return join(worktreesDirFor(rootPath, config), projectSlug, slug)
+}
