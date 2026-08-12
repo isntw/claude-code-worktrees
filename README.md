@@ -14,22 +14,40 @@ on creating a feature worktree is one click.
 
 ## Status
 
-**Milestone 1 works.** Register a repository, create a worktree, watch it get provisioned, get a
-port and a running dev server, read its logs, open its URL, remove it cleanly. What is not built
-returns `501 Not Implemented` naming the milestone that owes it.
+**Usable.** Register a repository, create a worktree, watch it get provisioned, get its own ports
+and running services, read the logs, open the URL, remove it cleanly — including Docker Compose
+stacks, which get isolated per worktree without editing your compose file. What is not built returns
+`501 Not Implemented` naming the milestone that owes it.
 
 | Milestone | What it adds | State |
 |---|---|---|
 | 1 | register → create → provision → serve → logs → remove | **done** |
-| 2 | `.worktreeinclude`, provisioning an adopted worktree, launch a session | partly — see below |
-| 3 | full `ccwt.config.json`, validation, multiple services, recipe editor | reads the file; no validation |
-| 4 | session-status hooks, port map, git status, drift detection | stubs |
+| 2 | discover Claude's worktrees, respect locks, launch a session, `.worktreeinclude` | **half** — discovery and locks done |
+| 3 | validated recipes, multiple services, recipe editor | **done** |
+| 4 | session-status hooks, port map, git status, drift detection | **not started** |
 | 5 | `WorktreeCreate` ownership | not started |
+| + | Compose isolation, file browser, zero-touch setup | **done** — outside the plan |
+
+`MILESTONES.md` has the detail, including how each claim was verified.
+
+**The honest gaps:** the *launch a session* button and the agent badge on every card are inert until
+Milestone 4's hooks land, detection understands Node and Compose but not Python or Ruby, and there
+are no automated tests yet.
 
 Two pieces of Milestone 2 came for free. Every worktree of the repository is listed whoever made
 it — yours, ccwt's, and the ones Claude Code creates under `.claude/worktrees/` — each tagged by
 origin, and any of them gets a port the moment you press start. And a worktree that Claude Code has
 locked cannot be removed; the dashboard shows git's own lock reason instead.
+
+## What it does that a shell alias does not
+
+- **Isolates a Docker Compose stack per worktree** by generating an override file, so two branches
+  run the same stack at once and your compose file is never touched
+- **Allocates and remembers a port per service, per worktree**, in git's own per-worktree config
+- **Waits for a dependency to actually answer** before starting what depends on it
+- **Tells you when a port is not reachable**, instead of handing you a dead link
+- **Explains what it found** — services, containers, published ports, and anything hardcoded that
+  would stop worktrees running side by side
 
 ## Running it
 
@@ -77,9 +95,36 @@ CCWT_URL_SERVER=http://localhost:4767
 
 Anything you already have in that file is kept; only the marked block is rewritten.
 
-### The one case that needs a decision
+### Docker Compose
 
-If a project writes another service's address into a config file as a literal — a Vite proxy
+A compose file publishes fixed host ports, so two worktrees of one stack would collide. ccwt writes
+a small override into each worktree and starts the stack with it:
+
+```yaml
+# .ccwt.compose.yml — generated, recreated on every start
+services:
+  webserver:
+    container_name: ccwt-my-branch-webserver
+    ports: !override
+      - "20092:80"
+```
+
+```bash
+docker compose -f docker-compose.yml -f .ccwt.compose.yml up
+```
+
+Every published port gets a free one, every container a namespaced name, and `COMPOSE_PROJECT_NAME`
+separates networks and volumes. **Your compose file is never edited.** Needs Compose v2.24+ for the
+`!override` tag.
+
+By default every container is per-worktree, so a migration in one branch cannot reach another. Set
+`isolate: "app-only"` on the service and list the containers to share if you would rather one
+database served every worktree.
+
+### The one case that still needs a decision
+
+Compose is handled above. What is left is a project that writes another service's address into a
+config file as a literal — a Vite proxy
 pointing at `http://127.0.0.1:4599`, say — then every worktree points at the same place, because a
 value baked into a file cannot differ between two copies of it. Nothing can change that from the
 outside.
@@ -94,6 +139,8 @@ change that makes the address configurable — your call, not a requirement:
 ```
 
 Most projects never hit this. Of the eight repositories this was tested against, one did.
+
+`MILESTONES.md` records what is built, what is stubbed, and how each claim was verified.
 
 ## How it is put together
 
@@ -111,7 +158,7 @@ bin/ccwt.mjs  CLI entry: boot the server, open a browser
 ```
 
 Read `CLAUDE.md` before changing anything — it holds the reasoning, because the repo does not use
-code comments. `SPEC.md` is the product spec.
+code comments. `SPEC.md` is the product spec; `MILESTONES.md` is what is built against it.
 
 ## Security
 
