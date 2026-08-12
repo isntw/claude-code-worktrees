@@ -22,6 +22,7 @@ export interface ServiceConfig {
   cwd: string
   command: string
   portRange: [number, number]
+  env?: Record<string, string>
 }
 
 export interface ProvisionConfig {

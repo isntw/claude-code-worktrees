@@ -11,13 +11,26 @@ export function hashToRange(seed: string, range: [number, number]): number {
   return low + (digest.readUInt32BE(0) % span)
 }
 
-export function isFree(port: number): Promise<boolean> {
+const LOOPBACK = ['127.0.0.1', '::1']
+
+function freeOn(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = createServer()
     probe.once('error', () => resolve(false))
     probe.once('listening', () => probe.close(() => resolve(true)))
-    probe.listen(port, '127.0.0.1')
+    try {
+      probe.listen({ port, host, ipv6Only: host === '::1' })
+    } catch {
+      resolve(false)
+    }
   })
+}
+
+export async function isFree(port: number): Promise<boolean> {
+  for (const host of LOOPBACK) {
+    if (!(await freeOn(port, host))) return false
+  }
+  return true
 }
 
 export async function readAllocated(

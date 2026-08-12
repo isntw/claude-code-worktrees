@@ -41,14 +41,17 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-function varsFor(project: Project, worktree: { path: string; branch: string | null }, port: number) {
-  return {
-    port,
-    slug: basename(worktree.path),
-    branch: worktree.branch ?? '',
-    rootPath: project.rootPath,
-    worktreePath: worktree.path,
+async function allocateAll(
+  project: Project,
+  worktreePath: string,
+): Promise<Record<string, number>> {
+  await enableWorktreeConfig(project.rootPath)
+
+  const ports: Record<string, number> = {}
+  for (const service of project.config?.services ?? []) {
+    ports[service.name] = await allocate(worktreePath, service.name, service.portRange)
   }
+  return ports
 }
 
 async function servicesFor(
@@ -161,9 +164,9 @@ export async function create(project: Project, input: CreateInput): Promise<Work
     supervisor.note(id, 'provision', (cause as Error).message, 'stderr')
   }
 
-  for (const service of config.services) {
-    const port = await allocate(path, service.name, service.portRange)
-    supervisor.note(id, 'provision', `${service.name} → port ${port}`)
+  const ports = await allocateAll(project, path)
+  for (const [name, port] of Object.entries(ports)) {
+    supervisor.note(id, 'provision', `${name} → port ${port}`)
   }
 
   supervisor.note(id, 'provision', 'ready')
@@ -194,16 +197,17 @@ export async function startService(
   const service = config.services.find((candidate) => candidate.name === serviceName)
   if (!service) throw new Error(`No service named \`${serviceName}\` in this project.`)
 
-  await enableWorktreeConfig(project.rootPath)
-  const port = await allocate(worktreePath, service.name, service.portRange)
+  const ports = await allocateAll(project, worktreePath)
+  const port = ports[service.name]!
 
-  return supervisor.start(
-    worktreeId,
-    worktreePath,
-    service,
+  return supervisor.start(worktreeId, worktreePath, service, port, {
     port,
-    varsFor(project, { path: worktreePath, branch }, port),
-  )
+    ports,
+    slug: basename(worktreePath),
+    branch: branch ?? '',
+    rootPath: project.rootPath,
+    worktreePath,
+  })
 }
 
 export async function remove(project: Project, worktreeId: string): Promise<void> {

@@ -82,6 +82,23 @@ checkout.
 Allocation is `hashToRange(path + service)` then a linear probe forward through the range, so a
 worktree keeps its port across restarts and two worktrees rarely collide before probing.
 
+### Loopback is two address families, and assuming one breaks everything
+
+**Vite binds `localhost`, which on macOS is `[::1]` — IPv6 only, nothing on `127.0.0.1`.** Three
+things were written against IPv4 and all three were wrong:
+
+- `ports.isFree()` bound only `127.0.0.1`, so it could not see an IPv6-only listener and handed out
+  a port that was already taken. Vite then printed "Port 5209 is in use, trying another one" and
+  moved to 5210, which looked like ccwt assigning the wrong port. It now requires the port free on
+  **both** families.
+- `supervisor.canConnect()` connected only to `127.0.0.1`, so a working IPv6-only dev server was
+  reported unreachable. It now tries both and takes either.
+- The URL handed to the browser was `http://127.0.0.1:<port>`, which is a dead link for an
+  IPv6-only server. Generated URLs use **`localhost`**, which resolves to whichever family bound.
+
+This does not contradict §9: ccwt's *own* server still binds `127.0.0.1` explicitly. The rule is
+that ccwt binds narrowly and probes broadly — it does not control how a project's dev server binds.
+
 ### The supervisor spawns detached so it can kill a tree
 
 `npm run dev` is a process that spawns the process you actually care about. Killing the child leaves

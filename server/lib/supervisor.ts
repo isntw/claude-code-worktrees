@@ -10,9 +10,11 @@ const KILL_AFTER_MS = 4000
 const PROBE_EVERY_MS = 300
 const PROBE_FOR_MS = 25_000
 
-function canConnect(port: number): Promise<boolean> {
+const LOOPBACK = ['127.0.0.1', '::1']
+
+function connectTo(port: number, host: string): Promise<boolean> {
   return new Promise((done) => {
-    const socket = connect({ port, host: '127.0.0.1' })
+    const socket = connect({ port, host })
     const finish = (answer: boolean) => {
       socket.destroy()
       done(answer)
@@ -22,6 +24,11 @@ function canConnect(port: number): Promise<boolean> {
     socket.once('timeout', () => finish(false))
     socket.once('error', () => finish(false))
   })
+}
+
+async function canConnect(port: number): Promise<boolean> {
+  const attempts = await Promise.all(LOOPBACK.map((host) => connectTo(port, host)))
+  return attempts.some(Boolean)
 }
 
 export type LogListener = (line: LogLine) => void
@@ -50,20 +57,33 @@ const keyFor = (worktreeId: string, service: string) => `${worktreeId}:${service
 
 export interface Vars {
   port: number
+  ports: Record<string, number>
   slug: string
   branch: string
   rootPath: string
   worktreePath: string
 }
 
+const urlFor = (port: number) => `http://localhost:${port}`
+
 export function render(template: string, vars: Vars): string {
   return template
+    .replace(/\{\{port\.([A-Za-z0-9_-]+)\}\}/g, (whole, name: string) => {
+      const port = vars.ports[name]
+      if (port === undefined) throw new Error(`${whole} names a service this project does not have`)
+      return String(port)
+    })
+    .replace(/\{\{url\.([A-Za-z0-9_-]+)\}\}/g, (whole, name: string) => {
+      const port = vars.ports[name]
+      if (port === undefined) throw new Error(`${whole} names a service this project does not have`)
+      return urlFor(port)
+    })
     .replaceAll('{{port}}', String(vars.port))
     .replaceAll('{{slug}}', vars.slug)
     .replaceAll('{{branch}}', vars.branch)
     .replaceAll('{{rootPath}}', vars.rootPath)
     .replaceAll('{{worktreePath}}', vars.worktreePath)
-    .replaceAll('{{url}}', `http://127.0.0.1:${vars.port}`)
+    .replaceAll('{{url}}', urlFor(vars.port))
 }
 
 function toStatus(entry: Entry): ServiceStatus {
@@ -71,7 +91,7 @@ function toStatus(entry: Entry): ServiceStatus {
     name: entry.service,
     state: entry.state,
     port: entry.port || null,
-    url: entry.reachable && entry.port ? `http://127.0.0.1:${entry.port}` : null,
+    url: entry.reachable && entry.port ? urlFor(entry.port) : null,
     pid: entry.pid,
     startedAt: entry.startedAt,
     exitCode: entry.exitCode,
@@ -190,9 +210,20 @@ export async function start(
 
   entries.set(key, entry)
 
+  const declared: Record<string, string> = {}
+  for (const [key, value] of Object.entries(service.env ?? {})) {
+    declared[key] = render(value, vars)
+  }
+
   const child = spawn(head, parts.slice(1), {
     cwd: resolve(worktreePath, service.cwd || '.'),
-    env: { ...process.env, PORT: String(port), FORCE_COLOR: '0', BROWSER: 'none' },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      FORCE_COLOR: '0',
+      BROWSER: 'none',
+      ...declared,
+    },
     shell: false,
     detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
