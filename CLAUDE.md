@@ -33,17 +33,74 @@ One Nuxt project, `ssr: false`. Two rules keep the seams clean and both are load
 `shared/types.ts` is the one type vocabulary both sides use. App code imports it as
 `#shared/types`; server code by relative path.
 
-### The stubs are deliberate, and they announce themselves
+### What is real, and what still announces itself
 
-Everything under `server/lib/` except `store.ts` throws `NotImplemented` from `stub.ts`. The API
-routes wrap those calls in `guard()` (`server/utils/guard.ts`), which turns that one error class
-into a **501 with the milestone in the message** — so an unbuilt feature reads as "not built yet,
-Milestone 1" in the UI's error bar rather than a stack trace or, worse, a silent empty result.
+Milestone 1 is built: `exec`, `git`, `detect`, `ports`, `provision`, `supervisor`, `projects`,
+`worktrees`, `store`. What remains stubbed throws `NotImplemented` from `stub.ts` —
+`claude.launchSession` and the hook machinery (Milestones 2 and 4), and
+`provision.readWorktreeInclude` (Milestone 2).
 
-`store.ts` is real: it reads and writes `~/.ccwt/state.json` at mode 600. It exists so
-`GET /api/projects` returns an empty list from somewhere honest instead of a hardcoded `[]`.
+`guard()` (`server/utils/guard.ts`) turns that one error class into a **501 with the milestone in
+the message**, and any other `Error` into a 400 carrying its message. So an unbuilt feature reads as
+"not built yet, Milestone 2" in the error bar, and a real failure — a locked worktree, an exhausted
+port range, a path that already exists — reads as the sentence the lib threw. Grep `stub('` to see
+what each milestone still owes.
 
-Milestones are on the `stub()` calls themselves — grep `stub('` to see what each milestone owes.
+**`server/api/` imports `server/lib/` through the `~~/server/lib/…` alias, never relatively.** The
+routes nest six directories deep (`projects/[id]/worktrees/[worktreeId]/services/[service]/`) and
+hand-counted `../../../../../..` was wrong in three files out of four on the first attempt.
+
+### Two things fall out of Milestone 1 that the spec files under Milestone 2
+
+Worth knowing before building §5.1, because most of it is already done:
+
+- **Discovery is free.** `git worktree list --porcelain` returns every worktree whoever made it, so
+  Claude Code's `.claude/worktrees/*` already appear on the dashboard, tagged by `classify()`.
+  There is no separate adopt step and no adopt endpoint — a discovered worktree gets a port the
+  moment you press start, because `startService` allocates on demand. What §5.1 still owes is
+  provisioning an adopted worktree that has no `node_modules`; the card marks those `unprovisioned`.
+- **Locks are respected.** `remove()` refuses a locked worktree and surfaces git's own lock reason,
+  and `WorktreeCard` disables the control. Verified against a real `git worktree lock`.
+
+### Removal is `--force`, and that is why it asks first
+
+ccwt puts `node_modules` and copied `.env` files into a worktree, so `git worktree remove` always
+refuses with "contains modified or untracked files". Removal therefore passes `--force`, which
+deletes untracked work. Two things keep that honest and both must stay: the dashboard confirms with
+the exact path and states that the branch survives, and `remove()` refuses any worktree outside the
+project's configured `worktreesDir` unless it was classified `claude`.
+
+### Ports live in git's own per-worktree config
+
+`git config --worktree ccwt.port.<service>`, which requires `extensions.worktreeConfig` to be `true`
+on the repo. `create()` sets it, idempotently. **This is the one place ccwt writes to a repository it
+did not create** — deliberate, per `SPEC.md` §8; the alternative was a sidecar database keyed by
+path that drifts the moment anything moves. Git's caveat applies: with the extension on, `core.bare`
+and `core.worktree` in the common config bind only to the main worktree. Neither is set on a normal
+checkout.
+
+Allocation is `hashToRange(path + service)` then a linear probe forward through the range, so a
+worktree keeps its port across restarts and two worktrees rarely collide before probing.
+
+### The supervisor spawns detached so it can kill a tree
+
+`npm run dev` is a process that spawns the process you actually care about. Killing the child leaves
+the grandchild holding the port. Services spawn with `detached: true` and stop via
+`process.kill(-pid)` — the negative pid signals the whole process group — escalating to `SIGKILL`
+four seconds after `SIGTERM`. Verified: stopping leaves no stray `node`, and neither does quitting
+ccwt (`stopAll` on the Nitro `close` hook plus `SIGINT`/`SIGTERM`, which is decision **D1**).
+
+State goes `starting` → `running` after 750ms still alive, rather than on first output: a server
+that prints nothing would otherwise never leave `starting`, and one that prints a banner then dies
+would flash `running`.
+
+`supervisor.note()` writes a synthetic log line under the service name `provision` — that is how
+worktree creation streams progress to the dashboard before the card it belongs to exists.
+
+`store.ts` holds only `{id, rootPath, addedAt}` per project. Everything else on `Project` — name,
+package manager, default branch, config, diagnostics — is **re-derived on every read** by
+`projects.hydrate()`, so editing `ccwt.config.json` or switching branches shows up without
+re-registering and nothing in `~/.ccwt/state.json` can go stale.
 
 ### Security is not optional, and the loopback bind is not the control
 

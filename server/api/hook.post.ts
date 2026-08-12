@@ -1,5 +1,5 @@
 import type { HookPayload } from '../../shared/types'
-import { applyHook } from '../lib/claude'
+import { applyHook } from '~~/server/lib/claude'
 
 export default defineEventHandler(async (event) => {
   const payload = await readBody<HookPayload>(event)

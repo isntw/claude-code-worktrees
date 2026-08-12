@@ -1,10 +1,10 @@
-import * as worktrees from '~~/server/lib/worktrees'
+import { launchSession } from '~~/server/lib/claude'
 
 export default defineEventHandler(async (event) => {
   const project = await requireProject(event)
   const worktreeId = getRouterParam(event, 'worktreeId')!
 
-  await guard(() => worktrees.remove(project, worktreeId))
-  setResponseStatus(event, 204)
-  return null
+  return guard(() =>
+    launchSession(worktreeId, project.config?.claude.launchCommand ?? 'claude'),
+  )
 })

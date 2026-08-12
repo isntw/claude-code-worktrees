@@ -20,37 +20,42 @@ async function call<T>(path: string, init?: Init): Promise<T> {
   const payload = text ? JSON.parse(text) : null
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? `${response.status} ${response.statusText}`)
+    throw new Error(payload?.message || payload?.statusMessage || `${response.status}`)
   }
 
   return payload as T
 }
 
 export function useApi() {
+  const worktree = (projectId: string, worktreeId: string) =>
+    `/projects/${projectId}/worktrees/${worktreeId}`
+
   return {
     listProjects: () => call<Project[]>('/projects'),
     getProject: (id: string) => call<Project>(`/projects/${id}`),
     addProject: (rootPath: string) =>
       call<Project>('/projects', { method: 'POST', body: { rootPath } }),
-    removeProject: (id: string) => call<void>(`/projects/${id}`, { method: 'DELETE' }),
+    forgetProject: (id: string) => call<void>(`/projects/${id}`, { method: 'DELETE' }),
 
     listWorktrees: (projectId: string) => call<Worktree[]>(`/projects/${projectId}/worktrees`),
     createWorktree: (projectId: string, input: { name: string; branch: string; start: boolean }) =>
       call<Worktree>(`/projects/${projectId}/worktrees`, { method: 'POST', body: input }),
     removeWorktree: (projectId: string, worktreeId: string) =>
-      call<void>(`/projects/${projectId}/worktrees/${worktreeId}`, { method: 'DELETE' }),
-    adoptWorktree: (projectId: string, worktreeId: string) =>
-      call<Worktree>(`/projects/${projectId}/worktrees/${worktreeId}/adopt`, { method: 'POST' }),
+      call<void>(worktree(projectId, worktreeId), { method: 'DELETE' }),
 
-    startService: (worktreeId: string, service: string) =>
-      call<ServiceStatus>(`/worktrees/${worktreeId}/services/${service}/start`, { method: 'POST' }),
-    stopService: (worktreeId: string, service: string) =>
-      call<ServiceStatus>(`/worktrees/${worktreeId}/services/${service}/stop`, { method: 'POST' }),
-    logs: (worktreeId: string, service: string) =>
-      call<LogLine[]>(`/worktrees/${worktreeId}/services/${service}/logs`),
+    startService: (projectId: string, worktreeId: string, service: string) =>
+      call<ServiceStatus>(`${worktree(projectId, worktreeId)}/services/${service}/start`, {
+        method: 'POST',
+      }),
+    stopService: (projectId: string, worktreeId: string, service: string) =>
+      call<ServiceStatus>(`${worktree(projectId, worktreeId)}/services/${service}/stop`, {
+        method: 'POST',
+      }),
+    logs: (projectId: string, worktreeId: string) =>
+      call<LogLine[]>(`${worktree(projectId, worktreeId)}/logs`),
 
-    launchAgent: (worktreeId: string) =>
-      call<void>(`/worktrees/${worktreeId}/agent/launch`, { method: 'POST' }),
+    launchAgent: (projectId: string, worktreeId: string) =>
+      call<void>(`${worktree(projectId, worktreeId)}/agent/launch`, { method: 'POST' }),
 
     connect(onMessage: (message: SocketMessage) => void): () => void {
       const url = new URL('/_ws', window.location.href)

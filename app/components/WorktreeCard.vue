@@ -52,6 +52,9 @@ const errors = computed(() => props.worktree.issues.filter((i) => i.severity ===
       </button>
 
       <span class="flex shrink-0 items-center gap-1.5 self-center">
+        <Badge v-if="!worktree.provisioned" variation="warning" title="No dependencies installed"
+          >unprovisioned</Badge
+        >
         <Badge>{{ worktree.origin }}</Badge>
         <span v-if="errors" class="flex items-center gap-1">
           <StateDot variation="error" />
@@ -130,8 +133,14 @@ const errors = computed(() => props.worktree.issues.filter((i) => i.severity ===
         icon
         variation="error"
         class="ml-auto"
-        :disabled="worktree.locked"
-        :title="worktree.locked ? 'An agent is working here' : 'Remove this worktree'"
+        :disabled="worktree.locked || worktree.root"
+        :title="
+          worktree.root
+            ? 'The repository root is not removable'
+            : worktree.locked
+              ? worktree.lockReason || 'An agent is working here'
+              : 'Remove this worktree'
+        "
         @click="emit('remove')"
       >
         <Trash2 :size="12" aria-hidden="true" />

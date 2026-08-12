@@ -10,6 +10,7 @@ const router = useRouter()
 const page = NAV.find((item) => item.name === 'index')!
 
 const projects = ref<Project[]>([])
+const counts = ref<Record<string, number>>({})
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -23,6 +24,14 @@ const load = async () => {
   error.value = null
   try {
     projects.value = await api.listProjects()
+
+    const pairs = await Promise.all(
+      projects.value.map(async (project) => {
+        const list = await api.listWorktrees(project.id).catch(() => [])
+        return [project.id, list.length] as const
+      }),
+    )
+    counts.value = Object.fromEntries(pairs)
   } catch (cause) {
     error.value = (cause as Error).message
   } finally {
@@ -34,10 +43,11 @@ const add = async () => {
   addBusy.value = true
   addError.value = null
   try {
-    await api.addProject(rootPath.value.trim())
+    const project = await api.addProject(rootPath.value.trim())
     adding.value = false
     rootPath.value = ''
     await load()
+    router.push(`/project/${project.id}`)
   } catch (cause) {
     addError.value = (cause as Error).message
   } finally {
@@ -49,9 +59,10 @@ const tiles = computed<Tile[]>(() =>
   projects.value.map((project) => ({
     key: project.id,
     label: project.name,
-    total: 0,
+    total: counts.value[project.id] ?? 0,
     errors: project.issues.filter((issue) => issue.severity === 'error').length,
-    note: project.packageManager ?? 'package manager not detected',
+    note: [project.packageManager, project.defaultBranch].filter(Boolean).join(' · ') || undefined,
+    inert: project.issues.some((issue) => issue.code === 'project.missing'),
     go: () => router.push(`/project/${project.id}`),
   })),
 )
@@ -79,7 +90,10 @@ const FIELD =
   </p>
 
   <main class="min-h-0 flex-1 overflow-y-auto p-4">
-    <TileGrid v-if="tiles.length" :tiles="tiles" />
+    <template v-if="tiles.length">
+      <p class="t-eyebrow mb-2">Worktrees per project</p>
+      <TileGrid :tiles="tiles" />
+    </template>
 
     <div v-else class="border border-line bg-surface px-4 py-6">
       <p class="t-eyebrow">No projects yet</p>
@@ -88,11 +102,9 @@ const FIELD =
         worktree you make from it gets its files, its dependencies, its own port and its own dev
         server.
       </p>
-      <p class="mt-3 max-w-prose font-sans text-[0.6875rem] text-faint">
-        Registration is Milestone 1. The shell, the API surface and the WebSocket are wired; the
-        modules under <code class="font-mono">server/lib/</code> that run git and spawn processes are
-        still stubs.
-      </p>
+      <Button class="mt-4" variation="success" :outline="false" @click="adding = true"
+        >register project</Button
+      >
     </div>
   </main>
 
@@ -106,6 +118,9 @@ const FIELD =
           placeholder="/Users/you/workspace/projects/your-repo"
           autofocus
         />
+        <span class="font-sans text-[0.625rem] text-faint"
+          >Any path inside the repository works — ccwt resolves it to the top level.</span
+        >
       </label>
       <p v-if="addError" class="font-sans text-[0.6875rem] text-alarm">{{ addError }}</p>
     </form>

@@ -78,6 +78,7 @@ export interface Worktree {
   projectId: string
   name: string
   path: string
+  root: boolean
   branch: string | null
   head: string | null
   origin: WorktreeOrigin

@@ -14,17 +14,22 @@ on creating a feature worktree is one click.
 
 ## Status
 
-Scaffold. The shell, the API surface, the WebSocket and the security model are wired and working.
-The modules that run `git` and spawn processes are typed stubs that return `501 Not Implemented`
-with the milestone that owes them.
+**Milestone 1 works.** Register a repository, create a worktree, watch it get provisioned, get a
+port and a running dev server, read its logs, open its URL, remove it cleanly. What is not built
+returns `501 Not Implemented` naming the milestone that owes it.
 
 | Milestone | What it adds | State |
 |---|---|---|
-| 1 | register → create → provision → serve → logs → remove | stubs |
-| 2 | discover and adopt Claude-created worktrees, `.worktreeinclude`, locks, launch a session | stubs |
-| 3 | full `ccwt.config.json`, validation, multiple services | stubs |
+| 1 | register → create → provision → serve → logs → remove | **done** |
+| 2 | `.worktreeinclude`, provisioning an adopted worktree, launch a session | partly — see below |
+| 3 | full `ccwt.config.json`, validation, multiple services, recipe editor | reads the file; no validation |
 | 4 | session-status hooks, port map, git status, drift detection | stubs |
 | 5 | `WorktreeCreate` ownership | not started |
+
+Two pieces of Milestone 2 came for free. Every worktree of the repository is listed whoever made
+it — yours, ccwt's, and the ones Claude Code creates under `.claude/worktrees/` — each tagged by
+origin, and any of them gets a port the moment you press start. And a worktree that Claude Code has
+locked cannot be removed; the dashboard shows git's own lock reason instead.
 
 ## Running it
 

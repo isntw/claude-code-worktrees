@@ -1,5 +1,4 @@
-import { detectDefaultBranch, detectPackageManager } from '../lib/detect'
-import { repoRoot } from '../lib/git'
+import * as projects from '~~/server/lib/projects'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{ rootPath?: string }>(event)
@@ -9,13 +8,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'rootPath is required' })
   }
 
-  return guard(async () => {
-    const root = await repoRoot(rootPath)
-    if (!root) {
-      throw createError({ statusCode: 400, statusMessage: 'Not a git repository' })
-    }
-
-    await detectPackageManager(root)
-    await detectDefaultBranch(root)
-  })
+  return guard(() => projects.register(rootPath))
 })

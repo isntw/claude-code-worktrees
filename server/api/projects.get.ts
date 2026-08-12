@@ -1,6 +1,5 @@
-import { readState } from '../lib/store'
+import * as projects from '~~/server/lib/projects'
 
 export default defineEventHandler(async () => {
-  const state = await readState()
-  return state.projects
+  return guard(() => projects.list())
 })

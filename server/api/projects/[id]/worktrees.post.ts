@@ -1,18 +1,18 @@
-import { addWorktree } from '../../../lib/git'
-import { findProject } from '../../../lib/store'
+import * as worktrees from '~~/server/lib/worktrees'
 
 export default defineEventHandler(async (event) => {
-  const id = getRouterParam(event, 'id')!
+  const project = await requireProject(event)
   const body = await readBody<{ name?: string; branch?: string; start?: boolean }>(event)
 
-  if (!body?.name) {
+  if (!body?.name?.trim()) {
     throw createError({ statusCode: 400, statusMessage: 'name is required' })
   }
 
-  const project = await findProject(id)
-  if (!project) {
-    throw createError({ statusCode: 404, statusMessage: 'No such project' })
-  }
-
-  return guard(() => addWorktree(project.rootPath, body.name!, body.branch ?? body.name!))
+  return guard(() =>
+    worktrees.create(project, {
+      name: body.name!,
+      branch: body.branch ?? '',
+      start: body.start === true,
+    }),
+  )
 })
