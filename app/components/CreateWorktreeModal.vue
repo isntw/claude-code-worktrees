@@ -31,8 +31,6 @@ const submit = () => {
   })
 }
 
-const FIELD =
-  'h-7 w-full border border-line bg-canvas px-2 font-mono text-xs text-ink placeholder:text-faint focus:border-line-strong focus:outline-none'
 </script>
 
 <template>
@@ -40,7 +38,7 @@ const FIELD =
     <form class="flex flex-col gap-4" @submit.prevent="submit">
       <label class="flex flex-col gap-1.5">
         <span class="t-eyebrow">Name</span>
-        <input v-model="name" :class="FIELD" placeholder="checkout-rewrite" autofocus />
+        <Input v-model="name" placeholder="checkout-rewrite" label="Name" />
         <span v-if="slug && slug !== name" class="font-mono text-[0.625rem] text-faint"
           >creates {{ slug }}</span
         >
@@ -48,7 +46,7 @@ const FIELD =
 
       <label class="flex flex-col gap-1.5">
         <span class="t-eyebrow">Branch</span>
-        <input v-model="branch" :class="FIELD" :placeholder="slug || 'same as name'" />
+        <Input v-model="branch" :placeholder="slug || 'same as name'" label="Branch" />
       </label>
 
       <Toggle v-model="start">start its services once provisioned</Toggle>

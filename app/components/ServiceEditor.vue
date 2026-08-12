@@ -131,7 +131,7 @@ const FIELD = 'flex flex-col gap-1'
         </div>
         <div>
           <Button size="sm" @click="setEnv([...envRows, ['', '']])">
-            <Plus :size="11" aria-hidden="true" />
+            <template #lead><Plus :size="11" aria-hidden="true" /></template>
             variable
           </Button>
         </div>

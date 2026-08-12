@@ -55,6 +55,9 @@ const SIZE = {
     ]"
   >
     <span v-if="icon" class="contents"><slot /></span>
-    <span v-else class="t-button-label"><slot /></span>
+    <template v-else>
+      <span v-if="$slots.lead" class="contents"><slot name="lead" /></span>
+      <span class="t-button-label"><slot /></span>
+    </template>
   </button>
 </template>

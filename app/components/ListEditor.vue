@@ -45,7 +45,7 @@ const add = () => {
 
     <div>
       <Button size="sm" @click="add">
-        <Plus :size="11" aria-hidden="true" />
+        <template #lead><Plus :size="11" aria-hidden="true" /></template>
         {{ addLabel }}
       </Button>
     </div>

@@ -185,7 +185,7 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
     </div>
 
     <div v-if="mode === 'json'" class="flex flex-col gap-2">
-      <textarea v-model="raw" class="t-area" rows="26" spellcheck="false" aria-label="Recipe JSON" />
+      <Textarea v-model="raw" :rows="26" label="Recipe JSON" />
       <p v-if="parseError" class="font-sans text-[0.6875rem] text-alarm">{{ parseError }}</p>
     </div>
 
@@ -207,7 +207,7 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
           />
           <div>
             <Button size="sm" @click="addService">
-              <Plus :size="11" aria-hidden="true" />
+              <template #lead><Plus :size="11" aria-hidden="true" /></template>
               service
             </Button>
           </div>

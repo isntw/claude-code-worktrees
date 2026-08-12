@@ -105,8 +105,6 @@ const tiles = computed<Tile[]>(() =>
 
 onMounted(load)
 
-const FIELD =
-  'h-7 w-full border border-line bg-canvas px-2 font-mono text-xs text-ink placeholder:text-faint focus:border-line-strong focus:outline-none'
 </script>
 
 <template>
@@ -153,13 +151,11 @@ const FIELD =
 
       <form class="flex flex-col gap-1.5" @submit.prevent="add">
         <span class="t-eyebrow">Repository root</span>
-        <input
+        <Input
           v-model="rootPath"
-          :class="FIELD"
           placeholder="~/workspace/projects/your-repo"
-          spellcheck="false"
-          autocapitalize="off"
-          autocorrect="off"
+          label="Repository root"
+          :invalid="Boolean(blocked)"
         />
 
         <span v-if="blocked" class="font-sans text-[0.6875rem] text-caution">{{ blocked }}</span>

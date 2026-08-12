@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { Plus } from 'lucide-vue-next'
 import type { AgentState, ServiceState, Worktree } from '#shared/types'
 import type { Variation } from '../components/variation'
 import { NAV } from '../nav'
@@ -8,6 +9,10 @@ const page = NAV.find((item) => item.name === 'preview')!
 
 const VARIATIONS: Variation[] = ['neutral', 'info', 'success', 'live', 'warning', 'error']
 
+const text = ref('npm run dev -- --port 5200')
+const blank = ref('')
+const area = ref('{\n  "services": []\n}')
+const list = ref(['.env', '.env.local'])
 const checked = ref(true)
 const mixed = ref(false)
 const switched = ref(true)
@@ -125,6 +130,27 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
         <Button size="sm">small</Button>
         <Button size="md">medium</Button>
         <Button disabled>disabled</Button>
+        <Button size="sm"><template #lead><Plus :size="11" /></template>lead sm</Button>
+        <Button size="md"><template #lead><Plus :size="12" /></template>lead md</Button>
+        <Button icon><Plus :size="12" /></Button>
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Text inputs</p></header>
+      <div class="flex flex-col gap-3 px-3 py-3">
+        <Input v-model="text" label="Filled" />
+        <Input v-model="blank" placeholder="placeholder text" label="Empty" />
+        <Input v-model="text" invalid label="Invalid" />
+        <Input v-model="text" disabled label="Disabled" />
+        <Textarea v-model="area" :rows="4" label="Textarea" />
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">List editor</p></header>
+      <div class="px-3 py-3">
+        <ListEditor v-model="list" placeholder=".env.local" add-label="file" />
       </div>
     </section>
 
