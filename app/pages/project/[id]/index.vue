@@ -176,7 +176,10 @@ onBeforeUnmount(() => disconnect?.())
         project.rootPath
       }}</code>
 
-      <Button size="sm" class="ml-auto" @click="forget">forget project</Button>
+      <NuxtLink :to="`/project/${projectId}/config`" class="ml-auto">
+        <Button size="sm">recipe</Button>
+      </NuxtLink>
+      <Button size="sm" @click="forget">forget project</Button>
     </div>
 
     <SetupPanel v-if="project" :setup="project.setup" class="mb-3" />

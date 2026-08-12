@@ -187,6 +187,56 @@
     text-box: trim-both cap alphabetic;
   }
 
+  .t-input {
+    display: block;
+    inline-size: 100%;
+    block-size: 1.75rem;
+    border: 1px solid var(--ccwt-line);
+    background: var(--ccwt-canvas);
+    padding-inline: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--ccwt-ink);
+    transition: border-color 100ms linear;
+  }
+
+  .t-input::placeholder {
+    color: var(--ccwt-faint);
+  }
+
+  .t-input:focus {
+    border-color: var(--ccwt-line-strong);
+    outline: none;
+  }
+
+  .t-input:disabled {
+    opacity: 0.4;
+  }
+
+  .t-input-invalid,
+  .t-input-invalid:focus {
+    border-color: var(--ccwt-alarm);
+  }
+
+  .t-area {
+    display: block;
+    inline-size: 100%;
+    border: 1px solid var(--ccwt-line);
+    background: var(--ccwt-canvas);
+    padding: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.55;
+    color: var(--ccwt-ink);
+    resize: vertical;
+    tab-size: 2;
+  }
+
+  .t-area:focus {
+    border-color: var(--ccwt-line-strong);
+    outline: none;
+  }
+
   .t-control {
     cursor: pointer;
     font-family: var(--font-sans);
