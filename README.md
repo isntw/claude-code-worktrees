@@ -49,6 +49,52 @@ npm run dev          # 127.0.0.1:5600, auth disabled
 npm run typecheck
 ```
 
+## Setting up a project
+
+**There is nothing to set up.** Register a repository and ccwt reads it: the package manager, the
+dev script, how many services it runs. Every worktree then gets its own port per service.
+
+You never have to edit your project to use ccwt. If a project needs something ccwt cannot work out,
+the **Setup** panel on its dashboard says so in plain language, and says what — if anything — you
+could change to get more out of it. It is guidance, never a prerequisite.
+
+### How a worktree learns which port it got
+
+Two ways, both automatic:
+
+1. Each service is spawned with `PORT` and its own port already in the environment.
+2. ccwt writes a marked block into `.env.local` inside the worktree — a file Vite, Next and Nuxt
+   load on their own:
+
+```bash
+# >>> ccwt (generated — edits between these markers are replaced)
+CCWT_PORT_WEB=5209
+CCWT_URL_WEB=http://localhost:5209
+CCWT_PORT_SERVER=4767
+CCWT_URL_SERVER=http://localhost:4767
+# <<< ccwt
+```
+
+Anything you already have in that file is kept; only the marked block is rewritten.
+
+### The one case that needs a decision
+
+If a project writes another service's address into a config file as a literal — a Vite proxy
+pointing at `http://127.0.0.1:4599`, say — then every worktree points at the same place, because a
+value baked into a file cannot differ between two copies of it. Nothing can change that from the
+outside.
+
+ccwt finds those lines, names the file and line number, and keeps working: **run one worktree of
+that project at a time.** If you would rather run several at once, the panel shows the one-line
+change that makes the address configurable — your call, not a requirement:
+
+```diff
+- '/api': 'http://127.0.0.1:4599',
++ '/api': process.env.CCWT_URL_SERVER ?? 'http://127.0.0.1:4599',
+```
+
+Most projects never hit this. Of the eight repositories this was tested against, one did.
+
 ## How it is put together
 
 One Nuxt project, `ssr: false`. Vue SFCs in `app/`, Nitro server routes in `server/`, one shared

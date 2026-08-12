@@ -179,6 +179,8 @@ onBeforeUnmount(() => disconnect?.())
       <Button size="sm" class="ml-auto" @click="forget">forget project</Button>
     </div>
 
+    <SetupPanel v-if="project" :setup="project.setup" class="mb-3" />
+
     <p
       v-for="issue in project?.issues ?? []"
       :key="issue.code"

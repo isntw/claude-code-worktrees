@@ -3,6 +3,7 @@ import type { Diagnostic, Project } from '../../shared/types'
 import { detectDevScript, detectPackageManager, loadConfig, projectName, suggestConfig } from './detect'
 import { defaultBranch, idFor, repoRoot } from './git'
 import { pathExists } from './fs'
+import { describeSetup } from './setup'
 import { addRecord, findRecord, listRecords, removeRecord } from './store'
 import type { ProjectRecord } from './store'
 
@@ -26,6 +27,7 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
       config: null,
       configPath: null,
       addedAt: record.addedAt,
+      setup: { portMode: 'none', headline: 'This path no longer exists.', notes: [] },
       issues,
     }
   }
@@ -76,6 +78,7 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     config,
     configPath: (await pathExists(configPath)) ? configPath : null,
     addedAt: record.addedAt,
+    setup: await describeSetup(record.rootPath, config),
     issues,
   }
 }

@@ -54,6 +54,7 @@ export interface Project {
   config: CcwtConfig | null
   configPath: string | null
   addedAt: string
+  setup: Setup
   issues: Diagnostic[]
 }
 
@@ -101,6 +102,21 @@ export interface LogLine {
   stream: 'stdout' | 'stderr'
   at: string
   text: string
+}
+
+export type PortMode = 'allocated' | 'fixed' | 'none'
+
+export interface SetupNote {
+  tone: 'good' | 'info' | 'caution'
+  title: string
+  body: string
+  snippet?: string
+}
+
+export interface Setup {
+  portMode: PortMode
+  headline: string
+  notes: SetupNote[]
 }
 
 export interface ConfigView {

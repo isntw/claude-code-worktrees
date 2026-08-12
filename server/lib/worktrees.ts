@@ -13,6 +13,7 @@ import {
 import { pathExists, readJsonSafe } from './fs'
 import { allocate, readAllocated, release } from './ports'
 import { provision, worktreePathFor, worktreesDirFor } from './provision'
+import { ENV_FILE, writeEnvBlock } from './envfile'
 import * as supervisor from './supervisor'
 
 const IDLE: AgentStatus = { state: 'idle', sessionId: null, subagents: 0, updatedAt: null }
@@ -51,6 +52,11 @@ async function allocateAll(
   for (const service of project.config?.services ?? []) {
     ports[service.name] = await allocate(worktreePath, service.name, service.portRange)
   }
+
+  if (Object.keys(ports).length) {
+    await writeEnvBlock(worktreePath, ports).catch(() => undefined)
+  }
+
   return ports
 }
 
@@ -168,6 +174,7 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   for (const [name, port] of Object.entries(ports)) {
     supervisor.note(id, 'provision', `${name} → port ${port}`)
   }
+  if (Object.keys(ports).length) supervisor.note(id, 'provision', `wrote ${ENV_FILE}`)
 
   supervisor.note(id, 'provision', 'ready')
 
