@@ -66,6 +66,8 @@ export function useApi() {
       call<ServiceStatus>(`${worktree(projectId, worktreeId)}/services/${service}/start`, {
         method: 'POST',
       }),
+    startAll: (projectId: string, worktreeId: string) =>
+      call<ServiceStatus[]>(`${worktree(projectId, worktreeId)}/services/start`, { method: 'POST' }),
     stopService: (projectId: string, worktreeId: string, service: string) =>
       call<ServiceStatus>(`${worktree(projectId, worktreeId)}/services/${service}/stop`, {
         method: 'POST',

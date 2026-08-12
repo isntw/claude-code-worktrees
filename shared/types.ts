@@ -23,6 +23,7 @@ export interface ServiceConfig {
   command: string
   portRange: [number, number]
   env?: Record<string, string>
+  dependsOn?: string[]
 }
 
 export interface ProvisionConfig {
@@ -30,6 +31,7 @@ export interface ProvisionConfig {
   copy: string[]
   link: string[]
   postCreate: string[]
+  postRemove: string[]
 }
 
 export interface ClaudeConfig {

@@ -80,6 +80,7 @@ export function defaultConfig(services: ServiceConfig[]): CcwtConfig {
       copy: ['.env', '.env.local', '.env.development.local'],
       link: [],
       postCreate: [],
+      postRemove: [],
     },
     services,
     claude: {

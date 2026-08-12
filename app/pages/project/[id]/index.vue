@@ -203,6 +203,7 @@ onBeforeUnmount(() => disconnect?.())
         :worktree="worktree"
         :selected="selected === worktree.id"
         @select="select(worktree)"
+        @start-all="act(() => api.startAll(projectId, worktree.id))"
         @start="(service) => act(() => api.startService(projectId, worktree.id, service))"
         @stop="(service) => act(() => api.stopService(projectId, worktree.id, service))"
         @launch="act(() => api.launchAgent(projectId, worktree.id))"

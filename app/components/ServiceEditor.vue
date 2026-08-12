@@ -102,6 +102,20 @@ const FIELD = 'flex flex-col gap-1'
       </label>
 
       <div :class="[FIELD, 'sm:col-span-2']">
+        <span class="t-eyebrow">Starts after</span>
+        <p class="font-sans text-[0.625rem] text-faint">
+          Other services that must be reachable first — a database before the app that queries it.
+        </p>
+        <ListEditor
+          :model-value="service.dependsOn ?? []"
+          placeholder="db"
+          empty="Starts immediately."
+          add-label="service"
+          @update:model-value="(value) => patch({ dependsOn: value.length ? value : undefined })"
+        />
+      </div>
+
+      <div :class="[FIELD, 'sm:col-span-2']">
         <span class="t-eyebrow">Environment</span>
         <p v-if="!envRows.length" class="font-sans text-[0.625rem] text-faint">
           Nothing extra. Every service already gets its own port, plus

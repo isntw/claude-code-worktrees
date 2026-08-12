@@ -189,6 +189,14 @@ export async function runPostCreate(worktreePath: string, commands: string[]): P
   }
 }
 
+export async function runPostRemove(worktreePath: string, command: string): Promise<void> {
+  const parts = argv(command)
+  const head = parts[0]
+  if (!head) return
+
+  await exec(head, parts.slice(1), { cwd: worktreePath, timeoutMs: 120_000 })
+}
+
 export async function provision(
   rootPath: string,
   worktreePath: string,

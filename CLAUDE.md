@@ -340,3 +340,38 @@ constraint; a stored port is a cache of a past decision, not a fact that outrank
 `servicesFor` consults the supervisor's live entry only when the service is **not** stopped. A
 stopped entry keeps the port it last ran on, which is stale the moment the range changes, so a
 stopped service reports what it would use next — or nothing, if that has yet to be decided.
+
+### Ordering is a promise about reachability, not about spawn order
+
+`dependsOn` makes `startService` walk the dependency graph and start each dependency **and wait for
+its port to answer** before the dependent is spawned. Spawn order alone would be worthless: the
+whole reason a service declares a dependency is that it needs the other one *serving*, and a
+database accepts TCP several seconds after its process exists. `supervisor.waitReachable` polls the
+same `reachable` flag the probe sets, so the two agree by construction.
+
+A dependency that never comes up does **not** block the dependent forever — after the probe window
+it logs `<name> never came up, starting <service> anyway` and proceeds. Refusing to start would
+leave you staring at a dashboard with no output to diagnose from; starting and failing loudly gives
+you the dependent's own error.
+
+Cycles and unknown names are rejected at **validation**, in `findCycle` inside the schema, so a bad
+graph is a 422 naming the loop (`a → b → a`) rather than a hang at start time. Pressing start on one
+service starts its dependencies too, which is why the card only shows *start all* when a project has
+more than one service — for a single service it would be the same button twice.
+
+Every service is spawned with `CCWT_PORT_<NAME>` and `CCWT_URL_<NAME>` for **all** services, not
+just its own port. The `.env.local` block covers frameworks that load env files; this covers
+everything else, and it is what makes the Setup panel's "started with its port in the environment"
+true rather than half-true.
+
+### `postRemove` may never block a removal
+
+`SPEC.md` §5.3 requires teardown to proceed regardless of what a hook does, so every `postRemove`
+command runs with its result discarded — a command that fails, or does not exist, is not allowed to
+strand a worktree. It runs after the services are stopped and before `git worktree remove`, with the
+same `{{slug}}` / `{{branch}}` / `{{worktreePath}}` substitutions, which is what makes
+`docker volume rm ccwt-{{slug}}` work.
+
+Note that `argv()` strips top-level quotes exactly as a shell would, so a command like
+`node -e require("fs")…` loses its inner quotes and fails. That is faithful, not a bug — but it
+means postRemove commands should be plain argv, not shell one-liners.

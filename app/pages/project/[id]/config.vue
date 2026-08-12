@@ -127,7 +127,7 @@ const addService = () => {
   }
 }
 
-const setProvision = (key: 'copy' | 'link' | 'postCreate', value: string[]) => {
+const setProvision = (key: 'copy' | 'link' | 'postCreate' | 'postRemove', value: string[]) => {
   if (!draft.value) return
   draft.value = { ...draft.value, provision: { ...draft.value.provision, [key]: value } }
 }
@@ -275,6 +275,20 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
               empty="Nothing to run."
               add-label="command"
               @update:model-value="(value) => setProvision('postCreate', value)"
+            />
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <span class="t-eyebrow">Run before removing</span>
+            <p class="font-sans text-[0.625rem] text-faint">
+              Teardown — dropping a container or a volume. Failures never block the removal.
+            </p>
+            <ListEditor
+              :model-value="draft.provision.postRemove"
+              placeholder="docker volume rm ccwt-{{slug}}"
+              empty="Nothing to tear down."
+              add-label="command"
+              @update:model-value="(value) => setProvision('postRemove', value)"
             />
           </div>
         </div>

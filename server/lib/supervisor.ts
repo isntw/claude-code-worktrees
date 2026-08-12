@@ -4,6 +4,7 @@ import { connect } from 'node:net'
 import { resolve } from 'node:path'
 import type { LogLine, ServiceConfig, ServiceState, ServiceStatus } from '../../shared/types'
 import { argv } from './exec'
+import { envKey } from './envfile'
 
 const MAX_LINES = 1000
 const KILL_AFTER_MS = 4000
@@ -154,6 +155,27 @@ export function status(worktreeId: string, service: string): ServiceStatus | nul
   return entry ? toStatus(entry) : null
 }
 
+export function waitReachable(
+  worktreeId: string,
+  service: string,
+  timeoutMs = PROBE_FOR_MS,
+): Promise<boolean> {
+  const entry = entries.get(keyFor(worktreeId, service))
+  if (!entry) return Promise.resolve(false)
+
+  return new Promise((done) => {
+    const deadline = Date.now() + timeoutMs
+
+    const tick = () => {
+      if (entry.reachable === true) return done(true)
+      if (!entry.child || Date.now() > deadline) return done(false)
+      setTimeout(tick, 200)
+    }
+
+    tick()
+  })
+}
+
 export function scrollback(worktreeId: string, service: string): LogLine[] {
   return logs.get(keyFor(worktreeId, service)) ?? []
 }
@@ -211,6 +233,12 @@ export async function start(
   entries.set(key, entry)
 
   const declared: Record<string, string> = {}
+
+  for (const [name, allocated] of Object.entries(vars.ports)) {
+    declared[envKey('CCWT_PORT', name)] = String(allocated)
+    declared[envKey('CCWT_URL', name)] = urlFor(allocated)
+  }
+
   for (const [key, value] of Object.entries(service.env ?? {})) {
     declared[key] = render(value, vars)
   }

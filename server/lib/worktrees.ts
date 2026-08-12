@@ -1,5 +1,11 @@
 import { basename, join, resolve } from 'node:path'
-import type { AgentStatus, Project, ServiceStatus, Worktree } from '../../shared/types'
+import type {
+  AgentStatus,
+  Project,
+  ServiceConfig,
+  ServiceStatus,
+  Worktree,
+} from '../../shared/types'
 import {
   addWorktree,
   classify,
@@ -12,7 +18,7 @@ import {
 } from './git'
 import { pathExists, readJsonSafe } from './fs'
 import { allocate, readAllocated, release } from './ports'
-import { provision, worktreePathFor, worktreesDirFor } from './provision'
+import { provision, runPostRemove, worktreePathFor, worktreesDirFor } from './provision'
 import { ENV_FILE, writeEnvBlock } from './envfile'
 import * as supervisor from './supervisor'
 
@@ -208,16 +214,83 @@ export async function startService(
   if (!service) throw new Error(`No service named \`${serviceName}\` in this project.`)
 
   const ports = await allocateAll(project, worktreePath)
-  const port = ports[service.name]!
+  const order = startOrder(config.services, service.name)
 
-  return supervisor.start(worktreeId, worktreePath, service, port, {
-    port,
-    ports,
-    slug: basename(worktreePath),
-    branch: branch ?? '',
-    rootPath: project.rootPath,
-    worktreePath,
-  })
+  let status: ServiceStatus | null = null
+
+  for (const name of order) {
+    const next = config.services.find((candidate) => candidate.name === name)!
+    const port = ports[name]!
+
+    const live = supervisor.status(worktreeId, name)
+    const already = live && (live.state === 'running' || live.state === 'starting')
+
+    if (!already) {
+      status = await supervisor.start(worktreeId, worktreePath, next, port, {
+        port,
+        ports,
+        slug: basename(worktreePath),
+        branch: branch ?? '',
+        rootPath: project.rootPath,
+        worktreePath,
+      })
+    } else {
+      status = live
+    }
+
+    if (name === service.name) break
+
+    if (!(await supervisor.waitReachable(worktreeId, name))) {
+      supervisor.note(
+        worktreeId,
+        service.name,
+        `${name} never came up, starting ${service.name} anyway`,
+        'stderr',
+      )
+    }
+  }
+
+  return status!
+}
+
+export function startOrder(services: ServiceConfig[], target?: string): string[] {
+  const byName = new Map(services.map((service) => [service.name, service]))
+  const seen = new Set<string>()
+  const order: string[] = []
+
+  const visit = (name: string, trail: Set<string>) => {
+    if (seen.has(name) || trail.has(name)) return
+    const service = byName.get(name)
+    if (!service) return
+
+    trail.add(name)
+    for (const dependency of service.dependsOn ?? []) visit(dependency, trail)
+    trail.delete(name)
+
+    seen.add(name)
+    order.push(name)
+  }
+
+  if (target) visit(target, new Set())
+  else for (const service of services) visit(service.name, new Set())
+
+  return order
+}
+
+export async function startAll(
+  project: Project,
+  worktreeId: string,
+  worktreePath: string,
+  branch: string | null,
+): Promise<ServiceStatus[]> {
+  const config = project.config
+  if (!config) throw new Error('This project has no resolvable configuration.')
+
+  const out: ServiceStatus[] = []
+  for (const name of startOrder(config.services)) {
+    out.push(await startService(project, worktreeId, worktreePath, name, branch))
+  }
+  return out
 }
 
 export async function remove(project: Project, worktreeId: string): Promise<void> {
@@ -238,6 +311,19 @@ export async function remove(project: Project, worktreeId: string): Promise<void
   }
 
   await supervisor.stopWorktree(worktreeId)
+
+  for (const command of config?.provision.postRemove ?? []) {
+    const rendered = supervisor.render(command, {
+      port: 0,
+      ports: {},
+      slug: basename(worktree.path),
+      branch: worktree.branch ?? '',
+      rootPath: project.rootPath,
+      worktreePath: worktree.path,
+    })
+
+    await runPostRemove(worktree.path, rendered).catch(() => undefined)
+  }
 
   for (const service of config?.services ?? []) {
     await release(worktree.path, service.name).catch(() => undefined)

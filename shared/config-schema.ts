@@ -14,6 +14,7 @@ export const serviceSchema = z
       .tuple([port, port])
       .refine(([low, high]) => low <= high, 'The range must start at or below its end.'),
     env: z.record(z.string(), z.string()).optional(),
+    dependsOn: z.array(z.string()).optional(),
   })
   .describe('service')
 
@@ -27,6 +28,7 @@ export const configSchema = z
         copy: z.array(z.string()).default([]),
         link: z.array(z.string()).default([]),
         postCreate: z.array(z.string()).default([]),
+        postRemove: z.array(z.string()).default([]),
       })
       .prefault({}),
     services: z
@@ -44,7 +46,75 @@ export const configSchema = z
       })
       .prefault({}),
   })
+  .superRefine((config, ctx) => {
+    const names = new Set(config.services.map((service) => service.name))
+
+    config.services.forEach((service, index) => {
+      for (const dependency of service.dependsOn ?? []) {
+        if (dependency === service.name) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['services', index, 'dependsOn'],
+            message: `\`${service.name}\` cannot depend on itself.`,
+          })
+          continue
+        }
+        if (!names.has(dependency)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['services', index, 'dependsOn'],
+            message: `There is no service called \`${dependency}\`.`,
+          })
+        }
+      }
+    })
+
+    const cycle = findCycle(config.services)
+    if (cycle) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['services'],
+        message: `These services depend on each other in a loop: ${cycle.join(' → ')}.`,
+      })
+    }
+  })
   .describe('ccwt.config.json')
+
+interface Dependant {
+  name: string
+  dependsOn?: string[]
+}
+
+export function findCycle(services: Dependant[]): string[] | null {
+  const edges = new Map(services.map((service) => [service.name, service.dependsOn ?? []]))
+  const state = new Map<string, 'open' | 'done'>()
+  const trail: string[] = []
+
+  const walk = (name: string): string[] | null => {
+    if (state.get(name) === 'done') return null
+    if (state.get(name) === 'open') return [...trail.slice(trail.indexOf(name)), name]
+
+    state.set(name, 'open')
+    trail.push(name)
+
+    for (const next of edges.get(name) ?? []) {
+      if (!edges.has(next)) continue
+      const found = walk(next)
+      if (found) return found
+    }
+
+    trail.pop()
+    state.set(name, 'done')
+    return null
+  }
+
+  for (const service of services) {
+    const found = walk(service.name)
+    if (found) return found
+  }
+
+  return null
+}
 
 export interface ConfigIssue {
   path: string

@@ -8,6 +8,7 @@ const props = defineProps<{ worktree: Worktree; selected?: boolean }>()
 
 const emit = defineEmits<{
   select: []
+  startAll: []
   start: [service: string]
   stop: [service: string]
   launch: []
@@ -22,6 +23,12 @@ const SERVICE: Record<ServiceStatus['state'], { variation: Variation; label: str
 }
 
 const errors = computed(() => props.worktree.issues.filter((i) => i.severity === 'error').length)
+
+const allRunning = computed(() =>
+  props.worktree.services.every(
+    (service) => service.state === 'running' || service.state === 'starting',
+  ),
+)
 </script>
 
 <template>
@@ -74,6 +81,16 @@ const errors = computed(() => props.worktree.issues.filter((i) => i.severity ===
       >
         <SquareTerminal :size="12" aria-hidden="true" />
       </Button>
+    </div>
+
+    <div
+      v-if="worktree.services.length > 1"
+      class="flex items-center gap-2 border-b border-line px-3 py-1.5"
+    >
+      <span class="t-eyebrow">Services</span>
+      <Button size="sm" class="ml-auto" :disabled="allRunning" @click="emit('startAll')"
+        >start all</Button
+      >
     </div>
 
     <ul v-if="worktree.services.length" class="flex flex-col">
