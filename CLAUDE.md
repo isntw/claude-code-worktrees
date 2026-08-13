@@ -493,3 +493,19 @@ that fails.
 When a port variable has no default — `${DB_DOCKER_PORT}` — the range is derived from the
 **container** port (3306 → 3306-3405), not from an arbitrary constant. The container port is the one
 piece of information that is always present and always meaningful.
+
+### A recipe's declared ports must match the file it runs
+
+The port variables live in the project's compose file; the recipe records the ones ccwt allocates.
+Those two drift, and when they do the failure is opaque: a variable ccwt never exports falls back to
+the default written in the file, every worktree shares that default, and Docker reports
+`Bind for 0.0.0.0:33060 failed: port is already allocated` — which says nothing about a stale recipe.
+
+`hydrate()` compares them. For any service whose command names a compose file, the declared port
+names are diffed against `portVariables()` of that file, and a mismatch is an **error** naming both
+sides. It is not repaired automatically: the recipe belongs to the user, and pressing detect shows a
+diff first.
+
+This was found when a project's stored recipe still declared `WT_PORT`, learned from a
+`docker-compose.worktree.yml` that detection used to prefer, after the user had written a proper
+`docker-compose.ccwt.yml` using `WEB_PORT` and `DB_DOCKER_PORT`.
