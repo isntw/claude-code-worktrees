@@ -8,7 +8,7 @@ import type {
   ServiceStatus,
 } from '../../shared/types'
 import { argv, exec } from './exec'
-import { envKey } from './envfile'
+import { envKey } from './env'
 import { isListening } from './ports'
 
 const MAX_LINES = 1000
@@ -32,6 +32,7 @@ interface Entry {
   env: NodeJS.ProcessEnv
   stopCommand: string | null
   postStart: string[]
+  extra: Record<string, number>
   state: ServiceState
   pid: number | null
   startedAt: string
@@ -54,6 +55,7 @@ export interface Vars {
   project: string
   port: number
   ports: Record<string, number>
+  named: Record<string, number>
   slug: string
   branch: string
   rootPath: string
@@ -65,13 +67,13 @@ const urlFor = (port: number) => `http://localhost:${port}`
 export function render(template: string, vars: Vars): string {
   return template
     .replace(/\{\{port\.([A-Za-z0-9_-]+)\}\}/g, (whole, name: string) => {
-      const port = vars.ports[name]
-      if (port === undefined) throw new Error(`${whole} names a service this project does not have`)
+      const port = vars.ports[name] ?? vars.named[name]
+      if (port === undefined) throw new Error(`${whole} names neither a service nor a port this project declares`)
       return String(port)
     })
     .replace(/\{\{url\.([A-Za-z0-9_-]+)\}\}/g, (whole, name: string) => {
-      const port = vars.ports[name]
-      if (port === undefined) throw new Error(`${whole} names a service this project does not have`)
+      const port = vars.ports[name] ?? vars.named[name]
+      if (port === undefined) throw new Error(`${whole} names neither a service nor a port this project declares`)
       return urlFor(port)
     })
     .replaceAll('{{port}}', String(vars.port))
@@ -93,6 +95,7 @@ function toStatus(entry: Entry): ServiceStatus {
     startedAt: entry.startedAt,
     exitCode: entry.exitCode,
     reachable: entry.reachable,
+    extra: Object.keys(entry.extra).length ? entry.extra : undefined,
   }
 }
 
@@ -201,6 +204,37 @@ export function subscribeStatus(listener: StatusListener): () => void {
   return () => statusListeners.delete(listener)
 }
 
+export function environmentFor(
+  service: ServiceConfig,
+  port: number,
+  vars: Vars,
+): NodeJS.ProcessEnv {
+  const declared: Record<string, string> = {}
+
+  for (const [name, allocated] of Object.entries(vars.ports)) {
+    declared[envKey('CCWT_PORT', name)] = String(allocated)
+    declared[envKey('CCWT_URL', name)] = urlFor(allocated)
+  }
+
+  for (const [variable, allocated] of Object.entries(vars.named)) {
+    declared[variable] = String(allocated)
+    declared[envKey('CCWT_PORT', variable)] = String(allocated)
+    declared[envKey('CCWT_URL', variable)] = urlFor(allocated)
+  }
+
+  for (const [key, value] of Object.entries(service.env ?? {})) {
+    declared[key] = render(value, vars)
+  }
+
+  return {
+    ...process.env,
+    PORT: String(port),
+    FORCE_COLOR: '0',
+    BROWSER: 'none',
+    ...declared,
+  }
+}
+
 export async function start(
   worktreeId: string,
   worktreePath: string,
@@ -219,24 +253,7 @@ export async function start(
   const head = parts[0]
   if (!head) throw new Error(`Service \`${service.name}\` has no command`)
 
-  const declared: Record<string, string> = {}
-
-  for (const [name, allocated] of Object.entries(vars.ports)) {
-    declared[envKey('CCWT_PORT', name)] = String(allocated)
-    declared[envKey('CCWT_URL', name)] = urlFor(allocated)
-  }
-
-  for (const [key, value] of Object.entries(service.env ?? {})) {
-    declared[key] = render(value, vars)
-  }
-
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    PORT: String(port),
-    FORCE_COLOR: '0',
-    BROWSER: 'none',
-    ...declared,
-  }
+  const env = environmentFor(service, port, vars)
 
   const entry: Entry = {
     worktreeId,
@@ -244,6 +261,7 @@ export async function start(
     port,
     cwd: resolve(worktreePath, service.cwd || '.'),
     env,
+    extra: { ...vars.named },
     stopCommand: service.stopCommand ? render(service.stopCommand, vars) : null,
     postStart: (service.postStart ?? []).map((command) => render(command, vars)),
     state: 'starting',
@@ -535,9 +553,11 @@ async function runStopCommand(entry: Entry): Promise<void> {
   if (!head) return
 
   note(entry.worktreeId, entry.service, `stopping: ${entry.stopCommand}`)
-  const result = await exec(head, parts.slice(1), { cwd: entry.cwd, timeoutMs: 120_000 }).catch(
-    () => null,
-  )
+  const result = await exec(head, parts.slice(1), {
+    cwd: entry.cwd,
+    env: entry.env,
+    timeoutMs: 120_000,
+  }).catch(() => null)
 
   if (result && result.code !== 0) {
     note(entry.worktreeId, entry.service, result.stderr.trim().split('\n').slice(-3).join('\n'), 'stderr')

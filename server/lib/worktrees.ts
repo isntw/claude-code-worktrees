@@ -12,6 +12,7 @@ import {
   classify,
   enableWorktreeConfig,
   idFor,
+  isIgnored,
   isInside,
   listWorktrees,
   lockWorktree,
@@ -19,10 +20,17 @@ import {
   removeWorktree,
   unlockWorktree,
 } from './git'
-import { isSymlink, pathExists, readJsonSafe } from './fs'
-import { allocate, isListening, readAllocated, release } from './ports'
-import { provision, runPostRemove, worktreePathFor, worktreesDirFor } from './provision'
-import { ENV_FILE, writeEnvBlock } from './envfile'
+import { isDirectory, isSymlink, pathExists, readJsonSafe } from './fs'
+import { allocate, isListening, pruneSharedPorts, readAllocated, release } from './ports'
+import type { Placeholders } from './provision'
+import {
+  missingBeneath,
+  needsWriting,
+  provision,
+  runPostRemove,
+  worktreePathFor,
+  worktreesDirFor,
+} from './provision'
 import * as supervisor from './supervisor'
 
 const IDLE: AgentStatus = { state: 'idle', sessionId: null, subagents: 0, updatedAt: null }
@@ -70,22 +78,71 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-async function allocateAll(
-  project: Project,
+async function noteExposed(
+  worktreeId: string,
   worktreePath: string,
+  written: string[],
+): Promise<void> {
+  for (const path of written) {
+    if (await isIgnored(worktreePath, path)) continue
+    supervisor.note(
+      worktreeId,
+      'provision',
+      `${path} is not ignored by git, so it will show as untracked here — add it to .gitignore`,
+    )
+  }
+}
+
+function placeholders(project: Project, worktreePath: string): Placeholders {
+  return {
+    project: slugify(project.name),
+    slug: basename(worktreePath),
+    rootPath: project.rootPath,
+    worktreePath,
+  }
+}
+
+const portKey = (service: ServiceConfig, variable: string) => `${service.name}-${variable}`
+
+async function readNamedPorts(
+  worktreePath: string,
+  service: ServiceConfig,
 ): Promise<Record<string, number>> {
+  const entries = await Promise.all(
+    Object.entries(service.ports ?? {}).map(async ([variable, range]) => {
+      const port = await readAllocated(worktreePath, portKey(service, variable), range)
+      return [variable, port] as const
+    }),
+  )
+
+  const named: Record<string, number> = {}
+  for (const [variable, port] of entries) if (port !== null) named[variable] = port
+  return named
+}
+
+interface Allocation {
+  ports: Record<string, number>
+  named: Record<string, Record<string, number>>
+}
+
+async function allocateAll(project: Project, worktreePath: string): Promise<Allocation> {
   await enableWorktreeConfig(project.rootPath)
+  await pruneSharedPorts(project.rootPath)
 
   const ports: Record<string, number> = {}
+  const named: Record<string, Record<string, number>> = {}
+
   for (const service of project.config?.services ?? []) {
     ports[service.name] = await allocate(worktreePath, service.name, service.portRange)
+
+    const extra: Record<string, number> = {}
+    for (const [variable, range] of Object.entries(service.ports ?? {})) {
+      extra[variable] = await allocate(worktreePath, portKey(service, variable), range)
+    }
+    named[service.name] = extra
   }
 
-  if (Object.keys(ports).length) {
-    await writeEnvBlock(worktreePath, ports).catch(() => undefined)
-  }
-
-  return ports
+  return { ports, named }
 }
 
 const PROBE_MS = 250
@@ -104,6 +161,8 @@ async function servicesFor(
       if (live && live.state !== 'stopped') return live
 
       const port = await readAllocated(worktreePath, service.name, service.portRange)
+      const extra = await readNamedPorts(worktreePath, service)
+
       return {
         name: service.name,
         state: 'stopped' as const,
@@ -114,6 +173,7 @@ async function servicesFor(
         exitCode: null,
         reachable: null,
         taken: port === null ? false : await isListening(port, PROBE_MS),
+        extra: Object.keys(extra).length ? extra : undefined,
       }
     }),
   )
@@ -189,7 +249,18 @@ export async function create(project: Project, input: CreateInput): Promise<Work
 
   supervisor.note(id, 'provision', 'provisioning…')
   try {
-    const report = await provision(project.rootPath, path, project.packageManager ?? 'npm', config)
+    const report = await provision(
+      project.rootPath,
+      path,
+      project.packageManager ?? 'npm',
+      config,
+      placeholders(project, path),
+    )
+
+    if (report.written.length) {
+      supervisor.note(id, 'provision', `wrote ${report.written.join(', ')}`)
+      await noteExposed(id, path, report.written)
+    }
 
     if (report.replaced.length)
       supervisor.note(id, 'provision', `replaced symlinks: ${report.replaced.join(', ')}`)
@@ -205,12 +276,13 @@ export async function create(project: Project, input: CreateInput): Promise<Work
     supervisor.note(id, 'provision', (cause as Error).message, 'stderr')
   }
 
-  const ports = await allocateAll(project, path)
+  const { ports, named } = await allocateAll(project, path)
   for (const [name, port] of Object.entries(ports)) {
     supervisor.note(id, 'provision', `${name} → port ${port}`)
+    for (const [variable, extra] of Object.entries(named[name] ?? {})) {
+      supervisor.note(id, 'provision', `${name} → ${variable}=${extra}`)
+    }
   }
-  if (Object.keys(ports).length) supervisor.note(id, 'provision', `wrote ${ENV_FILE}`)
-
   supervisor.note(id, 'provision', 'ready')
 
   if (input.start) {
@@ -230,12 +302,27 @@ async function needsProvisioning(project: Project, worktreePath: string): Promis
   const config = project.config
   if (!config) return false
 
-  for (const entry of [...config.provision.copy, ...config.provision.link]) {
-    const target = join(worktreePath, entry)
+  const entries = [
+    ...config.provision.copy.map((path) => ({ path, linked: false })),
+    ...config.provision.link.map((path) => ({ path, linked: true })),
+  ]
+
+  for (const { path, linked } of entries) {
+    const target = join(worktreePath, path)
+    const source = join(project.rootPath, path)
 
     if (await isSymlink(target)) return true
-    if (!(await pathExists(target)) && (await pathExists(join(project.rootPath, entry)))) return true
+
+    if (!(await pathExists(target))) {
+      if (await pathExists(source)) return true
+      continue
+    }
+
+    if (linked && (await isDirectory(source)) && (await missingBeneath(source, target))) return true
   }
+
+  if (await needsWriting(worktreePath, config.provision.write, placeholders(project, worktreePath)))
+    return true
 
   return !(await isProvisioned(worktreePath))
 }
@@ -255,7 +342,13 @@ export async function reprovision(project: Project, worktreeId: string): Promise
       worktree.path,
       project.packageManager ?? 'npm',
       config,
+      placeholders(project, worktree.path),
     )
+
+    if (report.written.length) {
+      supervisor.note(worktreeId, 'provision', `wrote ${report.written.join(', ')}`)
+      await noteExposed(worktreeId, worktree.path, report.written)
+    }
 
     if (report.replaced.length)
       supervisor.note(
@@ -301,7 +394,7 @@ export async function startService(
     })
   }
 
-  const ports = await allocateAll(project, worktreePath)
+  const { ports, named } = await allocateAll(project, worktreePath)
   const order = startOrder(config.services, service.name)
 
   let status: ServiceStatus | null = null
@@ -319,6 +412,7 @@ export async function startService(
         project: slugify(project.name),
         port,
         ports,
+        named: named[name] ?? {},
         slug: basename(worktreePath),
         branch: branch ?? '',
         rootPath: project.rootPath,
@@ -383,6 +477,17 @@ export async function startAll(
   return out
 }
 
+export async function stopAll(project: Project, worktreeId: string): Promise<ServiceStatus[]> {
+  const config = project.config
+  if (!config) throw new Error('This project has no resolvable configuration.')
+
+  const out: ServiceStatus[] = []
+  for (const name of startOrder(config.services).reverse()) {
+    out.push(await supervisor.stop(worktreeId, name))
+  }
+  return out
+}
+
 export const CCWT_LOCK_REASON = 'locked from ccwt'
 
 export async function lock(project: Project, worktreeId: string): Promise<Worktree> {
@@ -443,22 +548,66 @@ export async function remove(project: Project, worktreeId: string): Promise<void
 
   await supervisor.stopWorktree(worktreeId)
 
+  const leaving: Record<string, number> = {}
+  const perService: Record<string, Record<string, number>> = {}
+
+  for (const service of config?.services ?? []) {
+    const port = await readAllocated(worktree.path, service.name, service.portRange)
+    if (port !== null) leaving[service.name] = port
+    perService[service.name] = await readNamedPorts(worktree.path, service)
+  }
+
+  const base = {
+    project: slugify(project.name),
+    ports: leaving,
+    slug: basename(worktree.path),
+    branch: worktree.branch ?? '',
+    rootPath: project.rootPath,
+    worktreePath: worktree.path,
+  }
+
+  for (const service of config?.services ?? []) {
+    if (!service.removeCommand) continue
+
+    const named = perService[service.name] ?? {}
+    const port = leaving[service.name] ?? 0
+    const vars = { ...base, port, named }
+
+    let rendered: string
+    try {
+      rendered = supervisor.render(service.removeCommand, vars)
+    } catch (cause) {
+      supervisor.note(worktreeId, 'provision', (cause as Error).message, 'stderr')
+      continue
+    }
+
+    supervisor.note(worktreeId, 'provision', `removing: ${rendered}`)
+    await runPostRemove(
+      resolve(worktree.path, service.cwd || '.'),
+      rendered,
+      supervisor.environmentFor(service, port, vars),
+    ).catch(() => undefined)
+  }
+
+  const named = Object.assign({}, ...Object.values(perService)) as Record<string, number>
+
   for (const command of config?.provision.postRemove ?? []) {
-    const rendered = supervisor.render(command, {
-      project: slugify(project.name),
-      port: 0,
-      ports: {},
-      slug: basename(worktree.path),
-      branch: worktree.branch ?? '',
-      rootPath: project.rootPath,
-      worktreePath: worktree.path,
-    })
+    let rendered: string
+    try {
+      rendered = supervisor.render(command, { ...base, port: 0, named })
+    } catch (cause) {
+      supervisor.note(worktreeId, 'provision', (cause as Error).message, 'stderr')
+      continue
+    }
 
     await runPostRemove(worktree.path, rendered).catch(() => undefined)
   }
 
   for (const service of config?.services ?? []) {
     await release(worktree.path, service.name).catch(() => undefined)
+    for (const variable of Object.keys(service.ports ?? {})) {
+      await release(worktree.path, portKey(service, variable)).catch(() => undefined)
+    }
   }
 
   await removeWorktree(project.rootPath, worktree.path)

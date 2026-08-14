@@ -152,10 +152,25 @@ export async function isLocked(rootPath: string, worktreePath: string): Promise<
   return match?.locked ?? false
 }
 
+export async function isIgnored(worktreePath: string, path: string): Promise<boolean> {
+  const result = await git(worktreePath, ['check-ignore', '-q', '--', path]).catch(() => null)
+  return result?.code === 0
+}
+
 export async function enableWorktreeConfig(rootPath: string): Promise<void> {
   const current = await gitOut(rootPath, ['config', '--local', '--get', 'extensions.worktreeConfig'])
   if (current === 'true') return
   await git(rootPath, ['config', '--local', 'extensions.worktreeConfig', 'true'])
+}
+
+export async function localKeys(rootPath: string, pattern: string): Promise<string[]> {
+  const found = await gitOut(rootPath, ['config', '--local', '--name-only', '--get-regexp', pattern])
+  if (!found) return []
+  return found.split('\n').map((line) => line.trim()).filter(Boolean)
+}
+
+export async function clearLocalConfig(rootPath: string, key: string): Promise<void> {
+  await git(rootPath, ['config', '--local', '--unset-all', key])
 }
 
 export async function readWorktreeConfig(

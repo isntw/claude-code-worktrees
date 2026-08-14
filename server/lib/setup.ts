@@ -1,5 +1,5 @@
 import type { CcwtConfig, Setup, SetupNote } from '../../shared/types'
-import { ENV_FILE, envKey } from './envfile'
+import { envKey } from './env'
 
 import { findHardcodedAddresses } from './inspect'
 
@@ -51,7 +51,7 @@ export async function describeSetup(rootPath: string, config: CcwtConfig): Promi
   notes.push({
     tone: 'info',
     title: 'How a worktree learns its ports',
-    body: `Every service is started with its port in the environment, and ccwt writes the same values into \`${ENV_FILE}\` inside the worktree — which Vite, Next and Nuxt read automatically.`,
+    body: `Every service is started with its own port in \`PORT\`, and with every service's port and URL beside it — so one service can reach another without either of them hard-coding a number.`,
     snippet: names
       .map((name) => `${envKey('CCWT_URL', name)}=http://localhost:…`)
       .join('\n'),

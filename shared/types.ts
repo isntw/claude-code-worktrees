@@ -4,6 +4,8 @@ export type DependencyStrategy = 'auto' | 'install' | 'hardlink' | 'copy' | 'non
 
 export type WorktreeOrigin = 'manual' | 'ccwt' | 'claude'
 
+export type ServiceKind = 'command' | 'stack'
+
 export type LockState = 'live' | 'gone' | 'unknown'
 
 export type ServiceState = 'stopped' | 'starting' | 'running' | 'crashed'
@@ -21,19 +23,28 @@ export interface Diagnostic {
 
 export interface ServiceConfig {
   name: string
+  kind?: ServiceKind
   cwd: string
   command: string
   portRange: [number, number]
+  ports?: Record<string, [number, number]>
   env?: Record<string, string>
   dependsOn?: string[]
   postStart?: string[]
   stopCommand?: string
+  removeCommand?: string
+}
+
+export interface WriteEntry {
+  path: string
+  content: string
 }
 
 export interface ProvisionConfig {
   dependencies: DependencyStrategy
   copy: string[]
   link: string[]
+  write: WriteEntry[]
   postCreate: string[]
   postRemove: string[]
 }
@@ -75,6 +86,7 @@ export interface ServiceStatus {
   exitCode: number | null
   reachable: boolean | null
   taken?: boolean
+  extra?: Record<string, number>
 }
 
 export interface AgentStatus {

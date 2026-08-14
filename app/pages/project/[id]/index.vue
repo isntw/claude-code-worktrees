@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
 import type { LogLine, Project, Worktree } from '#shared/types'
+import type { StackPart } from '../../../compose'
+import { composeFileOf, containerFor, serviceNames } from '../../../compose'
 
 const api = useApi()
 const route = useRoute()
@@ -9,6 +11,39 @@ const router = useRouter()
 const projectId = computed(() => String(route.params.id))
 
 const project = ref<Project | null>(null)
+
+const parts = computed(() => {
+  const found: Record<string, StackPart[]> = {}
+  const config = project.value?.config
+  if (!config) return found
+
+  for (const service of config.services) {
+    const file = composeFileOf(service.command)
+    const text = config.provision.write.find((entry) => entry.path === file)?.content
+    if (!text) continue
+
+    const primary =
+      Object.entries(service.env ?? {}).find(([, value]) => value === '{{port}}')?.[0] ?? null
+
+    const declared = Object.keys(service.ports ?? {})
+    if (primary) declared.push(primary)
+
+    const owner = new Map<string, string>()
+    for (const candidate of declared) {
+      const found = containerFor(text, candidate)
+      if (found) owner.set(found, candidate)
+    }
+
+    const rows = serviceNames(text).map((name) => {
+      const variable = owner.get(name) ?? null
+      return { name, variable, primary: variable !== null && variable === primary }
+    })
+
+    if (rows.length) found[service.name] = rows
+  }
+
+  return found
+})
 const worktrees = ref<Worktree[]>([])
 const lines = ref<LogLine[]>([])
 const selected = ref<string | null>(null)
@@ -231,9 +266,11 @@ onBeforeUnmount(() => disconnect?.())
         v-for="worktree in visible"
         :key="worktree.id"
         :worktree="worktree"
+        :parts="parts"
         :selected="selected === worktree.id"
         @select="select(worktree)"
         @start-all="watching(worktree, () => api.startAll(projectId, worktree.id))"
+        @stop-all="act(() => api.stopAll(projectId, worktree.id))"
         @start="
           (service) => watching(worktree, () => api.startService(projectId, worktree.id, service))
         "

@@ -1,6 +1,11 @@
-import { cp, link, mkdir, rm } from 'node:fs/promises'
+import { cp, link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import type { CcwtConfig, DependencyStrategy, PackageManager } from '../../shared/types'
+import type {
+  CcwtConfig,
+  DependencyStrategy,
+  PackageManager,
+  WriteEntry,
+} from '../../shared/types'
 import { argv, exec } from './exec'
 import { isDirectory, isSymlink, pathExists } from './fs'
 import { stub } from './stub'
@@ -20,6 +25,7 @@ export type Strategy = Exclude<DependencyStrategy, 'auto'>
 export interface ProvisionReport {
   copied: string[]
   linked: string[]
+  written: string[]
   replaced: string[]
   pruned: string[]
   skipped: { path: string; reason: string }[]
@@ -27,7 +33,22 @@ export interface ProvisionReport {
 }
 
 function emptyReport(): ProvisionReport {
-  return { copied: [], linked: [], replaced: [], pruned: [], skipped: [], failed: [] }
+  return { copied: [], linked: [], written: [], replaced: [], pruned: [], skipped: [], failed: [] }
+}
+
+export interface Placeholders {
+  project: string
+  slug: string
+  rootPath: string
+  worktreePath: string
+}
+
+function fill(text: string, at: Placeholders): string {
+  return text
+    .replaceAll('{{project}}', at.project)
+    .replaceAll('{{slug}}', at.slug)
+    .replaceAll('{{rootPath}}', at.rootPath)
+    .replaceAll('{{worktreePath}}', at.worktreePath)
 }
 
 export function resolveStrategy(manager: PackageManager, requested: DependencyStrategy): Strategy {
@@ -45,6 +66,63 @@ function unsafe(path: string): string | null {
   if (path.includes('..')) return 'paths must stay inside the project'
   if (path.startsWith('/')) return 'paths must be relative to the project root'
   return null
+}
+
+function targetFor(worktreePath: string, entry: WriteEntry): string | null {
+  const target = resolve(worktreePath, entry.path)
+  const inside = resolve(worktreePath)
+  return target === inside || target.startsWith(`${inside}/`) ? target : null
+}
+
+export async function writeFiles(
+  worktreePath: string,
+  entries: WriteEntry[],
+  at: Placeholders,
+  report: ProvisionReport,
+): Promise<void> {
+  for (const entry of entries) {
+    const reason = unsafe(entry.path)
+    if (reason) {
+      report.skipped.push({ path: entry.path, reason })
+      continue
+    }
+
+    const target = targetFor(worktreePath, entry)
+    if (!target) {
+      report.skipped.push({ path: entry.path, reason: 'resolves outside the worktree' })
+      continue
+    }
+
+    try {
+      if (await isSymlink(target)) {
+        await rm(target, { force: true })
+        report.replaced.push(entry.path)
+      }
+      await mkdir(dirname(target), { recursive: true })
+      await writeFile(target, fill(entry.content, at), 'utf8')
+      report.written.push(entry.path)
+    } catch (cause) {
+      report.failed.push({ path: entry.path, message: (cause as Error).message })
+    }
+  }
+}
+
+export async function needsWriting(
+  worktreePath: string,
+  entries: WriteEntry[],
+  at: Placeholders,
+): Promise<boolean> {
+  for (const entry of entries) {
+    if (unsafe(entry.path)) continue
+
+    const target = targetFor(worktreePath, entry)
+    if (!target) continue
+
+    const current = await readFile(target, 'utf8').catch(() => null)
+    if (current !== fill(entry.content, at)) return true
+  }
+
+  return false
 }
 
 export async function copyFiles(
@@ -80,6 +158,7 @@ async function replaceSymlink(
   target: string,
   entry: string,
   report: ProvisionReport,
+  merge = false,
 ): Promise<boolean> {
   if (await isSymlink(target)) {
     await rm(target, { force: true })
@@ -88,6 +167,7 @@ async function replaceSymlink(
   }
 
   if (await pathExists(target)) {
+    if (merge && (await isDirectory(target))) return false
     report.skipped.push({ path: entry, reason: 'already in the worktree' })
     return true
   }
@@ -95,11 +175,23 @@ async function replaceSymlink(
   return false
 }
 
+export async function missingBeneath(source: string, target: string): Promise<boolean> {
+  const here = await readdir(source).catch(() => null)
+  if (!here) return false
+
+  const there = await readdir(target).catch(() => null)
+  if (!there) return true
+
+  const have = new Set(there)
+  return here.some((name) => !have.has(name))
+}
+
 async function hardlinkTree(source: string, target: string): Promise<void> {
+  const merging = await pathExists(target)
+
   if (process.platform !== 'win32') {
-    const result = await exec('cp', ['-al', source, target], { timeoutMs: 300_000 }).catch(
-      () => null,
-    )
+    const args = merging ? ['-aln', `${source}/.`, target] : ['-al', source, target]
+    const result = await exec('cp', args, { timeoutMs: 300_000 }).catch(() => null)
     if (result?.code === 0) return
   }
 
@@ -128,12 +220,14 @@ export async function linkPaths(
     if (!(await pathExists(source))) continue
 
     const target = join(worktreePath, entry)
-    if (await replaceSymlink(target, entry, report)) continue
+    const directory = await isDirectory(source)
+
+    if (await replaceSymlink(target, entry, report, directory)) continue
 
     try {
       await mkdir(dirname(target), { recursive: true })
 
-      if (await isDirectory(source)) await hardlinkTree(source, target)
+      if (directory) await hardlinkTree(source, target)
       else await link(source, target).catch(() => cp(source, target))
 
       report.linked.push(entry)
@@ -189,26 +283,35 @@ export async function installDependencies(
   }
 }
 
-export async function runPostCreate(worktreePath: string, commands: string[]): Promise<void> {
+export async function runPostCreate(
+  worktreePath: string,
+  commands: string[],
+  at: Placeholders,
+): Promise<void> {
   for (const command of commands) {
-    const parts = argv(command)
+    const rendered = fill(command, at)
+    const parts = argv(rendered)
     const head = parts[0]
     if (!head) continue
 
     const result = await exec(head, parts.slice(1), { cwd: worktreePath, timeoutMs: 600_000 })
 
     if (result.code !== 0) {
-      throw new Error(`postCreate \`${command}\` exited ${result.code}`)
+      throw new Error(`postCreate \`${rendered}\` exited ${result.code}`)
     }
   }
 }
 
-export async function runPostRemove(worktreePath: string, command: string): Promise<void> {
+export async function runPostRemove(
+  worktreePath: string,
+  command: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<void> {
   const parts = argv(command)
   const head = parts[0]
   if (!head) return
 
-  await exec(head, parts.slice(1), { cwd: worktreePath, timeoutMs: 120_000 })
+  await exec(head, parts.slice(1), { cwd: worktreePath, env, timeoutMs: 120_000 })
 }
 
 export async function provision(
@@ -216,14 +319,16 @@ export async function provision(
   worktreePath: string,
   manager: PackageManager,
   config: CcwtConfig,
+  at: Placeholders,
 ): Promise<ProvisionReport> {
   const report = emptyReport()
 
   await copyFiles(rootPath, worktreePath, config.provision.copy, report)
   await linkPaths(rootPath, worktreePath, config.provision.link, report)
+  await writeFiles(worktreePath, config.provision.write, at, report)
   await pruneCaches(worktreePath, report.linked, report)
   await installDependencies(rootPath, worktreePath, manager, config.provision.dependencies, report)
-  await runPostCreate(worktreePath, config.provision.postCreate)
+  await runPostCreate(worktreePath, config.provision.postCreate, at)
 
   return report
 }

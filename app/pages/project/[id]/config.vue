@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, Plus } from 'lucide-vue-next'
-import type { CcwtConfig, ConfigView, ServiceConfig } from '#shared/types'
+import type { CcwtConfig, ConfigView, ServiceConfig, WriteEntry } from '#shared/types'
 import { changed, collapse, diffLines } from '../../../diff'
+import { composeFileOf, isStack, teardownCommand } from '../../../compose'
 
 const api = useApi()
 const route = useRoute()
@@ -132,13 +133,44 @@ const setProvision = (key: 'copy' | 'link' | 'postCreate' | 'postRemove', value:
   draft.value = { ...draft.value, provision: { ...draft.value.provision, [key]: value } }
 }
 
+const setWrite = (rows: WriteEntry[]) => {
+  if (!draft.value) return
+  draft.value = { ...draft.value, provision: { ...draft.value.provision, write: rows } }
+}
+
 onMounted(load)
 
-const CMD_HINT = `npm run dev -- --port ${'{{' + 'port' + '}}'}`
+const stacks = computed(() =>
+  (draft.value?.services ?? [])
+    .map((service, index) => ({ service, index }))
+    .filter(({ service }) => isStack(service.kind, service.command)),
+)
+
+const setTeardown = (index: number, on: boolean) => {
+  const service = draft.value?.services[index]
+  if (!service) return
+  updateService(index, {
+    ...service,
+    removeCommand: on ? teardownCommand(composeFileOf(service.command)) : undefined,
+  })
+}
+
+const upsertWrite = (path: string, content: string) => {
+  if (!draft.value || !path) return
+  const rows = [...draft.value.provision.write]
+  const at = rows.findIndex((entry) => entry.path === path)
+  if (at === -1) rows.push({ path, content })
+  else rows[at] = { path, content }
+  setWrite(rows)
+}
+
+const removeWrite = (path: string) => {
+  if (!draft.value) return
+  setWrite(draft.value.provision.write.filter((entry) => entry.path !== path))
+}
+
 
 const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as const
-const SECTION = 'border border-line bg-surface'
-const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
 </script>
 
 <template>
@@ -207,35 +239,10 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
     </div>
 
     <div v-else-if="draft" class="flex flex-col gap-3">
-      <section :class="SECTION">
-        <header :class="HEAD"><p class="t-eyebrow">Services</p></header>
-        <div class="flex flex-col gap-2 px-3 py-3">
-          <p v-if="!draft.services.length" class="font-sans text-[0.6875rem] text-faint">
-            No services. Worktrees will still be created and provisioned — there is just nothing to
-            run in them.
-          </p>
-          <ServiceEditor
-            v-for="(service, index) in draft.services"
-            :key="index"
-            :service="service"
-            :index="index"
-            @update="updateService"
-            @remove="removeService"
-          />
-          <div>
-            <Button size="sm" @click="addService">
-              <template #lead><Plus :size="11" aria-hidden="true" /></template>
-              service
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <section :class="SECTION">
-        <header :class="HEAD"><p class="t-eyebrow">Provisioning</p></header>
+      <Panel title="Files in each worktree" aside="before anything runs">
         <div class="grid gap-4 px-3 py-3 lg:grid-cols-2">
           <div class="flex flex-col gap-1.5">
-            <span class="t-eyebrow">Copy into each worktree</span>
+            <span class="t-eyebrow">Copied from the root checkout</span>
             <p class="font-sans text-[0.625rem] text-faint">
               Independent copies. Right for <code class="font-mono">.env</code> files you might edit
               per worktree.
@@ -250,7 +257,7 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
           </div>
 
           <div class="flex flex-col gap-1.5">
-            <span class="t-eyebrow">Hardlink into each worktree</span>
+            <span class="t-eyebrow">Hardlinked from the root checkout</span>
             <p class="font-sans text-[0.625rem] text-caution">
               The same file, not a copy — editing a linked file in a worktree edits the root
               checkout too. Right for dependencies and big fixtures, wrong for anything you hand-edit.
@@ -263,39 +270,97 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
               @update:model-value="(value) => setProvision('link', value)"
             />
           </div>
+        </div>
+      </Panel>
 
-          <div class="flex flex-col gap-1.5">
-            <span class="t-eyebrow">Run after creating</span>
-            <p class="font-sans text-[0.625rem] text-faint">
-              Commands run once in the new worktree, after dependencies are in place.
-            </p>
-            <ListEditor
-              :model-value="draft.provision.postCreate"
-              placeholder="pnpm db:migrate"
-              empty="Nothing to run."
-              add-label="command"
-              @update:model-value="(value) => setProvision('postCreate', value)"
-            />
-          </div>
+      <Panel
+       
+        title="Run after creating"
+        aside="once, before any service starts"
+      >
+        <div class="px-3 py-3">
+          <p class="mb-1.5 font-sans text-[0.625rem] text-faint">
+            Commands run once in the new worktree, after files are in place and dependencies are
+            installed — a build step, a generated key, anything a service needs before it can start.
+            Nothing is running yet, so this cannot reach into a container.
+          </p>
+          <ListEditor
+            :model-value="draft.provision.postCreate"
+            placeholder="php artisan key:generate"
+            empty="Nothing to run."
+            add-label="command"
+            @update:model-value="(value) => setProvision('postCreate', value)"
+          />
+        </div>
+      </Panel>
 
-          <div class="flex flex-col gap-1.5">
-            <span class="t-eyebrow">Run before removing</span>
-            <p class="font-sans text-[0.625rem] text-faint">
-              Teardown — dropping whatever the worktree created outside itself. Failures never block the removal.
-            </p>
-            <ListEditor
-              :model-value="draft.provision.postRemove"
-              placeholder="rm -rf tmp/{{slug}}"
-              empty="Nothing to tear down."
-              add-label="command"
-              @update:model-value="(value) => setProvision('postRemove', value)"
-            />
+      <Panel title="Services" aside="when you press start">
+        <div class="flex flex-col gap-2 px-3 py-3">
+          <p v-if="!draft.services.length" class="font-sans text-[0.6875rem] text-faint">
+            No services. Worktrees will still be created and provisioned — there is just nothing to
+            run in them.
+          </p>
+          <ServiceEditor
+            v-for="(service, index) in draft.services"
+            :key="index"
+            :service="service"
+            :index="index"
+            :writes="draft.provision.write"
+            @update="updateService"
+            @remove="removeService"
+            @write="upsertWrite"
+            @unwrite="removeWrite"
+          />
+          <div>
+            <Button size="sm" @click="addService">
+              <template #lead><Plus :size="11" aria-hidden="true" /></template>
+              service
+            </Button>
           </div>
         </div>
-      </section>
+      </Panel>
 
-      <section :class="SECTION">
-        <header :class="HEAD"><p class="t-eyebrow">Where worktrees live</p></header>
+      <Panel
+       
+        title="Run before removing"
+        aside="when you delete a worktree"
+      >
+        <div class="px-3 py-3">
+          <p class="mb-1.5 font-sans text-[0.625rem] text-faint">
+            Dropping whatever the worktree made outside itself — containers, volumes, a database.
+            Services are stopped first, and a failure here never blocks the removal.
+          </p>
+
+          <div v-if="stacks.length" class="mb-3 flex flex-col gap-2 border border-line p-2">
+            <div v-for="row in stacks" :key="row.index" class="flex flex-col gap-0.5">
+              <Checkbox
+                :model-value="Boolean(row.service.removeCommand)"
+                @update:model-value="(value) => setTeardown(row.index, value)"
+              >
+                drop <span class="font-mono">{{ row.service.name }}</span
+                >'s containers and volumes
+              </Checkbox>
+              <code
+                v-if="row.service.removeCommand"
+                class="pl-5 font-mono text-[0.625rem] text-faint"
+                >{{ row.service.removeCommand }}</code
+              >
+              <p v-else class="pl-5 font-sans text-[0.625rem] text-caution">
+                Its volumes stay on disk after the worktree is gone.
+              </p>
+            </div>
+          </div>
+          <ListEditor
+            :model-value="draft.provision.postRemove"
+            placeholder="docker compose down -v"
+            empty="Nothing to tear down."
+            add-label="command"
+            @update:model-value="(value) => setProvision('postRemove', value)"
+          />
+        </div>
+      </Panel>
+
+      <Panel title="Where worktrees live">
         <div class="px-3 py-3">
           <Input
             :model-value="draft.worktreesDir"
@@ -307,7 +372,7 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
             Relative to the repository root. Each project gets its own folder inside it.
           </p>
         </div>
-      </section>
+      </Panel>
     </div>
   </main>
 
