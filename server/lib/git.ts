@@ -152,6 +152,11 @@ export async function isLocked(rootPath: string, worktreePath: string): Promise<
   return match?.locked ?? false
 }
 
+export async function isIgnored(worktreePath: string, path: string): Promise<boolean> {
+  const result = await git(worktreePath, ['check-ignore', '-q', '--', path]).catch(() => null)
+  return result?.code === 0
+}
+
 export async function enableWorktreeConfig(rootPath: string): Promise<void> {
   const current = await gitOut(rootPath, ['config', '--local', '--get', 'extensions.worktreeConfig'])
   if (current === 'true') return

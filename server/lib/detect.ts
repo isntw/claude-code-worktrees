@@ -79,6 +79,7 @@ export function defaultConfig(services: ServiceConfig[]): CcwtConfig {
       dependencies: 'auto',
       copy: ['.env', '.env.local', '.env.development.local'],
       link: [],
+      write: [],
       postCreate: [],
       postRemove: [],
     },

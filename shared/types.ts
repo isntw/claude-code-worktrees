@@ -24,16 +24,23 @@ export interface ServiceConfig {
   cwd: string
   command: string
   portRange: [number, number]
+  ports?: Record<string, [number, number]>
   env?: Record<string, string>
   dependsOn?: string[]
   postStart?: string[]
   stopCommand?: string
 }
 
+export interface WriteEntry {
+  path: string
+  content: string
+}
+
 export interface ProvisionConfig {
   dependencies: DependencyStrategy
   copy: string[]
   link: string[]
+  write: WriteEntry[]
   postCreate: string[]
   postRemove: string[]
 }

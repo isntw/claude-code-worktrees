@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ArrowLeft, Plus } from 'lucide-vue-next'
-import type { CcwtConfig, ConfigView, ServiceConfig } from '#shared/types'
+import { ArrowLeft, Plus, X } from 'lucide-vue-next'
+import type { CcwtConfig, ConfigView, ServiceConfig, WriteEntry } from '#shared/types'
 import { changed, collapse, diffLines } from '../../../diff'
 
 const api = useApi()
@@ -132,9 +132,26 @@ const setProvision = (key: 'copy' | 'link' | 'postCreate' | 'postRemove', value:
   draft.value = { ...draft.value, provision: { ...draft.value.provision, [key]: value } }
 }
 
+const setWrite = (rows: WriteEntry[]) => {
+  if (!draft.value) return
+  draft.value = { ...draft.value, provision: { ...draft.value.provision, write: rows } }
+}
+
+const updateWrite = (at: number, change: Partial<WriteEntry>) => {
+  if (!draft.value) return
+  setWrite(
+    draft.value.provision.write.map((entry, index) =>
+      index === at ? { ...entry, ...change } : entry,
+    ),
+  )
+}
+
 onMounted(load)
 
 const CMD_HINT = `npm run dev -- --port ${'{{' + 'port' + '}}'}`
+const SLUG_TOKEN = '{{' + 'slug' + '}}'
+const PROJECT_TOKEN = '{{' + 'project' + '}}'
+const WRITE_HINT = ['services:', '  web:', '    image: nginx:alpine'].join('\n')
 
 const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as const
 const SECTION = 'border border-line bg-surface'
@@ -262,6 +279,58 @@ const HEAD = 'flex items-center gap-2 border-b border-line px-3 py-2'
               add-label="path"
               @update:model-value="(value) => setProvision('link', value)"
             />
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <span class="t-eyebrow">Write into each worktree</span>
+            <p class="font-sans text-[0.625rem] text-faint">
+              A file ccwt creates in every worktree from the text below, instead of copying one that
+              already exists. For a file the repository does not carry — a compose file written for
+              worktrees, say — so nothing has to be added to the project.
+              <code class="font-mono">{{ SLUG_TOKEN }}</code> and
+              <code class="font-mono">{{ PROJECT_TOKEN }}</code> are substituted. Ports are not: they
+              are not allocated yet when the file is written, so read them from the environment.
+            </p>
+            <div
+              v-for="(entry, at) in draft.provision.write"
+              :key="at"
+              class="flex flex-col gap-1.5 border border-line p-2"
+            >
+              <div class="flex items-center gap-1.5">
+                <Input
+                  :model-value="entry.path"
+                  placeholder=".ccwt/stack.yml"
+                  label="Path inside the worktree"
+                  @update:model-value="(value) => updateWrite(at, { path: value })"
+                />
+                <Button
+                  icon
+                  title="Remove file"
+                  @click="setWrite(draft.provision.write.filter((_, index) => index !== at))"
+                >
+                  <X :size="12" aria-hidden="true" />
+                </Button>
+              </div>
+              <Textarea
+                :model-value="entry.content"
+                :rows="8"
+                label="File contents"
+                :placeholder="WRITE_HINT"
+                @update:model-value="(value) => updateWrite(at, { content: value })"
+              />
+            </div>
+            <p
+              v-if="!draft.provision.write.length"
+              class="font-sans text-[0.625rem] text-faint"
+            >
+              Nothing written.
+            </p>
+            <div>
+              <Button size="sm" @click="setWrite([...draft.provision.write, { path: '', content: '' }])">
+                <template #lead><Plus :size="11" aria-hidden="true" /></template>
+                file
+              </Button>
+            </div>
           </div>
 
           <div class="flex flex-col gap-1.5">

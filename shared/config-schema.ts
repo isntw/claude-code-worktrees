@@ -2,19 +2,25 @@ import { z } from 'zod'
 import type { CcwtConfig } from './types'
 
 const NAME = /^[a-z0-9][a-z0-9_-]*$/i
+const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 export const RECIPE_REVISION = 2
 
 const port = z.number().int().min(1).max(65535)
+
+const range = z
+  .tuple([port, port])
+  .refine(([low, high]) => low <= high, 'The range must start at or below its end.')
 
 export const serviceSchema = z
   .strictObject({
     name: z.string().regex(NAME, 'Use letters, digits, dash or underscore.'),
     cwd: z.string().default('.'),
     command: z.string().min(1, 'A service needs a command.'),
-    portRange: z
-      .tuple([port, port])
-      .refine(([low, high]) => low <= high, 'The range must start at or below its end.'),
+    portRange: range,
+    ports: z
+      .record(z.string().regex(VARIABLE, 'Use a name an environment variable may have.'), range)
+      .optional(),
     env: z.record(z.string(), z.string()).optional(),
     dependsOn: z.array(z.string()).optional(),
     postStart: z.array(z.string()).optional(),
@@ -31,6 +37,14 @@ export const configSchema = z
         dependencies: z.enum(['auto', 'install', 'hardlink', 'copy', 'none']).default('auto'),
         copy: z.array(z.string()).default([]),
         link: z.array(z.string()).default([]),
+        write: z
+          .array(
+            z.strictObject({
+              path: z.string().min(1, 'A written file needs a path.'),
+              content: z.string(),
+            }),
+          )
+          .default([]),
         postCreate: z.array(z.string()).default([]),
         postRemove: z.array(z.string()).default([]),
       })
@@ -54,6 +68,16 @@ export const configSchema = z
     const names = new Set(config.services.map((service) => service.name))
 
     config.services.forEach((service, index) => {
+      for (const variable of Object.keys(service.ports ?? {})) {
+        if (names.has(variable)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['services', index, 'ports', variable],
+            message: `\`${variable}\` is also a service name, so \`{{port.${variable}}}\` would be ambiguous.`,
+          })
+        }
+      }
+
       for (const dependency of service.dependsOn ?? []) {
         if (dependency === service.name) {
           ctx.addIssue({
@@ -79,6 +103,42 @@ export const configSchema = z
         code: 'custom',
         path: ['services'],
         message: `These services depend on each other in a loop: ${cycle.join(' → ')}.`,
+      })
+    }
+
+    config.provision.write.forEach((entry, index) => {
+      if (entry.path.startsWith('/') || entry.path.includes('..')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['provision', 'write', index, 'path'],
+          message: 'A written path must be relative and stay inside the worktree.',
+        })
+      }
+
+      if (/\{\{(port|url)\b/.test(entry.content)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['provision', 'write', index, 'content'],
+          message:
+            'Ports are not allocated yet when a file is written. Read the port from the environment instead — `${MY_PORT}` in the file, and `MY_PORT` under the service’s `ports`.',
+        })
+      }
+
+      if (entry.content.includes('{{branch}}')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['provision', 'write', index, 'content'],
+          message: 'A written file may use {{project}}, {{slug}}, {{rootPath}} and {{worktreePath}}.',
+        })
+      }
+    })
+
+    const paths = config.provision.write.map((entry) => entry.path)
+    if (new Set(paths).size !== paths.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['provision', 'write'],
+        message: 'Two written files share a path.',
       })
     }
   })

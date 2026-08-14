@@ -38,6 +38,27 @@ const setPort = (at: 0 | 1, raw: string) => {
   patch({ portRange: range })
 }
 
+const portRows = computed(() => Object.entries(props.service.ports ?? {}))
+
+const setPorts = (rows: [string, [number, number]][]) => {
+  const ports: Record<string, [number, number]> = {}
+  for (const [key, range] of rows) if (key.trim()) ports[key.trim()] = range
+  patch({ ports: Object.keys(ports).length ? ports : undefined })
+}
+
+const updatePort = (at: number, key: string, range: [number, number]) => {
+  setPorts(
+    portRows.value.map(([k, r], index) =>
+      index === at ? ([key, range] as [string, [number, number]]) : ([k, r] as [string, [number, number]]),
+    ),
+  )
+}
+
+const whole = (raw: string) => {
+  const value = Number.parseInt(raw, 10)
+  return Number.isFinite(value) ? value : 0
+}
+
 const takesPort = computed(() => props.service.command.includes('{{port}}'))
 
 const pinned = computed(() => props.service.portRange[0] === props.service.portRange[1])
@@ -57,6 +78,7 @@ const PORT_TOKEN = '{{' + 'port' + '}}'
 const CMD_HINT = `npm run dev -- --port ${PORT_TOKEN}`
 const EXEC_EXAMPLE = 'npm run db:migrate'
 const ENV_HINT = 'mysql://…' + '{{' + 'port.db' + '}}' + '/app'
+const VAR_HINT = '$' + '{DB_PORT}'
 
 const FIELD = 'flex flex-col gap-1'
 </script>
@@ -142,6 +164,49 @@ const FIELD = 'flex flex-col gap-1'
           />
         </label>
       </template>
+
+      <div :class="[FIELD, 'sm:col-span-2']">
+        <span class="t-eyebrow">More ports</span>
+        <p class="font-sans text-[0.625rem] text-faint">
+          For a service that holds more than one port — a container stack publishing a database
+          beside its web server, or a separate debugger or HMR port. ccwt allocates one per worktree
+          and puts it in the environment under the name you give it, so a file that reads
+          <code class="font-mono">{{ VAR_HINT }}</code> gets a different value in every worktree.
+        </p>
+        <div v-for="([key, range], at) in portRows" :key="at" class="flex items-center gap-1.5">
+          <Input
+            :model-value="key"
+            placeholder="DB_PORT"
+            label="Variable name"
+            @update:model-value="(next) => updatePort(at, next, range)"
+          />
+          <Input
+            :model-value="String(range[0])"
+            placeholder="33060"
+            label="Range from"
+            @update:model-value="(next) => updatePort(at, key, [whole(next), range[1]])"
+          />
+          <Input
+            :model-value="String(range[1])"
+            placeholder="33159"
+            label="to"
+            @update:model-value="(next) => updatePort(at, key, [range[0], whole(next)])"
+          />
+          <Button
+            icon
+            title="Remove port"
+            @click="setPorts(portRows.filter((_, index) => index !== at))"
+          >
+            <X :size="12" aria-hidden="true" />
+          </Button>
+        </div>
+        <div>
+          <Button size="sm" @click="setPorts([...portRows, ['', [0, 0]]])">
+            <template #lead><Plus :size="11" aria-hidden="true" /></template>
+            port
+          </Button>
+        </div>
+      </div>
 
       <div :class="[FIELD, 'sm:col-span-2']">
         <span class="t-eyebrow">Starts after</span>
