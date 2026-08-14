@@ -164,6 +164,66 @@ export interface ProbeResult {
   branch: string | null
 }
 
+export interface PortClaim {
+  projectId: string
+  projectName: string
+  worktreeId: string
+  worktreeName: string
+  service: string
+  state: ServiceState
+  url: string | null
+}
+
+export interface PortRow {
+  port: number
+  claims: PortClaim[]
+}
+
+export interface OverviewRow {
+  projectId: string
+  projectName: string
+  worktree: Worktree
+}
+
+export interface OverviewProject {
+  id: string
+  name: string
+  rootPath: string
+  packageManager: PackageManager | null
+  defaultBranch: string | null
+  worktrees: number
+  live: number
+  errors: number
+  readable: boolean
+}
+
+export interface OverviewIssue extends Diagnostic {
+  projectId: string
+  projectName: string
+  worktree: string | null
+}
+
+export interface OverviewTotals {
+  projects: number
+  worktrees: number
+  services: number
+  running: number
+  starting: number
+  crashed: number
+  agents: number
+  errors: number
+  ports: number
+}
+
+export interface Overview {
+  at: string
+  totals: OverviewTotals
+  projects: OverviewProject[]
+  rows: OverviewRow[]
+  ports: PortRow[]
+  issues: OverviewIssue[]
+}
+
 export type HookEvent =
   | 'SessionStart'
   | 'SessionEnd'

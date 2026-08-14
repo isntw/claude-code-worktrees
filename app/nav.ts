@@ -1,4 +1,4 @@
-import { FolderGit2, SwatchBook } from 'lucide-vue-next'
+import { Activity, FolderGit2, SwatchBook } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavPage {
@@ -11,6 +11,14 @@ export interface NavPage {
 }
 
 export const NAV: NavPage[] = [
+  {
+    name: 'overview',
+    path: '/overview',
+    title: 'Overview',
+    blurb: 'Every worktree, every port, every service — across all the projects at once.',
+    nav: 'page',
+    icon: Activity,
+  },
   {
     name: 'index',
     path: '/',
