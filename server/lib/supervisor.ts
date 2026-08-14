@@ -32,6 +32,7 @@ interface Entry {
   env: NodeJS.ProcessEnv
   stopCommand: string | null
   postStart: string[]
+  extra: Record<string, number>
   state: ServiceState
   pid: number | null
   startedAt: string
@@ -94,6 +95,7 @@ function toStatus(entry: Entry): ServiceStatus {
     startedAt: entry.startedAt,
     exitCode: entry.exitCode,
     reachable: entry.reachable,
+    extra: Object.keys(entry.extra).length ? entry.extra : undefined,
   }
 }
 
@@ -202,6 +204,37 @@ export function subscribeStatus(listener: StatusListener): () => void {
   return () => statusListeners.delete(listener)
 }
 
+export function environmentFor(
+  service: ServiceConfig,
+  port: number,
+  vars: Vars,
+): NodeJS.ProcessEnv {
+  const declared: Record<string, string> = {}
+
+  for (const [name, allocated] of Object.entries(vars.ports)) {
+    declared[envKey('CCWT_PORT', name)] = String(allocated)
+    declared[envKey('CCWT_URL', name)] = urlFor(allocated)
+  }
+
+  for (const [variable, allocated] of Object.entries(vars.named)) {
+    declared[variable] = String(allocated)
+    declared[envKey('CCWT_PORT', variable)] = String(allocated)
+    declared[envKey('CCWT_URL', variable)] = urlFor(allocated)
+  }
+
+  for (const [key, value] of Object.entries(service.env ?? {})) {
+    declared[key] = render(value, vars)
+  }
+
+  return {
+    ...process.env,
+    PORT: String(port),
+    FORCE_COLOR: '0',
+    BROWSER: 'none',
+    ...declared,
+  }
+}
+
 export async function start(
   worktreeId: string,
   worktreePath: string,
@@ -220,30 +253,7 @@ export async function start(
   const head = parts[0]
   if (!head) throw new Error(`Service \`${service.name}\` has no command`)
 
-  const declared: Record<string, string> = {}
-
-  for (const [name, allocated] of Object.entries(vars.ports)) {
-    declared[envKey('CCWT_PORT', name)] = String(allocated)
-    declared[envKey('CCWT_URL', name)] = urlFor(allocated)
-  }
-
-  for (const [variable, allocated] of Object.entries(vars.named)) {
-    declared[variable] = String(allocated)
-    declared[envKey('CCWT_PORT', variable)] = String(allocated)
-    declared[envKey('CCWT_URL', variable)] = urlFor(allocated)
-  }
-
-  for (const [key, value] of Object.entries(service.env ?? {})) {
-    declared[key] = render(value, vars)
-  }
-
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    PORT: String(port),
-    FORCE_COLOR: '0',
-    BROWSER: 'none',
-    ...declared,
-  }
+  const env = environmentFor(service, port, vars)
 
   const entry: Entry = {
     worktreeId,
@@ -251,6 +261,7 @@ export async function start(
     port,
     cwd: resolve(worktreePath, service.cwd || '.'),
     env,
+    extra: { ...vars.named },
     stopCommand: service.stopCommand ? render(service.stopCommand, vars) : null,
     postStart: (service.postStart ?? []).map((command) => render(command, vars)),
     state: 'starting',

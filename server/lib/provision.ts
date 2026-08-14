@@ -1,4 +1,4 @@
-import { cp, link, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type {
   CcwtConfig,
@@ -158,6 +158,7 @@ async function replaceSymlink(
   target: string,
   entry: string,
   report: ProvisionReport,
+  merge = false,
 ): Promise<boolean> {
   if (await isSymlink(target)) {
     await rm(target, { force: true })
@@ -166,6 +167,7 @@ async function replaceSymlink(
   }
 
   if (await pathExists(target)) {
+    if (merge && (await isDirectory(target))) return false
     report.skipped.push({ path: entry, reason: 'already in the worktree' })
     return true
   }
@@ -173,11 +175,23 @@ async function replaceSymlink(
   return false
 }
 
+export async function missingBeneath(source: string, target: string): Promise<boolean> {
+  const here = await readdir(source).catch(() => null)
+  if (!here) return false
+
+  const there = await readdir(target).catch(() => null)
+  if (!there) return true
+
+  const have = new Set(there)
+  return here.some((name) => !have.has(name))
+}
+
 async function hardlinkTree(source: string, target: string): Promise<void> {
+  const merging = await pathExists(target)
+
   if (process.platform !== 'win32') {
-    const result = await exec('cp', ['-al', source, target], { timeoutMs: 300_000 }).catch(
-      () => null,
-    )
+    const args = merging ? ['-aln', `${source}/.`, target] : ['-al', source, target]
+    const result = await exec('cp', args, { timeoutMs: 300_000 }).catch(() => null)
     if (result?.code === 0) return
   }
 
@@ -206,12 +220,14 @@ export async function linkPaths(
     if (!(await pathExists(source))) continue
 
     const target = join(worktreePath, entry)
-    if (await replaceSymlink(target, entry, report)) continue
+    const directory = await isDirectory(source)
+
+    if (await replaceSymlink(target, entry, report, directory)) continue
 
     try {
       await mkdir(dirname(target), { recursive: true })
 
-      if (await isDirectory(source)) await hardlinkTree(source, target)
+      if (directory) await hardlinkTree(source, target)
       else await link(source, target).catch(() => cp(source, target))
 
       report.linked.push(entry)
@@ -286,12 +302,16 @@ export async function runPostCreate(
   }
 }
 
-export async function runPostRemove(worktreePath: string, command: string): Promise<void> {
+export async function runPostRemove(
+  worktreePath: string,
+  command: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<void> {
   const parts = argv(command)
   const head = parts[0]
   if (!head) return
 
-  await exec(head, parts.slice(1), { cwd: worktreePath, timeoutMs: 120_000 })
+  await exec(head, parts.slice(1), { cwd: worktreePath, env, timeoutMs: 120_000 })
 }
 
 export async function provision(

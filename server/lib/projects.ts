@@ -82,6 +82,8 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
 
   for (const service of config.services) {
     if (service.command.includes('{{port}}')) continue
+    if (Object.values(service.env ?? {}).some((value) => value.includes('{{port}}'))) continue
+    if (service.portRange[0] === service.portRange[1]) continue
 
     issues.push({
       code: 'project.service-ignores-port',

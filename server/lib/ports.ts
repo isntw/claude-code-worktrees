@@ -1,9 +1,28 @@
 import { createHash } from 'node:crypto'
 import { connect, createServer } from 'node:net'
-import { clearWorktreeConfig, readWorktreeConfig, writeWorktreeConfig } from './git'
+import {
+  clearLocalConfig,
+  clearWorktreeConfig,
+  localKeys,
+  readWorktreeConfig,
+  writeWorktreeConfig,
+} from './git'
+
+const PREFIX = 'ccwt.port.'
 
 const KEY = (service: string) =>
-  `ccwt.port.${service.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}`
+  `${PREFIX}${service.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}`
+
+const swept = new Set<string>()
+
+export async function pruneSharedPorts(rootPath: string): Promise<void> {
+  if (swept.has(rootPath)) return
+  swept.add(rootPath)
+
+  for (const key of await localKeys(rootPath, '^ccwt\\.port\\.')) {
+    await clearLocalConfig(rootPath, key).catch(() => undefined)
+  }
+}
 
 export function hashToRange(seed: string, range: [number, number]): number {
   const [low, high] = range

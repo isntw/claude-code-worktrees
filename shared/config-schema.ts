@@ -15,6 +15,7 @@ const range = z
 export const serviceSchema = z
   .strictObject({
     name: z.string().regex(NAME, 'Use letters, digits, dash or underscore.'),
+    kind: z.enum(['command', 'stack']).optional(),
     cwd: z.string().default('.'),
     command: z.string().min(1, 'A service needs a command.'),
     portRange: range,
@@ -25,6 +26,7 @@ export const serviceSchema = z
     dependsOn: z.array(z.string()).optional(),
     postStart: z.array(z.string()).optional(),
     stopCommand: z.string().optional(),
+    removeCommand: z.string().optional(),
   })
   .describe('service')
 

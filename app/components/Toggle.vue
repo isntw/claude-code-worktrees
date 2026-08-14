@@ -5,7 +5,7 @@ withDefaults(defineProps<{ disabled?: boolean }>(), { disabled: false })
 </script>
 
 <template>
-  <label class="group t-control">
+  <label class="group t-control relative">
     <input
       v-model="model"
       type="checkbox"

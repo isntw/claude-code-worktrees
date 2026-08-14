@@ -163,6 +163,16 @@ export async function enableWorktreeConfig(rootPath: string): Promise<void> {
   await git(rootPath, ['config', '--local', 'extensions.worktreeConfig', 'true'])
 }
 
+export async function localKeys(rootPath: string, pattern: string): Promise<string[]> {
+  const found = await gitOut(rootPath, ['config', '--local', '--name-only', '--get-regexp', pattern])
+  if (!found) return []
+  return found.split('\n').map((line) => line.trim()).filter(Boolean)
+}
+
+export async function clearLocalConfig(rootPath: string, key: string): Promise<void> {
+  await git(rootPath, ['config', '--local', '--unset-all', key])
+}
+
 export async function readWorktreeConfig(
   worktreePath: string,
   key: string,

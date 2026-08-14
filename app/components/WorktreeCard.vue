@@ -2,13 +2,27 @@
 import { computed } from 'vue'
 import { Lock, LockOpen, SquareTerminal, Trash2 } from 'lucide-vue-next'
 import type { ServiceStatus, Worktree, WorktreeOrigin } from '#shared/types'
+import type { StackPart } from '../compose'
 import type { Variation } from './variation'
 
-const props = defineProps<{ worktree: Worktree; selected?: boolean }>()
+const props = withDefaults(
+  defineProps<{
+    worktree: Worktree
+    selected?: boolean
+    parts?: Record<string, StackPart[]>
+  }>(),
+  { parts: () => ({}) },
+)
+
+const portOf = (service: ServiceStatus, part: StackPart): number | null => {
+  if (part.primary) return service.port
+  return part.variable ? (service.extra?.[part.variable] ?? null) : null
+}
 
 const emit = defineEmits<{
   select: []
   startAll: []
+  stopAll: []
   start: [service: string]
   stop: [service: string]
   launch: []
@@ -62,6 +76,7 @@ const allRunning = computed(() =>
 )
 
 const live = computed(() => props.worktree.services.some((service) => service.state === 'running'))
+
 </script>
 
 <template>
@@ -146,17 +161,19 @@ const live = computed(() => props.worktree.services.some((service) => service.st
       class="flex items-center gap-2 border-b border-line px-3 py-1.5"
     >
       <span class="t-eyebrow">Services</span>
-      <Button size="sm" class="ml-auto" :disabled="allRunning" @click="emit('startAll')"
+      <Button v-if="!allRunning" size="sm" class="ml-auto" @click="emit('startAll')"
         >start all</Button
       >
+      <Button v-else size="sm" class="ml-auto" @click="emit('stopAll')">stop all</Button>
     </div>
 
     <ul v-if="worktree.services.length" class="flex flex-col">
       <li
         v-for="service in worktree.services"
         :key="service.name"
-        class="flex items-center gap-2 border-b border-line px-3 py-2 last:border-b-0"
+        class="border-b border-line last:border-b-0"
       >
+        <div class="flex items-center gap-2 px-3 py-2">
         <StateDot
           :variation="SERVICE[service.state].variation"
           :beating="service.state === 'starting'"
@@ -208,6 +225,37 @@ const live = computed(() => props.worktree.services.some((service) => service.st
             >start</Button
           >
         </span>
+        </div>
+
+        <ul v-if="parts[service.name]?.length" class="flex flex-col pb-1.5">
+          <li
+            v-for="part in parts[service.name]"
+            :key="part.name"
+            class="flex items-center gap-2 pr-3 pl-6 leading-5"
+          >
+            <StateDot outline :variation="SERVICE[service.state].variation" />
+            <span class="w-16 shrink-0 truncate font-mono text-[0.625rem] text-faint">{{
+              part.name
+            }}</span>
+            <a
+              v-if="portOf(service, part)"
+              :href="`http://localhost:${portOf(service, part)}`"
+              target="_blank"
+              rel="noreferrer"
+              class="truncate font-mono text-[0.625rem] text-dim underline decoration-line-strong underline-offset-2 hover:text-ink hover:decoration-ink"
+              >localhost:{{ portOf(service, part) }}</a
+            >
+            <span v-else class="truncate font-sans text-[0.625rem] text-faint"
+              >no published port</span
+            >
+            <span
+              v-if="part.variable"
+              class="truncate font-mono text-[0.625rem] text-faint"
+              :title="`ccwt exports ${part.variable} for this worktree`"
+              >{{ part.variable }}</span
+            >
+          </li>
+        </ul>
       </li>
     </ul>
 

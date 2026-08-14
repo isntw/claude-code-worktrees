@@ -20,10 +20,11 @@ import {
   removeWorktree,
   unlockWorktree,
 } from './git'
-import { isSymlink, pathExists, readJsonSafe } from './fs'
-import { allocate, isListening, readAllocated, release } from './ports'
+import { isDirectory, isSymlink, pathExists, readJsonSafe } from './fs'
+import { allocate, isListening, pruneSharedPorts, readAllocated, release } from './ports'
 import type { Placeholders } from './provision'
 import {
+  missingBeneath,
   needsWriting,
   provision,
   runPostRemove,
@@ -101,6 +102,24 @@ function placeholders(project: Project, worktreePath: string): Placeholders {
   }
 }
 
+const portKey = (service: ServiceConfig, variable: string) => `${service.name}-${variable}`
+
+async function readNamedPorts(
+  worktreePath: string,
+  service: ServiceConfig,
+): Promise<Record<string, number>> {
+  const entries = await Promise.all(
+    Object.entries(service.ports ?? {}).map(async ([variable, range]) => {
+      const port = await readAllocated(worktreePath, portKey(service, variable), range)
+      return [variable, port] as const
+    }),
+  )
+
+  const named: Record<string, number> = {}
+  for (const [variable, port] of entries) if (port !== null) named[variable] = port
+  return named
+}
+
 interface Allocation {
   ports: Record<string, number>
   named: Record<string, Record<string, number>>
@@ -108,6 +127,7 @@ interface Allocation {
 
 async function allocateAll(project: Project, worktreePath: string): Promise<Allocation> {
   await enableWorktreeConfig(project.rootPath)
+  await pruneSharedPorts(project.rootPath)
 
   const ports: Record<string, number> = {}
   const named: Record<string, Record<string, number>> = {}
@@ -117,7 +137,7 @@ async function allocateAll(project: Project, worktreePath: string): Promise<Allo
 
     const extra: Record<string, number> = {}
     for (const [variable, range] of Object.entries(service.ports ?? {})) {
-      extra[variable] = await allocate(worktreePath, `${service.name}-${variable}`, range)
+      extra[variable] = await allocate(worktreePath, portKey(service, variable), range)
     }
     named[service.name] = extra
   }
@@ -141,6 +161,8 @@ async function servicesFor(
       if (live && live.state !== 'stopped') return live
 
       const port = await readAllocated(worktreePath, service.name, service.portRange)
+      const extra = await readNamedPorts(worktreePath, service)
+
       return {
         name: service.name,
         state: 'stopped' as const,
@@ -151,6 +173,7 @@ async function servicesFor(
         exitCode: null,
         reachable: null,
         taken: port === null ? false : await isListening(port, PROBE_MS),
+        extra: Object.keys(extra).length ? extra : undefined,
       }
     }),
   )
@@ -279,11 +302,23 @@ async function needsProvisioning(project: Project, worktreePath: string): Promis
   const config = project.config
   if (!config) return false
 
-  for (const entry of [...config.provision.copy, ...config.provision.link]) {
-    const target = join(worktreePath, entry)
+  const entries = [
+    ...config.provision.copy.map((path) => ({ path, linked: false })),
+    ...config.provision.link.map((path) => ({ path, linked: true })),
+  ]
+
+  for (const { path, linked } of entries) {
+    const target = join(worktreePath, path)
+    const source = join(project.rootPath, path)
 
     if (await isSymlink(target)) return true
-    if (!(await pathExists(target)) && (await pathExists(join(project.rootPath, entry)))) return true
+
+    if (!(await pathExists(target))) {
+      if (await pathExists(source)) return true
+      continue
+    }
+
+    if (linked && (await isDirectory(source)) && (await missingBeneath(source, target))) return true
   }
 
   if (await needsWriting(worktreePath, config.provision.write, placeholders(project, worktreePath)))
@@ -442,6 +477,17 @@ export async function startAll(
   return out
 }
 
+export async function stopAll(project: Project, worktreeId: string): Promise<ServiceStatus[]> {
+  const config = project.config
+  if (!config) throw new Error('This project has no resolvable configuration.')
+
+  const out: ServiceStatus[] = []
+  for (const name of startOrder(config.services).reverse()) {
+    out.push(await supervisor.stop(worktreeId, name))
+  }
+  return out
+}
+
 export const CCWT_LOCK_REASON = 'locked from ccwt'
 
 export async function lock(project: Project, worktreeId: string): Promise<Worktree> {
@@ -503,31 +549,52 @@ export async function remove(project: Project, worktreeId: string): Promise<void
   await supervisor.stopWorktree(worktreeId)
 
   const leaving: Record<string, number> = {}
-  const leavingNamed: Record<string, number> = {}
+  const perService: Record<string, Record<string, number>> = {}
 
   for (const service of config?.services ?? []) {
     const port = await readAllocated(worktree.path, service.name, service.portRange)
     if (port !== null) leaving[service.name] = port
-
-    for (const [variable, range] of Object.entries(service.ports ?? {})) {
-      const extra = await readAllocated(worktree.path, `${service.name}-${variable}`, range)
-      if (extra !== null) leavingNamed[variable] = extra
-    }
+    perService[service.name] = await readNamedPorts(worktree.path, service)
   }
+
+  const base = {
+    project: slugify(project.name),
+    ports: leaving,
+    slug: basename(worktree.path),
+    branch: worktree.branch ?? '',
+    rootPath: project.rootPath,
+    worktreePath: worktree.path,
+  }
+
+  for (const service of config?.services ?? []) {
+    if (!service.removeCommand) continue
+
+    const named = perService[service.name] ?? {}
+    const port = leaving[service.name] ?? 0
+    const vars = { ...base, port, named }
+
+    let rendered: string
+    try {
+      rendered = supervisor.render(service.removeCommand, vars)
+    } catch (cause) {
+      supervisor.note(worktreeId, 'provision', (cause as Error).message, 'stderr')
+      continue
+    }
+
+    supervisor.note(worktreeId, 'provision', `removing: ${rendered}`)
+    await runPostRemove(
+      resolve(worktree.path, service.cwd || '.'),
+      rendered,
+      supervisor.environmentFor(service, port, vars),
+    ).catch(() => undefined)
+  }
+
+  const named = Object.assign({}, ...Object.values(perService)) as Record<string, number>
 
   for (const command of config?.provision.postRemove ?? []) {
     let rendered: string
     try {
-      rendered = supervisor.render(command, {
-        project: slugify(project.name),
-        port: 0,
-        ports: leaving,
-        named: leavingNamed,
-        slug: basename(worktree.path),
-        branch: worktree.branch ?? '',
-        rootPath: project.rootPath,
-        worktreePath: worktree.path,
-      })
+      rendered = supervisor.render(command, { ...base, port: 0, named })
     } catch (cause) {
       supervisor.note(worktreeId, 'provision', (cause as Error).message, 'stderr')
       continue
@@ -539,7 +606,7 @@ export async function remove(project: Project, worktreeId: string): Promise<void
   for (const service of config?.services ?? []) {
     await release(worktree.path, service.name).catch(() => undefined)
     for (const variable of Object.keys(service.ports ?? {})) {
-      await release(worktree.path, `${service.name}-${variable}`).catch(() => undefined)
+      await release(worktree.path, portKey(service, variable)).catch(() => undefined)
     }
   }
 
