@@ -47,10 +47,10 @@ Register a root project once, describe how a worktree should be set up for that 
 - Reverse proxy so each worktree gets `feature-x.myapp.localhost` instead of a port
 - Per-worktree databases · Docker Compose support · Electron wrapper
 
-> **As built (partial):** Compose files are *detected and reported* — services, images, published
-> ports, and whether each port is fixed or environment-driven — and a stack is startable as one
-> ccwt service with a per-worktree `COMPOSE_PROJECT_NAME`. Rewriting a compose file's ports remains
-> out of scope; where a port is fixed, ccwt says so and runs one worktree at a time.
+> **As built:** none of this is supported and ccwt knows nothing about containers. A container
+> command is just a command: you can put one in a service and ccwt will run it, allocate its port and
+> kill its process group, exactly as with any other. It will not read, generate or reason about a
+> compose file.
 
 ---
 

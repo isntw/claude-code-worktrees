@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { createServer } from 'node:net'
+import { connect, createServer } from 'node:net'
 import { clearWorktreeConfig, readWorktreeConfig, writeWorktreeConfig } from './git'
 
 const KEY = (service: string) =>
@@ -38,6 +38,25 @@ export function withinRange(port: number, [low, high]: [number, number]): boolea
   return port >= low && port <= high
 }
 
+function connectTo(port: number, host: string, timeoutMs: number): Promise<boolean> {
+  return new Promise((done) => {
+    const socket = connect({ port, host })
+    const finish = (answer: boolean) => {
+      socket.destroy()
+      done(answer)
+    }
+    socket.setTimeout(timeoutMs)
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+  })
+}
+
+export async function isListening(port: number, timeoutMs = 1000): Promise<boolean> {
+  const attempts = await Promise.all(LOOPBACK.map((host) => connectTo(port, host, timeoutMs)))
+  return attempts.some(Boolean)
+}
+
 export async function readAllocated(
   worktreePath: string,
   service: string,
@@ -70,6 +89,12 @@ export async function allocate(
       await writeWorktreeConfig(worktreePath, KEY(service), String(port))
       return port
     }
+  }
+
+  if (low === high) {
+    throw new Error(
+      `\`${service}\` is pinned to port ${low} and something is already listening there, so only one worktree can run it at a time.`,
+    )
   }
 
   throw new Error(`No free port in ${low}-${high} for ${service}`)

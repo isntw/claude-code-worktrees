@@ -4,6 +4,8 @@ export type DependencyStrategy = 'auto' | 'install' | 'hardlink' | 'copy' | 'non
 
 export type WorktreeOrigin = 'manual' | 'ccwt' | 'claude'
 
+export type LockState = 'live' | 'gone' | 'unknown'
+
 export type ServiceState = 'stopped' | 'starting' | 'running' | 'crashed'
 
 export type AgentState = 'idle' | 'running' | 'waiting' | 'done'
@@ -24,9 +26,8 @@ export interface ServiceConfig {
   portRange: [number, number]
   env?: Record<string, string>
   dependsOn?: string[]
+  postStart?: string[]
   stopCommand?: string
-  ports?: Record<string, [number, number]>
-  primary?: string
 }
 
 export interface ProvisionConfig {
@@ -73,7 +74,7 @@ export interface ServiceStatus {
   startedAt: string | null
   exitCode: number | null
   reachable: boolean | null
-  allocated?: Record<string, number>
+  taken?: boolean
 }
 
 export interface AgentStatus {
@@ -96,6 +97,7 @@ export interface Worktree {
   bare: boolean
   locked: boolean
   lockReason: string | null
+  lockState: LockState | null
   prunable: boolean
   provisioned: boolean
   services: ServiceStatus[]

@@ -61,6 +61,10 @@ export function useApi() {
       call<Worktree>(`/projects/${projectId}/worktrees`, { method: 'POST', body: input }),
     removeWorktree: (projectId: string, worktreeId: string) =>
       call<void>(worktree(projectId, worktreeId), { method: 'DELETE' }),
+    lockWorktree: (projectId: string, worktreeId: string) =>
+      call<Worktree>(`${worktree(projectId, worktreeId)}/lock`, { method: 'POST' }),
+    unlockWorktree: (projectId: string, worktreeId: string) =>
+      call<Worktree>(`${worktree(projectId, worktreeId)}/unlock`, { method: 'POST' }),
 
     startService: (projectId: string, worktreeId: string, service: string) =>
       call<ServiceStatus>(`${worktree(projectId, worktreeId)}/services/${service}/start`, {
@@ -76,6 +80,8 @@ export function useApi() {
       }),
     logs: (projectId: string, worktreeId: string) =>
       call<LogLine[]>(`${worktree(projectId, worktreeId)}/logs`),
+    clearLogs: (projectId: string, worktreeId: string) =>
+      call<void>(`${worktree(projectId, worktreeId)}/logs`, { method: 'DELETE' }),
 
     launchAgent: (projectId: string, worktreeId: string) =>
       call<void>(`${worktree(projectId, worktreeId)}/agent/launch`, { method: 'POST' }),

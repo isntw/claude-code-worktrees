@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Plus } from 'lucide-vue-next'
-import type { AgentState, ServiceState, Worktree } from '#shared/types'
+import type { AgentState, LockState, LogLine, ServiceState, Worktree } from '#shared/types'
 import type { Variation } from '../components/variation'
 import { NAV } from '../nav'
 
@@ -20,6 +20,7 @@ const tab = ref<'a' | 'b' | 'c'>('a')
 const modal = ref(false)
 
 const AGENTS: AgentState[] = ['idle', 'running', 'waiting', 'done']
+const LOCKS: (LockState | undefined)[] = [undefined, 'unknown', 'live', 'gone']
 const SERVICES: ServiceState[] = ['stopped', 'starting', 'running', 'crashed']
 
 const sample = (index: number, service: ServiceState, agent: AgentState): Worktree => ({
@@ -33,20 +34,27 @@ const sample = (index: number, service: ServiceState, agent: AgentState): Worktr
   origin: (['ccwt', 'manual', 'claude', 'claude'] as const)[index] ?? 'manual',
   detached: index === 3,
   bare: false,
-  locked: index === 2,
-  lockReason: index === 2 ? 'an agent is working here' : null,
+  locked: LOCKS[index] !== undefined,
+  lockReason:
+    LOCKS[index] === 'unknown'
+      ? 'locked from ccwt'
+      : LOCKS[index]
+        ? `claude agent sample-${index} (pid ${4820 + index})`
+        : null,
+  lockState: LOCKS[index] ?? null,
   prunable: false,
   provisioned: true,
   services: [
     {
       name: 'web',
       state: service,
-      port: service === 'stopped' ? null : 5200 + index,
+      port: service === 'stopped' ? (index === 0 ? 3000 : null) : 5200 + index,
       url: service === 'running' ? `http://127.0.0.1:${5200 + index}` : null,
       pid: service === 'running' ? 40000 + index : null,
       startedAt: null,
       exitCode: service === 'crashed' ? 1 : null,
       reachable: service === 'running' ? true : null,
+      taken: service === 'stopped' && index === 0,
     },
   ],
   agent: {
@@ -59,6 +67,27 @@ const sample = (index: number, service: ServiceState, agent: AgentState): Worktr
 })
 
 const CARDS = SERVICES.map((service, index) => sample(index, service, AGENTS[index]!))
+
+const said = (service: string, stream: 'stdout' | 'stderr', text: string): LogLine => ({
+  worktreeId: 'w',
+  service,
+  stream,
+  at: '',
+  text,
+})
+
+const LOGS: LogLine[] = [
+  said('web', 'stdout', '> app@0.1.0 dev'),
+  said('web', 'stdout', '\u001b[1m\u001b[38;2;173;127;168m▲ Next.js 16.2.10\u001b[39m\u001b[22m'),
+  said('web', 'stdout', '\u001b[2m- Local:\u001b[22m        \u001b[36mhttp://localhost:5200\u001b[39m'),
+  said('web', 'stdout', '\u001b[32m✓\u001b[39m Ready in 273ms'),
+  said('api', 'stderr', '[@sentry/nextjs] DEPRECATION WARNING: disableLogger is deprecated'),
+  said('api', 'stderr', '(node:44354) [DEP0205] DeprecationWarning: `module.register()` is deprecated'),
+  said('api', 'stderr', '\u001b[33m⚠ the "middleware" file convention is deprecated\u001b[39m'),
+  said('web', 'stderr', '\u001b[41m\u001b[97m FAIL \u001b[39m\u001b[49m src/checkout.test.ts'),
+  said('web', 'stderr', '\u001b[31mError: EADDRINUSE: address already in use :::5200\u001b[39m'),
+  said('web', 'stderr', "ENOENT: no such file or directory, open '.env.local'"),
+]
 
 const SECTION = 'border border-line bg-surface'
 const HEAD = 'border-b border-line px-3 py-2'
@@ -211,14 +240,7 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
 
     <section class="xl:col-span-2">
       <p class="t-eyebrow mb-2">Log viewer</p>
-      <LogViewer
-        height="10rem"
-        :lines="[
-          { worktreeId: 'w', service: 'web', stream: 'stdout', at: '', text: '➜  Local:   http://127.0.0.1:5200/' },
-          { worktreeId: 'w', service: 'web', stream: 'stdout', at: '', text: 'ready in 412 ms' },
-          { worktreeId: 'w', service: 'web', stream: 'stderr', at: '', text: 'ENOENT: no such file or directory, open \'.env.local\'' },
-        ]"
-      />
+      <LogViewer height="10rem" :lines="LOGS" />
     </section>
   </main>
 

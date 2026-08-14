@@ -17,9 +17,8 @@ export const serviceSchema = z
       .refine(([low, high]) => low <= high, 'The range must start at or below its end.'),
     env: z.record(z.string(), z.string()).optional(),
     dependsOn: z.array(z.string()).optional(),
+    postStart: z.array(z.string()).optional(),
     stopCommand: z.string().optional(),
-    ports: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.tuple([port, port])).optional(),
-    primary: z.string().optional(),
   })
   .describe('service')
 

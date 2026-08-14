@@ -13,7 +13,7 @@ Last updated 2026-08-12.
 | 3 — configurable | ✅ **done**, and beyond the spec |
 | 4 — polish | ⬜ **not started** — session-status hooks are the missing centrepiece |
 | 5 — `WorktreeCreate` ownership | ⬜ **not started** (spec marks it optional) |
-| — | Compose isolation, file browser and zero-touch setup were added outside the plan |
+| — | File browser, zero-touch setup and after-start commands were added outside the plan |
 
 ---
 
@@ -95,32 +95,23 @@ Not started. The spec marks it optional and notes the trade-off: installing the 
 
 ## Added outside the plan
 
-### Compose isolation without touching the project ✅
+### After-start commands ✅
 
-A compose file publishes fixed host ports, so two worktrees of one stack collide. ccwt writes
-`.ccwt.compose.yml` into the worktree and starts with `-f <theirs> -f <ours>`, overriding every
-published port with an allocated one and every `container_name` with a namespaced one.
+`postStart` on a service runs commands once its port answers, in the worktree, with the same
+environment the service was spawned with. A failing command is retried for two minutes, because a
+port answering does not mean everything behind it is ready; the first attempt streams, retries run
+quiet, and the settling attempt prints its own output. `waitReachable` waits for them, so `dependsOn`
+means reachable *and* prepared.
 
-`ports: !override` is load-bearing and was tested before anything was built: a plain merge *appends*
-to `ports`, so the stack would publish both the original and the new port and still collide.
-Requires Compose v2.24+. `container_name` must be overridden too — an explicit one defeats
-`COMPOSE_PROJECT_NAME`.
+**Verified**: a service whose after-start command queried the service itself over HTTP and got 200;
+a failing command reported its exit code, skipped the commands after it, and left the service
+running.
 
-`isolate` defaults to `all`; `app-only` runs the non-shared services and leaves a shared database on
-its original port. `stopCommand` came out of this and is not Docker-specific: `docker compose up`
-attached stops containers on SIGTERM but leaves them defined, so stopping must run `down`.
+### Ports reach a worktree as environment ✅
 
-**Verified**: two worktrees of one unmodified compose file running at once, four ports serving
-independently (two nginx, two redis answering `PING`), stopping one removing only its containers.
-
-**Not done**: nothing rewrites a compose file, nothing chooses between several compose files beyond
-the first match, and Compose's own `depends_on` stays Compose's business.
-
-### Zero-touch setup ✅
-
-No project should need editing to use ccwt. Ports reach a worktree as environment — process env plus
-a marker-delimited block in `.env.local`, which Vite, Next, Nuxt and Compose all load. Where a
-project hardcodes an inter-service address, `inspect.ts` finds it and the **Setup** panel explains
+Every service is spawned with its own port and every other service's `CCWT_PORT_*` / `CCWT_URL_*`,
+and ccwt writes the same values into a marker-delimited block in `.env.local`, which Vite, Next and
+Nuxt all load. Where a project hardcodes an inter-service address, `inspect.ts` finds it and the **Setup** panel explains
 in plain language what ccwt will do and what the optional change would be.
 
 ### Browse for a project ✅
@@ -143,7 +134,7 @@ the user's, and guessing at intent is worse than saying so.
    the reason to leave the dashboard open, and it is the largest hole.
 2. **No tests.** Zero. Every bug found so far was found by running the thing. For an open-source
    project this is the gap most likely to bite.
-3. **Detection is Node-and-Compose shaped.** A Django or Rails project registers, provisions and
+3. **Detection is Node-shaped.** A Django, Rails or Laravel project registers, provisions and
    removes fine, but detects no service. Agreed and unbuilt: replace the filename list in
    `inspect.ts` with a search over git-tracked files, infer a container's role from its port rather
    than its image name, add an ask-once fallback, and mark detected services with their provenance.

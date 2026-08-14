@@ -14,12 +14,25 @@ export async function readConfig(project: Project): Promise<ConfigView> {
   const record = await findRecord(project.id)
 
   if (record?.config) {
+    const stored = parseConfig(record.config)
+
+    if (stored.ok) {
+      return {
+        source: 'ccwt',
+        path: null,
+        text: serialise(stored.config),
+        config: stored.config,
+        issues: [],
+        detected: false,
+      }
+    }
+
     return {
       source: 'ccwt',
       path: null,
       text: serialise(record.config),
-      config: record.config,
-      issues: [],
+      config: await suggestConfig(project.rootPath),
+      issues: stored.issues,
       detected: false,
     }
   }

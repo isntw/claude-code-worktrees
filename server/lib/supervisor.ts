@@ -1,6 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
-import { connect } from 'node:net'
 import { resolve } from 'node:path'
 import type {
   LogLine,
@@ -10,32 +9,17 @@ import type {
 } from '../../shared/types'
 import { argv, exec } from './exec'
 import { envKey } from './envfile'
+import { isListening } from './ports'
 
 const MAX_LINES = 1000
 const KILL_AFTER_MS = 4000
 const PROBE_EVERY_MS = 300
 const PROBE_FOR_MS = 25_000
-
-const LOOPBACK = ['127.0.0.1', '::1']
-
-function connectTo(port: number, host: string): Promise<boolean> {
-  return new Promise((done) => {
-    const socket = connect({ port, host })
-    const finish = (answer: boolean) => {
-      socket.destroy()
-      done(answer)
-    }
-    socket.setTimeout(1000)
-    socket.once('connect', () => finish(true))
-    socket.once('timeout', () => finish(false))
-    socket.once('error', () => finish(false))
-  })
-}
-
-async function canConnect(port: number): Promise<boolean> {
-  const attempts = await Promise.all(LOOPBACK.map((host) => connectTo(port, host)))
-  return attempts.some(Boolean)
-}
+const STEP_FOR_MS = 600_000
+const RETRY_FOR_MS = 120_000
+const RETRY_EVERY_MS = 3_000
+const TELL_EVERY_MS = 15_000
+const TAIL_LINES = 12
 
 export type LogListener = (line: LogLine) => void
 export type StatusListener = (worktreeId: string, status: ServiceStatus) => void
@@ -45,8 +29,9 @@ interface Entry {
   service: string
   port: number
   cwd: string
+  env: NodeJS.ProcessEnv
   stopCommand: string | null
-  declared: Record<string, number>
+  postStart: string[]
   state: ServiceState
   pid: number | null
   startedAt: string
@@ -55,6 +40,7 @@ interface Entry {
   child: ChildProcess | null
   stopping: boolean
   probing: boolean
+  settling: boolean
 }
 
 const entries = new Map<string, Entry>()
@@ -68,7 +54,6 @@ export interface Vars {
   project: string
   port: number
   ports: Record<string, number>
-  declared?: Record<string, number>
   slug: string
   branch: string
   rootPath: string
@@ -108,7 +93,6 @@ function toStatus(entry: Entry): ServiceStatus {
     startedAt: entry.startedAt,
     exitCode: entry.exitCode,
     reachable: entry.reachable,
-    allocated: Object.keys(entry.declared).length ? entry.declared : undefined,
   }
 }
 
@@ -179,8 +163,9 @@ export function waitReachable(
     const deadline = Date.now() + timeoutMs
 
     const tick = () => {
-      if (entry.reachable === true) return done(true)
-      if (!entry.child || Date.now() > deadline) return done(false)
+      if (entry.reachable === true && !entry.settling) return done(true)
+      if (!entry.child) return done(false)
+      if (entry.reachable !== true && Date.now() > deadline) return done(false)
       setTimeout(tick, 200)
     }
 
@@ -190,6 +175,12 @@ export function waitReachable(
 
 export function scrollback(worktreeId: string, service: string): LogLine[] {
   return logs.get(keyFor(worktreeId, service)) ?? []
+}
+
+export function forgetScrollback(worktreeId: string): void {
+  for (const key of [...logs.keys()]) {
+    if (key.startsWith(`${worktreeId}:`)) logs.delete(key)
+  }
 }
 
 export function scrollbackFor(worktreeId: string): LogLine[] {
@@ -228,13 +219,33 @@ export async function start(
   const head = parts[0]
   if (!head) throw new Error(`Service \`${service.name}\` has no command`)
 
+  const declared: Record<string, string> = {}
+
+  for (const [name, allocated] of Object.entries(vars.ports)) {
+    declared[envKey('CCWT_PORT', name)] = String(allocated)
+    declared[envKey('CCWT_URL', name)] = urlFor(allocated)
+  }
+
+  for (const [key, value] of Object.entries(service.env ?? {})) {
+    declared[key] = render(value, vars)
+  }
+
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PORT: String(port),
+    FORCE_COLOR: '0',
+    BROWSER: 'none',
+    ...declared,
+  }
+
   const entry: Entry = {
     worktreeId,
     service: service.name,
     port,
     cwd: resolve(worktreePath, service.cwd || '.'),
+    env,
     stopCommand: service.stopCommand ? render(service.stopCommand, vars) : null,
-    declared: vars.declared ?? {},
+    postStart: (service.postStart ?? []).map((command) => render(command, vars)),
     state: 'starting',
     pid: null,
     startedAt: new Date().toISOString(),
@@ -243,34 +254,14 @@ export async function start(
     child: null,
     stopping: false,
     probing: false,
+    settling: false,
   }
 
   entries.set(key, entry)
 
-  const declared: Record<string, string> = {}
-
-  for (const [name, allocated] of Object.entries(vars.ports)) {
-    declared[envKey('CCWT_PORT', name)] = String(allocated)
-    declared[envKey('CCWT_URL', name)] = urlFor(allocated)
-  }
-
-  for (const [name, allocated] of Object.entries(vars.declared ?? {})) {
-    declared[name] = String(allocated)
-  }
-
-  for (const [key, value] of Object.entries(service.env ?? {})) {
-    declared[key] = render(value, vars)
-  }
-
   const child = spawn(head, parts.slice(1), {
-    cwd: resolve(worktreePath, service.cwd || '.'),
-    env: {
-      ...process.env,
-      PORT: String(port),
-      FORCE_COLOR: '0',
-      BROWSER: 'none',
-      ...declared,
-    },
+    cwd: entry.cwd,
+    env,
     shell: false,
     detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -307,16 +298,143 @@ export async function start(
   return toStatus(entry)
 }
 
+interface StepResult {
+  code: number
+  tail: string[]
+}
+
+function runStep(entry: Entry, command: string, quiet: boolean): Promise<StepResult> {
+  const parts = argv(command)
+  const head = parts[0]
+  if (!head) return Promise.resolve({ code: 0, tail: [] })
+
+  return new Promise((done) => {
+    const child = spawn(head, parts.slice(1), {
+      cwd: entry.cwd,
+      env: entry.env,
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    const tail: string[] = []
+    const keep = (text: string) => {
+      if (!text.trim()) return
+      tail.push(text)
+      if (tail.length > TAIL_LINES) tail.shift()
+    }
+
+    let settled = false
+    const timer = setTimeout(() => {
+      push(
+        entry,
+        'stderr',
+        `after start: \`${command}\` is still running after ${STEP_FOR_MS / 60_000} minutes — giving up on it`,
+      )
+      child.kill('SIGKILL')
+    }, STEP_FOR_MS)
+
+    const finish = (code: number) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      done({ code, tail })
+    }
+
+    for (const [stream, kind] of [
+      [child.stdout, 'stdout'],
+      [child.stderr, 'stderr'],
+    ] as const) {
+      if (!stream) continue
+      stream.setEncoding('utf8')
+      let carry = ''
+      stream.on('data', (chunk: string) => {
+        const split = (carry + chunk).split('\n')
+        carry = split.pop() ?? ''
+        for (const part of split) {
+          const text = part.replace(/\r$/, '')
+          keep(text)
+          if (!quiet) push(entry, kind, text)
+        }
+      })
+      stream.on('end', () => {
+        if (!carry) return
+        keep(carry)
+        if (!quiet) push(entry, kind, carry)
+        carry = ''
+      })
+    }
+
+    child.on('error', (cause) => {
+      keep(cause.message)
+      if (!quiet) push(entry, 'stderr', cause.message)
+      finish(-1)
+    })
+    child.on('exit', (code) => finish(code ?? -1))
+  })
+}
+
+async function runPostStart(entry: Entry): Promise<void> {
+  if (!entry.postStart.length) return
+
+  entry.settling = true
+
+  for (const command of entry.postStart) {
+    if (!entry.child || entry.stopping) break
+
+    push(entry, 'stdout', `after start: ${command}`)
+
+    const deadline = Date.now() + RETRY_FOR_MS
+    let result = await runStep(entry, command, false)
+    let told = Date.now()
+    let retried = false
+
+    while (result.code !== 0 && Date.now() < deadline) {
+      if (!entry.child || entry.stopping) break
+
+      if (Date.now() - told >= TELL_EVERY_MS) {
+        told = Date.now()
+        push(
+          entry,
+          'stdout',
+          `after start: still failing — retrying until ${Math.round((deadline - Date.now()) / 1000)}s from now`,
+        )
+      }
+
+      await new Promise((wait) => setTimeout(wait, RETRY_EVERY_MS))
+      retried = true
+      result = await runStep(entry, command, true)
+    }
+
+    if (result.code === 0 && retried) {
+      push(entry, 'stdout', 'after start: succeeded on retry')
+      for (const line of result.tail) push(entry, 'stdout', line)
+    }
+
+    if (result.code !== 0) {
+      for (const line of result.tail) push(entry, 'stderr', line)
+      push(
+        entry,
+        'stderr',
+        `after start: \`${command}\` still exited ${result.code} after ${RETRY_FOR_MS / 1000}s — later commands were skipped`,
+      )
+      break
+    }
+  }
+
+  entry.settling = false
+}
+
 async function probe(entry: Entry): Promise<void> {
   entry.probing = true
   const deadline = Date.now() + PROBE_FOR_MS
 
   while (entry.probing && entry.child) {
-    if (await canConnect(entry.port)) {
+    if (await isListening(entry.port)) {
       if (!entry.probing) return
       entry.reachable = true
       entry.state = 'running'
       emitStatus(entry)
+      await runPostStart(entry)
       return
     }
 
@@ -334,6 +452,14 @@ async function probe(entry: Entry): Promise<void> {
     `nothing is listening on port ${entry.port} — this command does not appear to take the port ccwt assigned it`,
     'stderr',
   )
+  if (entry.postStart.length) {
+    note(
+      entry.worktreeId,
+      entry.service,
+      `${entry.postStart.length} after-start command${entry.postStart.length === 1 ? '' : 's'} were skipped — they run once the port answers`,
+      'stderr',
+    )
+  }
   emitStatus(entry)
 }
 

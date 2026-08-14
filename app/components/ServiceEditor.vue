@@ -40,8 +40,22 @@ const setPort = (at: 0 | 1, raw: string) => {
 
 const takesPort = computed(() => props.service.command.includes('{{port}}'))
 
+const pinned = computed(() => props.service.portRange[0] === props.service.portRange[1])
+
+const setPinned = (value: boolean) => {
+  const low = props.service.portRange[0]
+  patch({ portRange: value ? [low, low] : [low, low + 99] })
+}
+
+const setPinnedPort = (raw: string) => {
+  const value = Number.parseInt(raw, 10)
+  const port = Number.isFinite(value) ? value : 0
+  patch({ portRange: [port, port] })
+}
+
 const PORT_TOKEN = '{{' + 'port' + '}}'
 const CMD_HINT = `npm run dev -- --port ${PORT_TOKEN}`
+const EXEC_EXAMPLE = 'npm run db:migrate'
 const ENV_HINT = 'mysql://…' + '{{' + 'port.db' + '}}' + '/app'
 
 const FIELD = 'flex flex-col gap-1'
@@ -85,21 +99,49 @@ const FIELD = 'flex flex-col gap-1'
           :placeholder="CMD_HINT"
           @update:model-value="(value) => patch({ command: value })"
         />
-        <span v-if="!takesPort" class="font-sans text-[0.625rem] text-caution">
+        <span v-if="!takesPort && !pinned" class="font-sans text-[0.625rem] text-caution">
           No <code class="font-mono">{{ PORT_TOKEN }}</code> in this command — ccwt cannot tell it
           which port to use, so worktrees will collide.
         </span>
+        <span v-else-if="!takesPort" class="font-sans text-[0.625rem] text-faint">
+          No <code class="font-mono">{{ PORT_TOKEN }}</code> to substitute, so this service has to
+          listen on {{ service.portRange[0] }} of its own accord. ccwt watches that port rather than
+          assigning it.
+        </span>
       </label>
 
-      <label :class="FIELD">
-        <span class="t-eyebrow">Port range from</span>
-        <Input :model-value="port(0)" placeholder="5200" @update:model-value="(v) => setPort(0, v)" />
+      <div :class="[FIELD, 'sm:col-span-2']">
+        <Checkbox :model-value="pinned" @update:model-value="setPinned">one port only</Checkbox>
+        <p class="font-sans text-[0.625rem] text-faint">
+          Pin the service to a single port when the app cannot be told which one to use. Only one
+          worktree can run it at a time, and the card says so when something already holds the port.
+        </p>
+      </div>
+
+      <label v-if="pinned" :class="[FIELD, 'sm:col-span-2']">
+        <span class="t-eyebrow">Port</span>
+        <Input :model-value="port(0)" placeholder="3000" @update:model-value="setPinnedPort" />
       </label>
 
-      <label :class="FIELD">
-        <span class="t-eyebrow">to</span>
-        <Input :model-value="port(1)" placeholder="5299" @update:model-value="(v) => setPort(1, v)" />
-      </label>
+      <template v-else>
+        <label :class="FIELD">
+          <span class="t-eyebrow">Port range from</span>
+          <Input
+            :model-value="port(0)"
+            placeholder="5200"
+            @update:model-value="(v) => setPort(0, v)"
+          />
+        </label>
+
+        <label :class="FIELD">
+          <span class="t-eyebrow">to</span>
+          <Input
+            :model-value="port(1)"
+            placeholder="5299"
+            @update:model-value="(v) => setPort(1, v)"
+          />
+        </label>
+      </template>
 
       <div :class="[FIELD, 'sm:col-span-2']">
         <span class="t-eyebrow">Starts after</span>
@@ -112,6 +154,25 @@ const FIELD = 'flex flex-col gap-1'
           empty="Starts immediately."
           add-label="service"
           @update:model-value="(value) => patch({ dependsOn: value.length ? value : undefined })"
+        />
+      </div>
+
+      <div :class="[FIELD, 'sm:col-span-2']">
+        <span class="t-eyebrow">Run once this service answers</span>
+        <p class="font-sans text-[0.625rem] text-faint">
+          Runs every time this service starts, once its port responds — migrations, seeds, a warm-up
+          request. Each command runs in the worktree with the same environment the service was
+          started with. A command that fails is retried for two minutes, because a port answering
+          does not always mean everything behind it is ready. If it never succeeds it is reported
+          with its exit code and the commands after it are skipped; the service keeps running either
+          way.
+        </p>
+        <ListEditor
+          :model-value="service.postStart ?? []"
+          :placeholder="EXEC_EXAMPLE"
+          empty="Nothing to run."
+          add-label="command"
+          @update:model-value="(value) => patch({ postStart: value.length ? value : undefined })"
         />
       </div>
 

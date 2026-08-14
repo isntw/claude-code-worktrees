@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PackageManager, ServiceConfig } from '../../shared/types'
 import { DEFAULT_PORT_RANGE, devCommand, isMultiProcess } from './detect'
-import { composeDown, composeUp, findCompose, portVariables, primaryPort } from './compose'
 import { argv } from './exec'
 import { isDirectory, readJsonSafe } from './fs'
 
@@ -165,48 +164,7 @@ export function toServices(candidates: Candidate[], manager: PackageManager): Se
   })
 }
 
-export async function composeService(rootPath: string): Promise<ServiceConfig | null> {
-  const files = await findCompose(rootPath)
-  const chosen = files[0]
-  if (!chosen) return null
-
-  const variables = portVariables(chosen)
-  const ports: Record<string, [number, number]> = {}
-
-  for (const variable of variables) {
-    const inside = Number.parseInt(variable.container, 10)
-    const base =
-      variable.fallback ?? (Number.isFinite(inside) && inside > 1023 ? inside : DEFAULT_PORT_RANGE[0])
-    ports[variable.name] = [base, base + 99]
-  }
-
-  const primary = primaryPort(chosen.services)
-  const primaryName =
-    variables.find((variable) => variable.service === primary?.service)?.name ?? variables[0]?.name
-
-  return {
-    name: 'stack',
-    cwd: '.',
-    command: composeUp(chosen.file),
-    stopCommand: composeDown(chosen.file),
-    portRange: DEFAULT_PORT_RANGE,
-    env: { COMPOSE_PROJECT_NAME: 'ccwt-{{project}}-{{slug}}' },
-    ...(Object.keys(ports).length ? { ports } : {}),
-    ...(primaryName ? { primary: primaryName } : {}),
-  }
-}
-
 export async function detectServices(
-  rootPath: string,
-  manager: PackageManager,
-): Promise<ServiceConfig[]> {
-  const compose = await composeService(rootPath)
-  const node = await detectNodeServices(rootPath, manager)
-
-  return compose ? [compose, ...node] : node
-}
-
-async function detectNodeServices(
   rootPath: string,
   manager: PackageManager,
 ): Promise<ServiceConfig[]> {

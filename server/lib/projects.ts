@@ -3,8 +3,7 @@ import type { Diagnostic, Project } from '../../shared/types'
 import { detectPackageManager, loadConfig, projectName, suggestConfig } from './detect'
 import { defaultBranch, idFor, repoRoot } from './git'
 import { pathExists } from './fs'
-import { RECIPE_REVISION } from '../../shared/config-schema'
-import { findCompose, portVariables } from './compose'
+import { RECIPE_REVISION, parseConfig } from '../../shared/config-schema'
 import { describeSetup } from './setup'
 import { addRecord, findRecord, listRecords, removeRecord } from './store'
 import type { ProjectRecord } from './store'
@@ -34,9 +33,10 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     }
   }
 
+  const stored = record.config ? parseConfig(record.config) : null
   const source = record.config ? { state: 'stored' as const } : await loadConfig(record.rootPath)
   const config =
-    record.config ??
+    (stored?.ok ? stored.config : undefined) ??
     (source.state === 'ok' ? source.config : await suggestConfig(record.rootPath))
   const configPath = resolve(record.rootPath, 'ccwt.config.json')
 
@@ -51,7 +51,18 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     }
   }
 
-  if (record.config && (record.configRevision ?? 0) < RECIPE_REVISION) {
+  if (stored && !stored.ok) {
+    for (const issue of stored.issues.slice(0, 5)) {
+      issues.push({
+        code: 'project.recipe-invalid',
+        severity: 'error',
+        message: `The saved recipe no longer validates — ${issue.path}: ${issue.message}`,
+        hint: 'Open the recipe and press detect, or forget customisations to return to detection.',
+      })
+    }
+  }
+
+  if (stored?.ok && (record.configRevision ?? 0) < RECIPE_REVISION) {
     issues.push({
       code: 'project.recipe-stale',
       severity: 'warning',
@@ -69,33 +80,8 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     })
   }
 
-  const stacks = await findCompose(record.rootPath)
-
   for (const service of config.services) {
-    const stack = stacks.find((candidate) => service.command.includes(candidate.file))
-
-    if (stack && service.ports) {
-      const declared = Object.keys(service.ports).sort()
-      const actual = portVariables(stack)
-        .map((variable) => variable.name)
-        .sort()
-
-      const missing = actual.filter((name) => !declared.includes(name))
-      const extra = declared.filter((name) => !actual.includes(name))
-
-      if (missing.length || extra.length) {
-        issues.push({
-          code: 'project.ports-out-of-date',
-          severity: 'error',
-          message: `\`${service.name}\` allocates ${declared.join(', ') || 'nothing'}, but ${stack.file} reads ${actual.join(', ') || 'nothing'}.`,
-          hint: missing.length
-            ? `${missing.join(', ')} would fall back to the default in the file, which every worktree shares. Open the recipe and press detect.`
-            : 'Open the recipe and press detect to match the file.',
-        })
-      }
-    }
-
-    if (service.ports || service.command.includes('{{port}}')) continue
+    if (service.command.includes('{{port}}')) continue
 
     issues.push({
       code: 'project.service-ignores-port',

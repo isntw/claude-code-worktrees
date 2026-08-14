@@ -1,511 +1,212 @@
 # CLAUDE.md
 
-`ccwt` manages git worktrees as **running environments** — provisioned files, installed
-dependencies, a dev server on its own port, live logs — and knows about the Claude Code sessions
-running inside them. `SPEC.md` is the product spec; this file is how the code got the way it is.
+`ccwt` manages git worktrees as **running environments** — provisioned files, installed dependencies,
+a dev server on its own port, live logs. `SPEC.md` is the product spec. This file is the set of rules
+that are not visible from the code; `MILESTONES.md` records what is built and the traps found on the
+way.
 
 ## Commands
 
 ```bash
-npm run dev          # nuxt dev on 127.0.0.1:5600
+npm run dev          # nuxt dev on 127.0.0.1:5600, auth disabled
 npm run build        # nuxt build -> .output/
 npm run typecheck    # vue-tsc across app/, server/ and shared/
 npm start            # bin/ccwt.mjs — the shipped entry point
-node bin/ccwt.mjs --no-open --port 4600
 ```
 
-`npx nuxt` does not work in this shell — a command hook rewrites it. Use `./node_modules/.bin/nuxt`.
-
-**Delete `.nuxt/` and `.output/` before trusting a build that changed `nuxt.config.ts`.** The SPA
-shell is generated into the renderer chunk at build time and a stale one served the old `<html>`
-tag for two rebuilds while the config on disk already said otherwise.
+- `npx nuxt` does not work in this shell; a command hook rewrites it. Use `./node_modules/.bin/nuxt`.
+- **Delete `.nuxt/` and `.output/` before trusting a build that changed `nuxt.config.ts`.** The SPA
+  shell is generated into the renderer chunk at build time and goes stale.
+- Changing `shared/` requires restarting `npm run dev`; it does not hot-reload.
 
 ## Architecture
 
-One Nuxt project, `ssr: false`. Two rules keep the seams clean and both are load-bearing:
+One Nuxt project, `ssr: false`. Two seams, both load-bearing:
 
-1. **`server/lib/` never imports Nuxt or H3.** Pure functions over `node:` builtins, testable
-   without booting the app. They import types by relative path (`../../shared/types`), never via the
-   `#shared` alias, because that alias is a Nuxt construct.
-2. **The frontend only reaches the backend through `app/composables/useApi.ts`.** One file to change
-   if this is ever wrapped in Electron. Nothing else may call `fetch` or open a `WebSocket`.
+1. **`server/lib/` never imports Nuxt or H3.** Pure functions over `node:` builtins. They import types
+   by relative path (`../../shared/types`), never via `#shared`, which is a Nuxt construct.
+2. **The frontend reaches the backend only through `app/composables/useApi.ts`.** Nothing else may
+   call `fetch` or open a `WebSocket`.
 
-`shared/types.ts` is the one type vocabulary both sides use. App code imports it as
-`#shared/types`; server code by relative path.
+`shared/types.ts` is the one type vocabulary. App code imports it as `#shared/types`, server code by
+relative path. **`server/api/` imports `server/lib/` through the `~~/server/lib/…` alias, never
+relatively** — the routes nest six deep and hand-counted `../` was wrong three times out of four.
 
-### What is real, and what still announces itself
+Unbuilt features throw `NotImplemented` from `stub.ts`; `guard()` turns that into a **501 naming the
+milestone** and any other `Error` into a 400 carrying its message. Grep `stub('` for what is owed.
 
-Milestone 1 is built: `exec`, `git`, `detect`, `ports`, `provision`, `supervisor`, `projects`,
-`worktrees`, `store`. What remains stubbed throws `NotImplemented` from `stub.ts` —
-`claude.launchSession` and the hook machinery (Milestones 2 and 4), and
-`provision.readWorktreeInclude` (Milestone 2).
+## Rules that break something if violated
 
-`guard()` (`server/utils/guard.ts`) turns that one error class into a **501 with the milestone in
-the message**, and any other `Error` into a 400 carrying its message. So an unbuilt feature reads as
-"not built yet, Milestone 2" in the error bar, and a real failure — a locked worktree, an exhausted
-port range, a path that already exists — reads as the sentence the lib threw. Grep `stub('` to see
-what each milestone still owes.
+### Ports
 
-**`server/api/` imports `server/lib/` through the `~~/server/lib/…` alias, never relatively.** The
-routes nest six directories deep (`projects/[id]/worktrees/[worktreeId]/services/[service]/`) and
-hand-counted `../../../../../..` was wrong in three files out of four on the first attempt.
+- Allocation is `hashToRange(path + service)` then a linear probe, persisted in
+  `git config --worktree ccwt.port.<service>`, which needs `extensions.worktreeConfig` — `create()`
+  sets it. This is **the only place ccwt writes to a repository it did not create.**
+- **A git config key may not contain an underscore.** Service names may, so keys are lowercased with
+  non-alphanumerics collapsed to dashes.
+- **A persisted port must still satisfy the range it is asked for.** `readAllocated` takes the range
+  and returns `null` outside it, so narrowing a range in the recipe actually moves the port.
+- `servicesFor` consults the supervisor's live entry only when the service is **not** stopped; a
+  stopped entry's port is stale the moment the range changes.
+- **A range whose ends are equal is a pinned port**, and everything that reports on ports must
+  account for it.
 
-### Two things fall out of Milestone 1 that the spec files under Milestone 2
+### Loopback is two address families
 
-Worth knowing before building §5.1, because most of it is already done:
+**Vite binds `localhost`, which on macOS is `[::1]` — nothing on `127.0.0.1`.**
 
-- **Discovery is free.** `git worktree list --porcelain` returns every worktree whoever made it, so
-  Claude Code's `.claude/worktrees/*` already appear on the dashboard, tagged by `classify()`.
-  There is no separate adopt step and no adopt endpoint — a discovered worktree gets a port the
-  moment you press start, because `startService` allocates on demand. What §5.1 still owes is
-  provisioning an adopted worktree that has no `node_modules`; the card marks those `unprovisioned`.
-- **Locks are respected.** `remove()` refuses a locked worktree and surfaces git's own lock reason,
-  and `WorktreeCard` disables the control. Verified against a real `git worktree lock`.
+- `ports.isFree()` requires the port free on **both** families, or it hands out a taken port.
+- `supervisor.canConnect()` tries both and takes either.
+- Generated URLs use **`localhost`**, never `127.0.0.1`, or an IPv6-only server is a dead link.
 
-### Removal is `--force`, and that is why it asks first
+ccwt's *own* server still binds `127.0.0.1` explicitly. The rule is: bind narrowly, probe broadly.
+
+### The supervisor
+
+- Services spawn `detached: true` and stop via `process.kill(-pid)` — the negative pid signals the
+  process group. Killing the child alone leaves the grandchild holding the port. `SIGKILL` follows
+  `SIGTERM` after four seconds.
+- State goes `starting` → `running` after 750ms still alive, not on first output.
+- `supervisor.note()` writes under the service name `provision`, which is how worktree creation
+  streams before its card exists.
+- `stopAll` runs on the Nitro `close` hook and on `SIGINT`/`SIGTERM` (decision **D1**).
+
+### Ordering and after-start commands
+
+- `dependsOn` starts each dependency **and waits for its port to answer** before the dependent —
+  spawn order alone is worthless. A dependency that never comes up logs and proceeds rather than
+  blocking forever.
+- Cycles and unknown names are rejected in `findCycle` at **validation**, so a bad graph is a 422
+  naming the loop, not a hang.
+- `postStart` runs when the service's port answers, in the worktree, with **the same environment the
+  service was spawned with**. A failing command is **retried for two minutes** — a port answering
+  does not mean everything behind it is ready. First attempt streams, retries run quiet, the settling
+  attempt prints its own output. A final failure skips the remaining commands and leaves the service
+  running.
+- **`waitReachable` waits for `settling` too**, so `dependsOn` means reachable *and* prepared. Its
+  probe deadline applies only before the port answers.
+- **`postRemove` may never block a removal** (`SPEC.md` §5.3). Every command's result is discarded.
+- `argv()` strips top-level quotes as a shell would, so hook commands must be plain argv, not shell
+  one-liners.
+
+### Provisioning
+
+- **Never symlink `node_modules` or anything into `.claude/`.** A `pnpm install` inside a worktree
+  prunes packages out of a symlinked shared root and breaks the root checkout, with nothing in git to
+  explain it. Copy or hardlink.
+- `provision.copy` copies; `provision.link` **hardlinks — the same inode**, so editing a linked file
+  edits the root checkout. Two lists, never one list with a mode toggle.
+- Per-entry outcomes go into a `ProvisionReport`; nothing throws. `copyFile` throws on a directory,
+  and one directory entry used to abort the whole chain silently.
+- **`ALWAYS_PER_WORKTREE` is enforced.** Linking one of those paths is refused, and any nested inside
+  something linked is removed afterwards.
+- **A symlink standing where real content belongs is replaced, not skipped.** It holds no data, and
+  it is invisible inside anything that follows the link rather than the target.
+- `startService` calls `needsProvisioning` first and provisions only when something is missing, so a
+  warm start does no work. There is no provision button.
+- With `dependencies: "hardlink"` the install runs after the link and npm will prune undeclared
+  packages out of the linked tree. Use `"copy"` to link without reconciling.
+
+### Removal is `--force`
 
 ccwt puts `node_modules` and copied `.env` files into a worktree, so `git worktree remove` always
-refuses with "contains modified or untracked files". Removal therefore passes `--force`, which
-deletes untracked work. Two things keep that honest and both must stay: the dashboard confirms with
-the exact path and states that the branch survives, and `remove()` refuses any worktree outside the
-project's configured `worktreesDir` unless it was classified `claude`.
+refuses. Two things keep `--force` honest and both must stay: the dashboard confirms with the exact
+path and states the branch survives, and `remove()` refuses any worktree outside the project's
+`worktreesDir` unless it was classified `claude`.
 
-### Ports live in git's own per-worktree config
+**Never remove a locked worktree** — Claude Code locks while an agent works. Say "an agent is working
+here", not an opaque failure.
 
-`git config --worktree ccwt.port.<service>`, which requires `extensions.worktreeConfig` to be `true`
-on the repo. `create()` sets it, idempotently. **This is the one place ccwt writes to a repository it
-did not create** — deliberate, per `SPEC.md` §8; the alternative was a sidecar database keyed by
-path that drifts the moment anything moves. Git's caveat applies: with the extension on, `core.bare`
-and `core.worktree` in the common config bind only to the main worktree. Neither is set on a normal
-checkout.
-
-Allocation is `hashToRange(path + service)` then a linear probe forward through the range, so a
-worktree keeps its port across restarts and two worktrees rarely collide before probing.
-
-### Loopback is two address families, and assuming one breaks everything
-
-**Vite binds `localhost`, which on macOS is `[::1]` — IPv6 only, nothing on `127.0.0.1`.** Three
-things were written against IPv4 and all three were wrong:
-
-- `ports.isFree()` bound only `127.0.0.1`, so it could not see an IPv6-only listener and handed out
-  a port that was already taken. Vite then printed "Port 5209 is in use, trying another one" and
-  moved to 5210, which looked like ccwt assigning the wrong port. It now requires the port free on
-  **both** families.
-- `supervisor.canConnect()` connected only to `127.0.0.1`, so a working IPv6-only dev server was
-  reported unreachable. It now tries both and takes either.
-- The URL handed to the browser was `http://127.0.0.1:<port>`, which is a dead link for an
-  IPv6-only server. Generated URLs use **`localhost`**, which resolves to whichever family bound.
-
-This does not contradict §9: ccwt's *own* server still binds `127.0.0.1` explicitly. The rule is
-that ccwt binds narrowly and probes broadly — it does not control how a project's dev server binds.
-
-### The supervisor spawns detached so it can kill a tree
-
-`npm run dev` is a process that spawns the process you actually care about. Killing the child leaves
-the grandchild holding the port. Services spawn with `detached: true` and stop via
-`process.kill(-pid)` — the negative pid signals the whole process group — escalating to `SIGKILL`
-four seconds after `SIGTERM`. Verified: stopping leaves no stray `node`, and neither does quitting
-ccwt (`stopAll` on the Nitro `close` hook plus `SIGINT`/`SIGTERM`, which is decision **D1**).
-
-State goes `starting` → `running` after 750ms still alive, rather than on first output: a server
-that prints nothing would otherwise never leave `starting`, and one that prints a banner then dies
-would flash `running`.
-
-`supervisor.note()` writes a synthetic log line under the service name `provision` — that is how
-worktree creation streams progress to the dashboard before the card it belongs to exists.
-
-`store.ts` holds `{id, rootPath, addedAt}` per project, plus the recipe once you edit one.
-Everything else on `Project` — name, package manager, default branch, diagnostics, the detected
-recipe — is **re-derived on every read** by `projects.hydrate()`, so changing a dev script or
-switching branches shows up without re-registering. Only what you deliberately customised is
-persisted, which is why *forget customisations* can always return a project to detection.
-
-### Security is not optional, and the loopback bind is not the control
-
-The backend runs `git` and spawns processes, so a web page that can reach it has remote code
-execution. Vite shipped CVE-2025-24010 for exactly this shape of bug.
-
-`server/middleware/security.ts` runs before every route:
-
-- **Host header validation is what stops DNS rebinding**, not the loopback bind. A browser resolving
-  `evil.example.com` to `127.0.0.1` still sends its own name in `Host`. Only `127.0.0.1`,
-  `localhost` and `[::1]` pass; anything else is 403 before any handler runs.
-- **The token is per run.** `bin/ccwt.mjs` generates 32 random bytes, writes them to `~/.ccwt/token`
-  at mode 600 for hook callbacks, and puts them in the launch URL. The middleware exchanges
-  `?t=<token>` for an HttpOnly `SameSite=Strict` cookie and **redirects to strip it from the URL**,
-  so the token does not survive in history or in a copied link.
-- **An empty token disables auth, and that is only ever true in `npm run dev`.** `bin/ccwt.mjs`
-  always sets one. Do not add a code path that boots the built server without it.
-- **WebSocket upgrades validate `Origin` separately** (`server/routes/_ws.ts`) because WebSockets
-  ignore CORS entirely — the cookie would be sent and the connection would open.
-
-A restart issues a new token, so an already-open tab starts failing with `Unauthorized` until the
-new launch URL is opened. That is the design, not a bug; the error bar says so plainly.
-
-**`GET /api/fs/list` is deliberately outside §9's containment rule and needs its own gate.** Every
-other path ccwt touches must be inside a registered project; a directory browser cannot be, because
-its whole purpose is finding a repository that is not registered yet. It is therefore a
-filesystem-read primitive on the network, and it carries `assertBrowsable()`
-(`server/utils/browsable.ts`) on top of the Host check and the token: if the process is bound to
-anything other than loopback, browsing is refused outright rather than merely token-gated. Two
-further limits are part of the design, not decoration — it returns **directories only, never files
-and never contents**, and it caps at 500 entries with a visible "narrow the path" notice rather than
-truncating silently.
-
-### `bin/ccwt.mjs` probes the port before it claims anything
-
-It used to print "listening on…" and then die on an unhandled `EADDRINUSE` from deep inside Nitro,
-which reads as "started fine, then crashed for no reason". It now binds a throwaway `net` server
-first and exits with a sentence naming the next free port. It has **zero dependencies** on purpose:
-it lives outside `.output/`, which bundles its own, so anything it imports would have to become a
-real runtime dependency of the published package.
-
-It refuses any `--host` that is not loopback. See above for why.
-
-## Web layer
-
-Terminal-native, dark-first, a hand-rolled Tailwind 4 shell. **This is a deliberate port of
-`claude-code-manager`'s console**, down to the token names, and it carries that project's rule:
-there is no component library, so nothing else's look leaks into the identity. `Nuxt UI` is listed
-in `SPEC.md` §3 and was rejected for that reason — its radii, shadows and control shapes read as a
-different product, and re-skinning it is permanent work.
-
-### Colour means three things and nothing else
-
-- **Warm is broken.** `--ccwt-alarm` and `--ccwt-caution` are the only warm hues. If something is
-  orange, it is wrong. Do not spend warm on anything else.
-- **`--ccwt-live` is alive.** One desaturated green, used for a running service and a working agent.
-  This is the one hue this project has that `claude-code-manager` does not, and it is a considered
-  addition rather than drift: that app spent its cool channel on a five-step precedence ramp, this
-  app has no precedence to encode, and "what is running right now" is the single question the
-  dashboard exists to answer at a glance. **Do not extend it.** A second cool hue means the palette
-  needs rethinking, not another token.
-- **Interaction uses neither.** Selection inverts (`bg → ink`, `text → canvas`), the way a terminal
-  cursor block does.
-
-`success` is achromatic on purpose — full-strength `text-ink`, never green. An agent that finished
-is not a running one, and giving both the live hue would collapse the distinction the card exists to
-draw.
-
-Type roles are load-bearing: **mono is what the machine said** (names, branches, paths, ports,
-counts), **sans is what we think about it** (descriptions, states, error messages).
-`.t-eyebrow` / `.t-data` / `.t-numeral` / `.t-badge` in `app/assets/style.css` are the only type
-primitives.
-
-### The `.t-*` split
-
-`.t-badge`, `.t-control`, `.t-tabs` and `.t-button` in `style.css` hold the shell — geometry, type,
-hairline, disabled treatment, focus ring. The components own only their own state. Two details
-inherited from the source project that were each written twice before they were written once:
-
-- **A tab's and a button's label is a separate blockified element.** Centring text in a fixed-height
-  box centres the font's *content* box, and `ui-monospace` is lopsided, so labels ride high or low
-  by ~1px. `text-box: trim-both cap alphabetic` fixes it, but **only on a blockified element** —
-  applied to the button itself the label is an anonymous flex item and the trim silently does
-  nothing.
-- **A control's indicator is inline, not a flex item.** A flex container takes its baseline from its
-  first item; an indicator with no text in it puts that baseline at its bottom edge and drops the
-  label ~3px against the numbers beside it.
-
-`Checkbox` and `Toggle` draw themselves because a native checkbox draws itself from the OS —
-rounded, blue, and the only rounded thing on the page. Both keep a real `<input type="checkbox">`,
-`sr-only` rather than `appearance: none`, so label association, the space bar and `role="switch"`
-still come free.
-
-### The theme class is set before paint, and is not head-managed
-
-`nuxt.config.ts` puts a tiny inline script in `<head>` that reads `localStorage['ccwt.theme']` and
-toggles `.dark` on `<html>`, defaulting to dark.
-
-**This replaced `htmlAttrs: { class: 'dark' }`, which was an actual bug.** With the class in
-`app.head`, unhead re-applied `dark` after the plugin had removed it — so a stored `light`
-preference rendered a dark page with a sidebar that read "light". Do not put the theme class back
-into `htmlAttrs` under any spelling; unhead will win the race. `useTheme` toggles `classList`
-directly and that is now the only writer.
-
-### Routing and pages
-
-`app/nav.ts` is the single nav manifest — path, title, blurb, icon, and whether it sits in the page
-list or pinned to the bottom. Adding a page means touching that file and `app/pages/`. It exists
-instead of `definePageMeta` because the sidebar needs a *component* per route, and Nuxt extracts
-page meta statically at build time.
-
-`ConsoleHeader` takes `title` and `blurb` as props rather than reading the route, so a drill-in page
-can title itself after the thing it is showing (`project/[id].vue` uses the project's name).
-
-`/preview` renders every primitive in every state. It is a real route in the shipped nav, not a
-scratch file, because this shell is hand-rolled: the source project documents its own primitives
-drifting — `h-7` beside `h-6`, `disabled` at 40% in one place and 50% in another — and one page
-where they sit side by side is what makes that visible. Its sample data is defined in the page and
-must never leak into the real ones; the dashboards render only what the API returned.
-
-## Conventions
-
-- **Do not write code comments.** No prose, no JSDoc, no section banners. The reasoning lives in
-  *this file*, which gets read before the code is touched rather than after. What a tool reads is
-  not a comment in that sense and stays: `@ts-expect-error`, a shebang, a directive a compiler needs.
-- **`noUncheckedIndexedAccess` is on.** Index access yields `T | undefined`; use `!` only after an
-  explicit length or existence check.
-- **`useLayout` is a Nuxt built-in.** The shell composable is `useShell` because of it. Check names
-  against Nuxt's auto-imports before adding a composable — the collision warning is easy to scroll
-  past during install.
-- **Discovery must never throw** once `server/lib/` is real. A repository that fails to parse must
-  still produce a value carrying a `Diagnostic`; the broken thing is what the dashboard exists to
-  show.
-- **`Diagnostic.code` is machine-readable** and namespaced `thing.problem` (`worktree.drift`,
-  `project.no-config`). Keep them stable; the UI will group on them.
-
-## Rules the Claude Code integration imposes
-
-These are not implemented yet (Milestone 2 onward) but they constrain what may be written:
-
-- **Never remove a locked worktree.** Claude Code runs `git worktree lock` while an agent is
-  working. Check before any removal and say "an agent is working here" rather than failing opaquely.
-  `WorktreeCard` already disables its remove button on `locked`.
-- **Never symlink into `.claude/`,** and never symlink `node_modules`. Claude Code refuses to create
-  a worktree when `.claude`, `.claude/worktrees` or the worktree directory is a symlink. Separately,
-  a symlinked `node_modules` lets a `pnpm install` inside a worktree **prune packages out of the
-  shared root** and break the root checkout, with nothing in git to explain it. Copy or hardlink.
-- **A worktree may vanish underneath us.** Claude Code sweeps stale subagent worktrees on its own
-  schedule. Releasing a port and reaping a process must tolerate the directory already being gone.
-- **`.worktreeinclude` is a config source, not a competitor.** A file is copied only if it matches a
-  pattern *and* is gitignored, so tracked files are never duplicated. `provision.copy` merges with
-  it rather than replacing it.
+**A worktree may vanish underneath us.** Claude Code sweeps stale subagent worktrees on its own
+schedule; releasing a port and reaping a process must tolerate the directory being gone.
 
 ### The recipe is ccwt's, not the project's
 
-`writeConfig` stores the recipe on the project's record in `~/.ccwt/state.json`. **There is no code
-path that writes a file into a registered repository, and there must not be one.** This was built
-the other way first — a committed `ccwt.config.json`, per `SPEC.md` §6 — and reversed, because a
-tool that makes you carry its config file in your repo is a tool people have to accommodate. The
-argument for the file was that a project could ship its recipe to teammates; §2 puts team features
-out of scope, and detection rebuilds the recipe from `package.json` anyway, which a committed file
-would only go stale against.
+`writeConfig` stores it on the project record in `~/.ccwt/state.json`. **There is no code path that
+writes a file into a registered repository, and there must not be one.**
 
-Reading order, in `readConfig`:
+`readConfig` order: the stored recipe → a committed `ccwt.config.json`, **read only** → detection.
+`resetConfig` drops the stored recipe, which is the only way back from a bad edit.
 
-1. the recipe stored on the project record — what the editor writes;
-2. a committed `ccwt.config.json`, **read only**, if a project chose to ship one;
-3. detection.
+`store.ts` holds `{id, rootPath, addedAt}` plus the recipe once edited. Everything else on `Project`
+is **re-derived on every read** by `projects.hydrate()`.
 
-`resetConfig` drops the stored recipe, which is what *forget customisations* does — it returns the
-project to whatever detection makes of it, so there is always a way back from a bad edit.
+`RECIPE_REVISION` is bumped when detection learns to produce a new field, raising
+`project.recipe-stale`. A stale recipe is **never** migrated or overwritten. Do not bump it for a
+field detection cannot produce.
 
-The mtime precondition went with the file. It guarded against clobbering another editor's write to
-a shared file on disk; ccwt's own state has one writer.
+### Security
 
-### A button beside an input must be the same height
+The backend runs `git` and spawns processes, so a page that reaches it has RCE.
+`server/middleware/security.ts` runs before every route:
 
-`.t-input` is `1.75rem` and `Button`'s **`md`** size is `h-7`, which is the same. `sm` is `h-6` and
-does **not** line up — an `sm` button next to an input sits 4px short at the bottom. So any button
-in a row with an input keeps the default size, and `sm` is for buttons that stand on their own.
-Both are on `/preview`; check there before changing either number.
+- **Host header validation is what stops DNS rebinding**, not the loopback bind. Only `127.0.0.1`,
+  `localhost` and `[::1]` pass.
+- **The token is per run.** `bin/ccwt.mjs` writes 32 random bytes to `~/.ccwt/token` at mode 600 and
+  puts them in the launch URL; the middleware exchanges `?t=` for an HttpOnly `SameSite=Strict`
+  cookie and **redirects to strip it from the URL**.
+- **An empty token disables auth, and that is only ever true in `npm run dev`.** Do not add a path
+  that boots the built server without one.
+- **WebSocket upgrades validate `Origin` separately** — WebSockets ignore CORS.
+- **`GET /api/fs/list` carries `assertBrowsable()`** on top of that: it is deliberately outside §9's
+  containment rule, so it refuses outright when bound to anything but loopback, returns
+  **directories only**, and caps at 500 entries with a visible notice.
 
-### Copy and link are different promises, and the editor has to say so
+`bin/ccwt.mjs` probes the port with a throwaway `net` server before claiming it, has **zero
+dependencies** on purpose (it lives outside `.output/`), and refuses any non-loopback `--host`.
 
-`provision.copy` makes an independent copy; `provision.link` makes a **hardlink — the same inode**,
-so editing a linked file inside a worktree edits the root checkout. That is right for dependencies
-and large fixtures and wrong for anything hand-edited, which is why they are two lists rather than
-one list with a mode toggle: the dangerous option should not sit one dropdown away from the safe one
-on every row. The editor states the consequence in the caution colour above the link list.
+## Web layer
 
-`copyFiles` used `copyFile`, which **throws on a directory**, and `provision()` had no per-step
-guard — so a single directory entry aborted the whole chain and the worktree came out with no
-dependencies and no `postCreate`, visible only in the log stream. Both lists now collect per-entry
-outcomes into a `ProvisionReport` (`copied` / `linked` / `pruned` / `skipped` / `failed`) instead of
-throwing, and every one of those is surfaced as a provisioning log line with its reason. Entries
-that escape the project, contain a glob, or already exist in the worktree are skipped and say why;
-a missing source is silent, because listing `.env.local` in a project that has none is not an error.
+Terminal-native, dark-first, hand-rolled Tailwind 4. **There is no component library and must not
+be** — `Nuxt UI` is in `SPEC.md` §3 and was rejected because its radii and control shapes read as a
+different product.
 
-**`ALWAYS_PER_WORKTREE` is live now.** It was declared and referenced by nothing while
-`hardlinkModules` linked all of `node_modules`, including `node_modules/.vite` — directly against
-`SPEC.md` §7. Linking one of those paths is refused outright, and any of them nested inside
-something that *was* linked is removed from the worktree afterwards. Verified: a linked
-`node_modules` shares inodes with the root and costs 0 B, and `node_modules/.vite` exists in the
-root and not in the worktree.
+- **Warm is broken.** `--ccwt-alarm` and `--ccwt-caution` are the only warm hues.
+- **`--ccwt-live` is alive** — one desaturated green, for a running service or a working agent. **Do
+  not extend it.** A second cool hue means the palette needs rethinking.
+- **Interaction uses neither.** Selection inverts (`bg → ink`, `text → canvas`).
+- **`success` is achromatic**, never green — a finished agent is not a running one.
+- **Mono is what the machine said** (names, branches, paths, ports); **sans is what we think about
+  it** (descriptions, states, errors). `.t-eyebrow` / `.t-data` / `.t-numeral` / `.t-badge` are the
+  only type primitives.
 
-One thing that looks like a bug and is not: with `dependencies: "hardlink"` the install runs after
-the link to reconcile, and npm will prune anything in the linked tree that the manifest does not
-declare. Use `"copy"` to link without reconciling.
+`.t-badge`, `.t-control`, `.t-tabs`, `.t-button` hold geometry, type, hairline, disabled and focus;
+components own only their own state. Two details that were each written twice:
 
-### A persisted port must still satisfy the range
+- **A tab's or button's label must be a separate blockified element.** `text-box: trim-both cap
+  alphabetic` silently does nothing on an anonymous flex item, and `ui-monospace` rides ~1px off.
+- **A control's indicator is inline, not a flex item**, or the container takes its baseline from the
+  indicator's bottom edge and drops the label ~3px.
 
-`allocate()` returned the port stored in `git config --worktree ccwt.port.<service>` without
-checking it against the range it was asked for, so narrowing a service's range in the recipe did
-nothing to a worktree that already had a port — it kept starting on the old one, and the card kept
-advertising it. `readAllocated` now takes the range and returns `null` for a stored port outside it,
-which makes `allocate()` fall through and rewrite the value. The range in the recipe is the
-constraint; a stored port is a cache of a past decision, not a fact that outranks it.
+`Checkbox` and `Toggle` draw themselves — a native checkbox is the only rounded thing on the page —
+but keep a real `sr-only` `<input type="checkbox">` rather than `appearance: none`, so label
+association, the space bar and `role="switch"` still come free.
 
-`servicesFor` consults the supervisor's live entry only when the service is **not** stopped. A
-stopped entry keeps the port it last ran on, which is stale the moment the range changes, so a
-stopped service reports what it would use next — or nothing, if that has yet to be decided.
+**A button beside an input must be the same height.** `.t-input` is `1.75rem`; `Button`'s **`md`** is
+`h-7` and matches, `sm` is `h-6` and sits 4px short. Check `/preview` before changing either.
 
-### Ordering is a promise about reachability, not about spawn order
+**The theme class is set before paint by an inline script in `nuxt.config.ts` and is not
+head-managed.** Do not put it back into `htmlAttrs` under any spelling — unhead re-applies it after
+the plugin runs and a stored `light` preference renders dark. `useTheme` is the only writer.
 
-`dependsOn` makes `startService` walk the dependency graph and start each dependency **and wait for
-its port to answer** before the dependent is spawned. Spawn order alone would be worthless: the
-whole reason a service declares a dependency is that it needs the other one *serving*, and a
-database accepts TCP several seconds after its process exists. `supervisor.waitReachable` polls the
-same `reachable` flag the probe sets, so the two agree by construction.
+`app/nav.ts` is the single nav manifest; adding a page means touching it and `app/pages/`. It exists
+instead of `definePageMeta` because the sidebar needs a *component* per route. `ConsoleHeader` takes
+`title` and `blurb` as props so a drill-in page can title itself. `/preview` is a shipped route that
+renders every primitive in every state; its sample data must never leak into real pages.
 
-A dependency that never comes up does **not** block the dependent forever — after the probe window
-it logs `<name> never came up, starting <service> anyway` and proceeds. Refusing to start would
-leave you staring at a dashboard with no output to diagnose from; starting and failing loudly gives
-you the dependent's own error.
+## Conventions
 
-Cycles and unknown names are rejected at **validation**, in `findCycle` inside the schema, so a bad
-graph is a 422 naming the loop (`a → b → a`) rather than a hang at start time. Pressing start on one
-service starts its dependencies too, which is why the card only shows *start all* when a project has
-more than one service — for a single service it would be the same button twice.
-
-Every service is spawned with `CCWT_PORT_<NAME>` and `CCWT_URL_<NAME>` for **all** services, not
-just its own port. The `.env.local` block covers frameworks that load env files; this covers
-everything else, and it is what makes the Setup panel's "started with its port in the environment"
-true rather than half-true.
-
-### `postRemove` may never block a removal
-
-`SPEC.md` §5.3 requires teardown to proceed regardless of what a hook does, so every `postRemove`
-command runs with its result discarded — a command that fails, or does not exist, is not allowed to
-strand a worktree. It runs after the services are stopped and before `git worktree remove`, with the
-same `{{slug}}` / `{{branch}}` / `{{worktreePath}}` substitutions, which is what makes
-`docker volume rm ccwt-{{slug}}` work.
-
-Note that `argv()` strips top-level quotes exactly as a shell would, so a command like
-`node -e require("fs")…` loses its inner quotes and fails. That is faithful, not a bug — but it
-means postRemove commands should be plain argv, not shell one-liners.
-
-### Compose is detected and reported, not driven
-
-`compose.ts` reads the well-known compose filenames from the root, `docker/` and `.docker/`, parses
-them with `yaml`, and pulls out each service's image, whether it is built here, its published ports
-and a coarse `kind` from the image name (`mysql` → database, `nginx` → proxy, a `build:` → app).
-That is what lets a Laravel-plus-MySQL project stop reporting "one service, nothing to configure"
-when it actually runs three containers.
-
-Detection then proposes **one ccwt service for the whole stack**, not one per container:
-`docker compose -f <file> up --remove-orphans` with `COMPOSE_PROJECT_NAME=ccwt-{{slug}}`, so
-containers, networks and volumes are namespaced per worktree without touching the file. Its port
-range comes from the stack's primary published port — the first port of the first proxy, then app,
-then anything — so the reachability probe watches the port you would actually open.
-
-**The published-port distinction is the whole point of the report.** A literal `"20080:80"` is the
-same in every worktree, so two worktrees cannot run the stack at once; a `"${WEB_PORT:-20080}:80"`
-reads from the environment, and Compose loads `.env` from the project directory — which ccwt already
-writes — so each worktree can have its own. Where the primary port is a variable, `composeService`
-wires `{{port}}` into it and the stack really does become per-worktree. Where it is a literal, the
-Setup panel names the offending service and port and offers the one-line change as optional.
-
-`portMode` has to account for both sources. It was computed only from `inspect.ts`'s scan of
-JavaScript config files, so a project whose *only* fixed port lived in a compose file reported
-"nothing to configure — worktrees run side by side" directly above a caution saying they could not.
-Any fixed published port now sets `fixed` too.
-
-Not done, and deliberately: nothing parses or rewrites the compose file, nothing chooses between
-several compose files beyond taking the first match, and `depends_on` inside compose is Compose's
-business rather than ccwt's `dependsOn`. `SPEC.md` §2 still files real Compose support under Later.
-
-### Compose: ccwt allocates ports, the project's file spends them
-
-This was built twice. The first attempt parsed the compose file and generated an override at start
-time — `ports: !override`, renamed containers, network aliases to keep the old names resolvable. It
-worked for the project it was written against and **failed on three of five other compose shapes**:
-a container-only `"6379"` produced an invalid override, a stack publishing nothing probed a dead port
-forever, and aliases on an *external* network would collide between worktrees. All that machinery
-existed to infer something the user can simply say.
-
-So the override generator is gone. The contract is now:
-
-1. the project commits a worktree-ready compose file whose published ports read from the
-   environment — `ports: ["${WEB_PORT:-20080}:80"]`;
-2. `portVariables()` reads those variable names **out of that file**, so nothing has to be declared
-   twice, and the recipe records them as `ports: { WEB_PORT: [20080, 20179] }`;
-3. ccwt allocates one per worktree, persists it like any other port, and exports it when spawning
-   `docker compose`.
-
-**Compose interpolates from the process environment, which beats `.env`** — verified before this was
-built, along with the fallback applying when nothing is set. So ccwt writes no file and mutates
-nothing. `COMPOSE_PROJECT_NAME=ccwt-{{project}}-{{slug}}` namespaces containers, networks and volumes,
-and carries the repository name because a worktree slug alone collides across projects.
-
-**Only the host side of a port is dynamic.** `"${WEB_PORT}:80"` leaves 80 alone, so `DB_HOST=db`,
-`REDIS_HOST=redis` and container-to-container traffic are untouched — which is the property that
-makes this safe for any stack. Verified with two worktrees of an nginx + Redis + MySQL stack: six
-containers, six distinct host ports, all serving, and `db` resolving to a *different* address inside
-each stack.
-
-Two traps found while building it, both worth keeping:
-
-- **`${VAR:-default}` contains a colon**, so splitting a port string on `:` mangles the very syntax
-  this design recommends. `readPort` masks `${…}` blocks before splitting and restores them after.
-  All five forms are covered: default syntax, bare variable, plain number, bind address, container-only.
-- **A git config key may not contain an underscore.** `ccwt.port.stack-WEB_PORT` is rejected outright
-  by git, so port keys are lowercased and non-alphanumerics collapse to dashes.
-
-What remains of `compose.ts` is read-only: parsing for the Setup panel, and `scaffold()` which
-generates a starting worktree-ready file for the user to review and commit.
-
-
-### A stored recipe can silently miss what ccwt learned later
-
-`RECIPE_REVISION` in the schema is bumped whenever a field is added, and `writeConfig` stamps it on
-the record. A recipe stored under an older revision raises `project.recipe-stale` telling you to
-press detect — it is **not** migrated or overwritten, because the stored recipe is the user's and
-guessing at their intent is worse than telling them. This was found the honest way: charactersheet
-had a recipe saved between compose *detection* and compose *isolation* landing, so it kept running
-the old command with no override and nothing said so.
-
-### Provisioning repairs itself on start, and there is no button for it
-
-A recipe's `copy` and `link` lists used to be applied once, at creation. Adding an entry afterwards
-did nothing to worktrees that already existed, and an adopted worktree — Claude Code's — was never
-provisioned at all. There was briefly a *provision* button; it was removed, because a button you
-have to know about is a worse design than a thing that just happens.
-
-`startService` calls `needsProvisioning` first and only provisions when something is actually
-missing: an entry from `copy`/`link` absent from the worktree while present in the root, dependencies
-absent, **or a symlink standing where real content belongs**. When nothing is missing it does no
-work at all — a warm start measures 0.1s and logs nothing.
-
-**A symlink in the way is replaced, not skipped.** This came from a real failure: a worktree had
-`vendor -> /Users/…/charactersheet/vendor` from months earlier, which looks fine on the host and is
-*invisible inside a container* — the bind mount carries the link, not its target, so PHP saw
-`/var/www/vendor` dangle and could not find `autoload.php`. Provisioning used to see "a path already
-exists" and skip. It now removes the symlink and links the real tree, saying so in the log. A
-symlink holds no data, so replacing it loses nothing, and `SPEC.md` §7 is explicit that a symlinked
-dependency directory can corrupt the root checkout as well.
-
-### A filename is not a contract
-
-`docker-compose.worktree.yml` was in ccwt's preferred list, on the assumption that the name meant
-"written for worktrees". In the project it was found in, it meant something else entirely: run *from
-the repository root* with `WORKTREE=<name>`, building from `.worktrees/${WORKTREE}`. ccwt starts a
-stack from inside the worktree, so that path resolved to `<worktree>/.worktrees` and the build failed
-with `unable to prepare context`.
-
-Only `*.ccwt.*` names may be assumed to follow ccwt's contract, because only ccwt uses them. Every
-other compose file is inspected instead of trusted: `rootOriented()` looks for paths reaching into
-`.worktrees/`, `runnableFromWorktree()` refuses those, and `findCompose()` sorts them last. A skipped
-file is reported with the offending lines, because a file being silently ignored is worse than one
-that fails.
-
-When a port variable has no default — `${DB_DOCKER_PORT}` — the range is derived from the
-**container** port (3306 → 3306-3405), not from an arbitrary constant. The container port is the one
-piece of information that is always present and always meaningful.
-
-### A recipe's declared ports must match the file it runs
-
-The port variables live in the project's compose file; the recipe records the ones ccwt allocates.
-Those two drift, and when they do the failure is opaque: a variable ccwt never exports falls back to
-the default written in the file, every worktree shares that default, and Docker reports
-`Bind for 0.0.0.0:33060 failed: port is already allocated` — which says nothing about a stale recipe.
-
-`hydrate()` compares them. For any service whose command names a compose file, the declared port
-names are diffed against `portVariables()` of that file, and a mismatch is an **error** naming both
-sides. It is not repaired automatically: the recipe belongs to the user, and pressing detect shows a
-diff first.
-
-This was found when a project's stored recipe still declared `WT_PORT`, learned from a
-`docker-compose.worktree.yml` that detection used to prefer, after the user had written a proper
-`docker-compose.ccwt.yml` using `WEB_PORT` and `DB_DOCKER_PORT`.
+- **Do not write code comments.** No prose, no JSDoc, no banners. Reasoning lives here. What a tool
+  reads stays: `@ts-expect-error`, a shebang, a compiler directive.
+- **`noUncheckedIndexedAccess` is on.** Use `!` only after an explicit length or existence check.
+- **`useLayout` is a Nuxt built-in** — the shell composable is `useShell`. Check Nuxt's auto-imports
+  before adding a composable.
+- **Discovery must never throw.** A repository that fails to parse must still produce a value
+  carrying a `Diagnostic`; the broken thing is what the dashboard exists to show.
+- **`Diagnostic.code` is machine-readable**, namespaced `thing.problem` (`worktree.drift`,
+  `project.no-config`). Keep them stable.
+- **`.worktreeinclude` is a config source, not a competitor** (`SPEC.md` §5.4, still stubbed). A file
+  is copied only if it matches a pattern *and* is gitignored. `provision.copy` merges with it.
+- **ccwt is command-agnostic.** It allocates a port, renders a template, spawns a process, probes the
+  port, kills the process group. It does not know what any command does, and nothing may teach it
+  about a particular stack, framework or runtime.

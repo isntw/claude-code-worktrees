@@ -1,6 +1,7 @@
 import { basename, join, resolve } from 'node:path'
 import type {
   AgentStatus,
+  LockState,
   Project,
   ServiceConfig,
   ServiceStatus,
@@ -13,16 +14,37 @@ import {
   idFor,
   isInside,
   listWorktrees,
+  lockWorktree,
   pruneWorktrees,
   removeWorktree,
+  unlockWorktree,
 } from './git'
 import { isSymlink, pathExists, readJsonSafe } from './fs'
-import { allocate, readAllocated, release } from './ports'
+import { allocate, isListening, readAllocated, release } from './ports'
 import { provision, runPostRemove, worktreePathFor, worktreesDirFor } from './provision'
 import { ENV_FILE, writeEnvBlock } from './envfile'
 import * as supervisor from './supervisor'
 
 const IDLE: AgentStatus = { state: 'idle', sessionId: null, subagents: 0, updatedAt: null }
+
+function stillRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (cause) {
+    return (cause as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+function lockStateOf(locked: boolean, reason: string | null): LockState | null {
+  if (!locked) return null
+
+  const found = reason?.match(/\bpid\s+(\d+)/i)
+  const pid = found ? Number(found[1]) : 0
+  if (pid <= 0) return 'unknown'
+
+  return stillRunning(pid) ? 'live' : 'gone'
+}
 
 async function isProvisioned(worktreePath: string): Promise<boolean> {
   const manifest = await readJsonSafe<{
@@ -48,19 +70,6 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-async function allocateDeclared(
-  worktreePath: string,
-  service: ServiceConfig,
-): Promise<Record<string, number>> {
-  const out: Record<string, number> = {}
-
-  for (const [name, range] of Object.entries(service.ports ?? {})) {
-    out[name] = await allocate(worktreePath, `${service.name}-${name}`, range)
-  }
-
-  return out
-}
-
 async function allocateAll(
   project: Project,
   worktreePath: string,
@@ -78,6 +87,8 @@ async function allocateAll(
 
   return ports
 }
+
+const PROBE_MS = 250
 
 async function servicesFor(
   project: Project,
@@ -102,6 +113,7 @@ async function servicesFor(
         startedAt: null,
         exitCode: null,
         reachable: null,
+        taken: port === null ? false : await isListening(port, PROBE_MS),
       }
     }),
   )
@@ -109,8 +121,6 @@ async function servicesFor(
 
 export async function list(project: Project): Promise<Worktree[]> {
   if (!project.config) return []
-
-  await pruneWorktrees(project.rootPath)
 
   const dir = worktreesDirFor(project.rootPath, project.config)
   const raw = await listWorktrees(project.rootPath)
@@ -135,6 +145,7 @@ export async function list(project: Project): Promise<Worktree[]> {
           bare: entry.bare,
           locked: entry.locked,
           lockReason: entry.lockReason,
+          lockState: lockStateOf(entry.locked, entry.lockReason),
           prunable: entry.prunable,
           provisioned: await isProvisioned(entry.path),
           services: await servicesFor(project, id, entry.path),
@@ -250,7 +261,7 @@ export async function reprovision(project: Project, worktreeId: string): Promise
       supervisor.note(
         worktreeId,
         'provision',
-        `replaced symlinks: ${report.replaced.join(', ')} — a symlink is invisible to a container and can corrupt the root checkout`,
+        `replaced symlinks: ${report.replaced.join(', ')} — a symlink is followed inconsistently and can corrupt the root checkout`,
       )
     if (report.copied.length) supervisor.note(worktreeId, 'provision', `copied ${report.copied.join(', ')}`)
     if (report.linked.length) supervisor.note(worktreeId, 'provision', `linked ${report.linked.join(', ')}`)
@@ -301,15 +312,13 @@ export async function startService(
     const live = supervisor.status(worktreeId, name)
     const already = live && (live.state === 'running' || live.state === 'starting')
 
-    const declared = await allocateDeclared(worktreePath, next)
-    const port = declared[next.primary ?? ''] ?? ports[name]!
+    const port = ports[name]!
 
     if (!already) {
       status = await supervisor.start(worktreeId, worktreePath, next, port, {
         project: slugify(project.name),
         port,
         ports,
-        declared,
         slug: basename(worktreePath),
         branch: branch ?? '',
         rootPath: project.rootPath,
@@ -374,12 +383,53 @@ export async function startAll(
   return out
 }
 
+export const CCWT_LOCK_REASON = 'locked from ccwt'
+
+export async function lock(project: Project, worktreeId: string): Promise<Worktree> {
+  const worktree = await find(project, worktreeId)
+  if (!worktree) throw new Error('No such worktree.')
+  if (worktree.root) throw new Error('The repository root cannot be locked.')
+  if (worktree.locked) return worktree
+
+  await lockWorktree(project.rootPath, worktree.path, CCWT_LOCK_REASON)
+
+  const after = await find(project, worktreeId)
+  if (!after) throw new Error('No such worktree.')
+  return after
+}
+
+export async function unlock(project: Project, worktreeId: string): Promise<Worktree> {
+  const worktree = await find(project, worktreeId)
+  if (!worktree) throw new Error('No such worktree.')
+  if (!worktree.locked) return worktree
+
+  if (worktree.lockState === 'live') {
+    throw new Error(
+      worktree.lockReason
+        ? `Still held by a running process — ${worktree.lockReason}`
+        : 'Still held by a running process.',
+    )
+  }
+
+  await unlockWorktree(project.rootPath, worktree.path)
+
+  const after = await find(project, worktreeId)
+  if (!after) throw new Error('No such worktree.')
+  return after
+}
+
 export async function remove(project: Project, worktreeId: string): Promise<void> {
   const worktree = await find(project, worktreeId)
   if (!worktree) throw new Error('No such worktree.')
   if (worktree.root) throw new Error('That is the repository root, not a worktree ccwt can remove.')
   if (worktree.locked) {
     throw new Error(worktree.lockReason || 'An agent is working here.')
+  }
+
+  if (worktree.prunable) {
+    await supervisor.stopWorktree(worktreeId)
+    await pruneWorktrees(project.rootPath)
+    return
   }
 
   const config = project.config

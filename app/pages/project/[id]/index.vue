@@ -59,13 +59,37 @@ const load = async () => {
   }
 }
 
+const show = async (worktreeId: string) => {
+  selected.value = worktreeId
+  router.replace({ query: { ...route.query, worktree: worktreeId } })
+  lines.value = await api.logs(projectId.value, worktreeId).catch(() => [])
+}
+
+const hide = () => {
+  selected.value = null
+  lines.value = []
+  const { worktree: _dropped, ...rest } = route.query
+  router.replace({ query: rest })
+}
+
 const select = async (worktree: Worktree) => {
   if (selected.value === worktree.id) {
-    selected.value = null
+    hide()
     return
   }
-  selected.value = worktree.id
-  lines.value = await api.logs(projectId.value, worktree.id).catch(() => [])
+  await show(worktree.id)
+}
+
+const clear = async () => {
+  const target = selected.value
+  if (!target) return
+  await api.clearLogs(projectId.value, target).catch(() => undefined)
+  lines.value = []
+}
+
+const watching = async (worktree: Worktree, run: () => Promise<unknown>) => {
+  if (selected.value !== worktree.id) await show(worktree.id)
+  await act(run)
 }
 
 const act = async (run: () => Promise<unknown>) => {
@@ -100,7 +124,7 @@ const confirmRemove = async () => {
   removeBusy.value = true
   try {
     await api.removeWorktree(projectId.value, target.id)
-    if (selected.value === target.id) selected.value = null
+    if (selected.value === target.id) hide()
     doomed.value = null
     error.value = null
   } catch (cause) {
@@ -119,17 +143,23 @@ const forget = async () => {
 
 let disconnect: (() => void) | null = null
 
-onMounted(() => {
-  load()
+onMounted(async () => {
   disconnect = api.connect((message) => {
     if (message.type === 'log') {
-      if (!selected.value || message.line.worktreeId === selected.value) {
+      if (message.line.worktreeId === selected.value) {
         lines.value = [...lines.value.slice(-999), message.line]
       }
       return
     }
     load()
   })
+
+  await load()
+
+  const remembered = route.query.worktree
+  if (typeof remembered === 'string' && worktrees.value.some((w) => w.id === remembered)) {
+    await show(remembered)
+  }
 })
 
 onBeforeUnmount(() => disconnect?.())
@@ -203,10 +233,14 @@ onBeforeUnmount(() => disconnect?.())
         :worktree="worktree"
         :selected="selected === worktree.id"
         @select="select(worktree)"
-        @start-all="act(() => api.startAll(projectId, worktree.id))"
-        @start="(service) => act(() => api.startService(projectId, worktree.id, service))"
+        @start-all="watching(worktree, () => api.startAll(projectId, worktree.id))"
+        @start="
+          (service) => watching(worktree, () => api.startService(projectId, worktree.id, service))
+        "
         @stop="(service) => act(() => api.stopService(projectId, worktree.id, service))"
         @launch="act(() => api.launchAgent(projectId, worktree.id))"
+        @lock="act(() => api.lockWorktree(projectId, worktree.id))"
+        @unlock="act(() => api.unlockWorktree(projectId, worktree.id))"
         @remove="doomed = worktree"
       />
     </div>
@@ -219,7 +253,7 @@ onBeforeUnmount(() => disconnect?.())
       </p>
     </div>
 
-    <LogViewer class="mt-4" :lines="lines" />
+    <LogViewer class="mt-4" :lines="lines" @clear="clear" />
   </main>
 
   <CreateWorktreeModal
@@ -230,8 +264,16 @@ onBeforeUnmount(() => disconnect?.())
     @create="create"
   />
 
-  <ModalPanel v-if="doomed" title="Remove worktree" @close="doomed = null">
-    <p class="font-sans text-xs text-dim">
+  <ModalPanel
+    v-if="doomed"
+    :title="doomed.prunable ? 'Drop stale entry' : 'Remove worktree'"
+    @close="doomed = null"
+  >
+    <p v-if="doomed.prunable" class="font-sans text-xs text-dim">
+      <code class="font-mono text-ink">{{ doomed.path }}</code> is already gone from disk. This drops
+      the entry git still keeps for it. Nothing on disk changes.
+    </p>
+    <p v-else class="font-sans text-xs text-dim">
       This deletes <code class="font-mono text-ink">{{ doomed.path }}</code> from disk, including
       untracked files ccwt put there — <code class="font-mono">node_modules</code>, copied
       <code class="font-mono">.env</code> files, and anything else not committed.
@@ -249,7 +291,9 @@ onBeforeUnmount(() => disconnect?.())
         :outline="false"
         :disabled="removeBusy"
         @click="confirmRemove"
-        >{{ removeBusy ? 'removing…' : 'remove' }}</Button
+        >{{
+          removeBusy ? 'working…' : doomed.prunable ? 'drop entry' : 'remove'
+        }}</Button
       >
     </template>
   </ModalPanel>

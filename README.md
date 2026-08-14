@@ -15,8 +15,7 @@ on creating a feature worktree is one click.
 ## Status
 
 **Usable.** Register a repository, create a worktree, watch it get provisioned, get its own ports
-and running services, read the logs, open the URL, remove it cleanly — including Docker Compose
-stacks, which get isolated per worktree without editing your compose file. What is not built returns
+and running services, read the logs, open the URL, remove it cleanly. What is not built returns
 `501 Not Implemented` naming the milestone that owes it.
 
 | Milestone | What it adds | State |
@@ -26,12 +25,12 @@ stacks, which get isolated per worktree without editing your compose file. What 
 | 3 | validated recipes, multiple services, recipe editor | **done** |
 | 4 | session-status hooks, port map, git status, drift detection | **not started** |
 | 5 | `WorktreeCreate` ownership | not started |
-| + | Compose isolation, file browser, zero-touch setup | **done** — outside the plan |
+| + | File browser, zero-touch setup, after-start commands | **done** — outside the plan |
 
 `MILESTONES.md` has the detail, including how each claim was verified.
 
 **The honest gaps:** the *launch a session* button and the agent badge on every card are inert until
-Milestone 4's hooks land, detection understands Node and Compose but not Python or Ruby, and there
+Milestone 4's hooks land, detection understands Node but not Python, Ruby or PHP, and there
 are no automated tests yet.
 
 Two pieces of Milestone 2 came for free. Every worktree of the repository is listed whoever made
@@ -41,13 +40,12 @@ locked cannot be removed; the dashboard shows git's own lock reason instead.
 
 ## What it does that a shell alias does not
 
-- **Isolates a Docker Compose stack per worktree** by generating an override file, so two branches
-  run the same stack at once and your compose file is never touched
 - **Allocates and remembers a port per service, per worktree**, in git's own per-worktree config
 - **Waits for a dependency to actually answer** before starting what depends on it
 - **Tells you when a port is not reachable**, instead of handing you a dead link
-- **Explains what it found** — services, containers, published ports, and anything hardcoded that
-  would stop worktrees running side by side
+- **Runs your own commands once a service answers** — migrations, seeds, a warm-up request
+- **Explains what it found** — services, ports, and anything hardcoded that would stop worktrees
+  running side by side
 
 ## Running it
 
@@ -95,38 +93,23 @@ CCWT_URL_SERVER=http://localhost:4767
 
 Anything you already have in that file is kept; only the marked block is rewritten.
 
-### Docker Compose
+### Running something once a service is up
 
-Commit a compose file whose published ports come from the environment, and ccwt gives each worktree
-its own:
+**Run once this service answers** on a service takes any commands you like, executed when its port
+responds, in the worktree, with the same environment ccwt started the service with:
 
-```yaml
-# docker-compose.ccwt.yml — yours, committed
-services:
-  web:
-    image: nginx:alpine
-    ports: ["${WEB_PORT:-20080}:80"]
-  db:
-    image: mysql:8
-    ports: ["${DB_PORT:-13306}:3306"]
+```
+npm run db:migrate
 ```
 
-ccwt reads those variable names out of your file, allocates one port each per worktree, and exports
-them when it runs `docker compose up`. Compose interpolates from the environment, so **nothing is
-generated and nothing of yours is rewritten**. `COMPOSE_PROJECT_NAME` separates containers, networks
-and volumes per project and worktree.
-
-**Only the host side moves.** `"${WEB_PORT}:80"` leaves the container port alone, so `DB_HOST=db`,
-`REDIS_HOST=redis` and all container-to-container traffic keep working exactly as before. The
-allocated port is only what *you* open in a browser or a database client.
-
-If your compose file still has a number where a variable should be, the Setup panel names the
-service and port and shows the one-line change.
+They run on every start, so keep them idempotent. A failing command is **retried for two minutes** —
+a port answering does not always mean everything behind it is ready. If it never succeeds it is
+reported with its exit code and the commands after it are skipped; the service keeps running so you
+can read its logs.
 
 ### The one case that still needs a decision
 
-Compose is handled above. What is left is a project that writes another service's address into a
-config file as a literal — a Vite proxy
+A project that writes another service's address into a config file as a literal — a Vite proxy
 pointing at `http://127.0.0.1:4599`, say — then every worktree points at the same place, because a
 value baked into a file cannot differ between two copies of it. Nothing can change that from the
 outside.
@@ -148,7 +131,7 @@ Most projects never hit this. Of the eight repositories this was tested against,
 
 One Nuxt project, `ssr: false`. Vue SFCs in `app/`, Nitro server routes in `server/`, one shared
 type vocabulary in `shared/`. No database — JSON files and git's own per-worktree config. No
-Electron, no Docker requirement, no native modules.
+Electron, no container runtime required, no native modules.
 
 ```
 app/          frontend; every backend call goes through composables/useApi.ts
@@ -159,8 +142,8 @@ shared/       the types both sides use
 bin/ccwt.mjs  CLI entry: boot the server, open a browser
 ```
 
-Read `CLAUDE.md` before changing anything — it holds the reasoning, because the repo does not use
-code comments. `SPEC.md` is the product spec; `MILESTONES.md` is what is built against it.
+Read `CLAUDE.md` before changing anything — it holds the rules that are not visible from the code,
+because the repo does not use code comments. `SPEC.md` is the product spec; `MILESTONES.md` is what is built against it.
 
 ## Security
 

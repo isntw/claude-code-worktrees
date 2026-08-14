@@ -128,6 +128,24 @@ export async function pruneWorktrees(rootPath: string): Promise<void> {
   await git(rootPath, ['worktree', 'prune'])
 }
 
+export async function lockWorktree(
+  rootPath: string,
+  worktreePath: string,
+  reason: string,
+): Promise<void> {
+  const result = await git(rootPath, ['worktree', 'lock', '--reason', reason, worktreePath])
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || `git worktree lock exited ${result.code}`)
+  }
+}
+
+export async function unlockWorktree(rootPath: string, worktreePath: string): Promise<void> {
+  const result = await git(rootPath, ['worktree', 'unlock', worktreePath])
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || `git worktree unlock exited ${result.code}`)
+  }
+}
+
 export async function isLocked(rootPath: string, worktreePath: string): Promise<boolean> {
   const worktrees = await listWorktrees(rootPath)
   const match = worktrees.find((worktree) => worktree.path === resolve(worktreePath))
