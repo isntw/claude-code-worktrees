@@ -3,6 +3,7 @@ import type {
   ConfigView,
   DirListing,
   LogLine,
+  Overview,
   ProbeResult,
   Project,
   ServiceStatus,
@@ -35,6 +36,8 @@ export function useApi() {
     `/projects/${projectId}/worktrees/${worktreeId}`
 
   return {
+    getOverview: () => call<Overview>('/overview'),
+
     listProjects: () => call<Project[]>('/projects'),
     getProject: (id: string) => call<Project>(`/projects/${id}`),
     addProject: (rootPath: string) =>

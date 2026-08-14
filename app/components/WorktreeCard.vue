@@ -182,7 +182,7 @@ const live = computed(() => props.worktree.services.some((service) => service.st
         <span
           v-else-if="service.taken && service.port"
           class="truncate font-sans text-[0.6875rem] text-caution"
-          :title="`Something ccwt did not start is already listening on port ${service.port}. Starting this service will collide with it — stop whatever holds the port first, or give the service a wider range.`"
+          :title="`Port ${service.port} is answering, but this ccwt is not supervising what is on it — another ccwt, or a process started outside one, is holding it. Starting this service will collide; stop whatever holds the port first, or give the service a wider range.`"
           >port {{ service.port }} taken</span
         >
         <span v-else class="truncate font-mono text-[0.6875rem] text-faint">{{

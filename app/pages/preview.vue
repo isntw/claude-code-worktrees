@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Plus } from 'lucide-vue-next'
-import type { AgentState, LockState, LogLine, ServiceState, Worktree } from '#shared/types'
+import type {
+  AgentState,
+  LockState,
+  LogLine,
+  OverviewRow,
+  PortClaim,
+  PortRow,
+  ServiceState,
+  Worktree,
+} from '#shared/types'
+import type { Stat } from '../components/StatBar.vue'
 import type { Variation } from '../components/variation'
 import { NAV } from '../nav'
 
@@ -67,6 +77,58 @@ const sample = (index: number, service: ServiceState, agent: AgentState): Worktr
 })
 
 const CARDS = SERVICES.map((service, index) => sample(index, service, AGENTS[index]!))
+
+const PROJECTS = ['app', 'app', 'kape-kb', 'legacy']
+
+const ROWS: OverviewRow[] = CARDS.map((worktree, index) => ({
+  projectId: 'p',
+  projectName: PROJECTS[index] ?? 'app',
+  worktree,
+}))
+
+const STATS: Stat[] = [
+  { key: 'projects', label: 'Projects', value: 4 },
+  { key: 'worktrees', label: 'Worktrees', value: 12, note: '5 with something up' },
+  {
+    key: 'running',
+    label: 'Services up',
+    value: 5,
+    variation: 'live',
+    note: '1 still starting · of 9',
+  },
+  { key: 'crashed', label: 'Crashed', value: 1, variation: 'error' },
+  { key: 'ports', label: 'Ports allocated', value: 9 },
+  { key: 'problems', label: 'Problems', value: 0, variation: 'neutral' },
+]
+
+const claim = (
+  service: string,
+  state: ServiceState,
+  project: string,
+  worktree: string,
+): PortClaim => ({
+  projectId: 'p',
+  projectName: project,
+  worktreeId: `${project}-${worktree}-${service}`,
+  worktreeName: worktree,
+  service,
+  state,
+  url: state === 'running' ? 'http://localhost:5200' : null,
+})
+
+const PORTS: PortRow[] = [
+  {
+    port: 3000,
+    claims: [
+      claim('api', 'stopped', 'app', 'checkout-rewrite'),
+      claim('api', 'stopped', 'app', 'flaky-tests'),
+    ],
+  },
+  { port: 5200, claims: [claim('web', 'running', 'app', 'checkout-rewrite')] },
+  { port: 5201, claims: [claim('web', 'starting', 'app', 'flaky-tests')] },
+  { port: 5203, claims: [claim('web', 'crashed', 'legacy', 'bump-nuxt')] },
+  { port: 8080, claims: [claim('api', 'running', 'app', 'checkout-rewrite')] },
+]
 
 const said = (service: string, stream: 'stdout' | 'stderr', text: string): LogLine => ({
   worktreeId: 'w',
@@ -229,6 +291,26 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
           ]"
         />
       </div>
+    </section>
+
+    <section :class="SECTION" class="xl:col-span-2">
+      <header :class="HEAD"><p class="t-eyebrow">Stat bar</p></header>
+      <div class="px-3 py-3"><StatBar :stats="STATS" /></div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Ports</p></header>
+      <PortList :rows="PORTS" />
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Ports — none</p></header>
+      <PortList :rows="[]" />
+    </section>
+
+    <section :class="SECTION" class="min-w-0 xl:col-span-2">
+      <header :class="HEAD"><p class="t-eyebrow">Worktree table</p></header>
+      <WorktreeTable :rows="ROWS" />
     </section>
 
     <section class="xl:col-span-2">
