@@ -1,10 +1,16 @@
 import type {
   CcwtConfig,
   ConfigView,
+  DeviceCode,
+  DeviceOutcome,
   DirListing,
+  ForgeSession,
   ForgeStatus,
   GitReport,
   LogLine,
+  MergeMethod,
+  MergeOutcome,
+  Mergeability,
   Overview,
   ProbeResult,
   Project,
@@ -65,6 +71,20 @@ export function useApi() {
 
     getGit: (projectId: string) => call<GitReport>(`/projects/${projectId}/git`),
     getPulls: (projectId: string) => call<ForgeStatus>(`/projects/${projectId}/pulls`),
+
+    getForgeSession: () => call<ForgeSession>('/forge/session'),
+    signOutForge: () => call<ForgeSession>('/forge/session', { method: 'DELETE' }),
+    startForgeLogin: () => call<DeviceCode>('/forge/login', { method: 'POST' }),
+    pollForgeLogin: (handle: string) =>
+      call<DeviceOutcome>('/forge/poll', { method: 'POST', body: { handle } }),
+
+    getMergeability: (projectId: string, number: number) =>
+      call<Mergeability>(`/projects/${projectId}/pulls/${number}/mergeability`),
+    mergePull: (projectId: string, number: number, method: MergeMethod, sha: string) =>
+      call<MergeOutcome>(`/projects/${projectId}/pulls/${number}/merge`, {
+        method: 'POST',
+        body: { method, sha },
+      }),
 
     listWorktrees: (projectId: string) => call<Worktree[]>(`/projects/${projectId}/worktrees`),
     createWorktree: (projectId: string, input: { name: string; branch: string; start: boolean }) =>

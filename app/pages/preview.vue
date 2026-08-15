@@ -165,6 +165,8 @@ const pullOf = (number: number, state: PullState): PullRequest => ({
   title: 'Show git and pull request status per worktree',
   url: 'https://example.invalid/pull/0',
   state,
+  baseRef: 'main',
+  headSha: '0000000000000000000000000000000000000000',
 })
 
 const GITS: { label: string; status: GitStatus; pull: PullRequest | null }[] = [
