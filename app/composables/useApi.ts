@@ -88,9 +88,6 @@ export function useApi() {
     clearLogs: (projectId: string, worktreeId: string) =>
       call<void>(`${worktree(projectId, worktreeId)}/logs`, { method: 'DELETE' }),
 
-    launchAgent: (projectId: string, worktreeId: string) =>
-      call<void>(`${worktree(projectId, worktreeId)}/agent/launch`, { method: 'POST' }),
-
     connect(onMessage: (message: SocketMessage) => void): () => void {
       const url = new URL('/_ws', window.location.href)
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'

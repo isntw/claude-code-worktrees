@@ -1,6 +1,5 @@
 import { basename, join, resolve } from 'node:path'
 import type {
-  AgentStatus,
   LockState,
   Project,
   ServiceConfig,
@@ -32,8 +31,6 @@ import {
   worktreesDirFor,
 } from './provision'
 import * as supervisor from './supervisor'
-
-const IDLE: AgentStatus = { state: 'idle', sessionId: null, subagents: 0, updatedAt: null }
 
 function stillRunning(pid: number): boolean {
   try {
@@ -209,7 +206,6 @@ export async function list(project: Project): Promise<Worktree[]> {
           prunable: entry.prunable,
           provisioned: await isProvisioned(entry.path),
           services: await servicesFor(project, id, entry.path),
-          agent: IDLE,
           issues: [],
         }
       }),

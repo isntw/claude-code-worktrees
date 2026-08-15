@@ -30,9 +30,9 @@ Register a root project once, describe how a worktree should be set up for that 
 | 4 | Assign a stable, non-colliding port per worktree |
 | 5 | Start / stop / restart a dev server per worktree, with streamed logs |
 | 6 | **Discover and adopt worktrees Claude Code created**, so they get ports and dev servers too |
-| 7 | **Show Claude Code session status per worktree** — running, waiting for input, finished |
-| 8 | **Launch a Claude Code session in a worktree** from the dashboard |
-| 9 | A dashboard listing every worktree, its status, port, URL and agent state |
+| 7 | ~~Show Claude Code session status per worktree~~ — **dropped**, see §5.2 |
+| 8 | ~~Launch a Claude Code session in a worktree from the dashboard~~ — **dropped**, see §5.2 |
+| 9 | A dashboard listing every worktree, its status, port and URL |
 | 10 | Work with any project — the recipe is data, not hardcoded |
 
 ### Out of scope
@@ -98,7 +98,6 @@ claude-code-worktrees/
 │   ├── components/
 │   │   ├── WorktreeCard.vue
 │   │   ├── LogViewer.vue
-│   │   ├── AgentBadge.vue
 │   │   └── CreateWorktreeModal.vue
 │   └── composables/useApi.ts    # all backend calls go through here
 └── server/                  # ── BACKEND (Nitro / Node) ──
@@ -108,10 +107,8 @@ claude-code-worktrees/
     │   ├── provision.ts         copy / hardlink / install
     │   ├── ports.ts             allocate + persist
     │   ├── supervisor.ts        spawn / logs / kill
-    │   ├── claude.ts            hooks, session tracking, .worktreeinclude
     │   └── store.ts             ~/.ccwt/state.json
     ├── api/                     # thin HTTP wrappers around lib/
-    ├── api/hook.post.ts         # endpoint Claude Code hooks call back into
     ├── middleware/security.ts   # Host validation, token exchange
     └── routes/_ws.ts            # WebSocket: logs + status
 ```
@@ -125,7 +122,7 @@ Two rules keep it clean:
 
 ## 5. Claude Code integration
 
-Claude Code creates its own worktrees. If we ignore that, you end up with two parallel sets of worktrees that don't know about each other. Three integration points fix it.
+Claude Code creates its own worktrees. If we ignore that, you end up with two parallel sets of worktrees that don't know about each other. Two integration points fix it.
 
 ### 5.1 Discover and adopt — *default, always on*
 
@@ -133,21 +130,31 @@ Claude Code creates worktrees at `.claude/worktrees/<name>/` on a branch `worktr
 
 **The dashboard lists every worktree of the repo, whoever made it**, tagged by origin (`manual` / `ccwt` / `claude`). An adopted worktree can be given a port and a dev server with one click, without ccwt having created it. This is cheap, safe and requires no configuration.
 
-### 5.2 Session status — *opt-in, one click to install*
+### 5.2 Session status and session launch — ~~*opt-in, one click to install*~~ **both dropped**
 
-ccwt writes hooks into the project's `.claude/settings.json` that POST to its own localhost API:
+The plan was to write `SessionStart` / `Notification` / `SubagentStart` / `SubagentStop` / `SessionEnd`
+hooks into the project's `.claude/settings.json`, each POSTing `session_id` and `cwd` to ccwt's
+localhost API, so a card could read *working* / *waiting for you* / *done* and update live over the
+WebSocket.
 
-| Hook | Matcher | Meaning on the card |
-|---|---|---|
-| `SessionStart` | `startup`, `resume` | agent **running** |
-| `Notification` | `agent_needs_input` | agent **waiting for you** |
-| `Notification` | `agent_completed` | agent **done** |
-| `SubagentStart` / `SubagentStop` | `*` | subagent count |
-| `SessionEnd` | `*` | agent **idle** |
+> **As built:** dropped, and the badge, the four states, the hook endpoint, the payload types and the
+> `claude.trackSessions` recipe flag are all gone with it. Two things decided this. It is the one
+> feature that requires ccwt to **write into a repository it did not create**, which §6 otherwise
+> forbids outright. And **§5.5 already answers the question it was built to answer** — Claude Code
+> runs `git worktree lock` while an agent works, so `git worktree list --porcelain` reports the
+> presence of an agent for free, with no hook, no config and no writes. Coarser: present or absent,
+> not working-vs-waiting-vs-done. Cheap enough to be always on.
 
-Each hook receives `session_id` and `cwd` on stdin; ccwt maps `cwd` → worktree and updates the card live over the WebSocket. The hook script reads the auth token from `~/.ccwt/token` so it can reach the API.
+**Launching a session (§2 capability 8) went too.** A button on the card would have spawned
+`claude` in the worktree, and it never did anything but return 501. What it was worth turned on a
+question §11 never answered — D4, spawn in your terminal app or embed a terminal in the dashboard —
+and neither answer buys much: starting an agent in a directory is one command in a terminal you
+already have open, and `claude --worktree` makes its own worktree without ccwt in the loop at all.
+A control shipped ahead of the decision about what it does is worse than no control.
 
-This is the feature that makes the dashboard worth leaving open: at a glance, which worktrees have an agent working, which are blocked on you, which are done.
+**ccwt is therefore not an agent runner.** It provisions worktrees, allocates ports, runs services
+and shows what is live. Whether an agent is in one is git's business, through the lock. Starting one
+is your terminal's.
 
 ### 5.3 Own worktree creation — *opt-in, advanced*
 
@@ -202,9 +209,7 @@ The shape, wherever it is stored:
   ],
 
   "claude": {
-    "trackSessions": true,             // install SessionStart/Notification hooks
-    "ownWorktreeCreation": false,      // install WorktreeCreate hook
-    "launchCommand": "claude"
+    "ownWorktreeCreation": false       // install WorktreeCreate hook
   }
 }
 ```
@@ -254,7 +259,7 @@ The backend runs `git` and spawns processes, so a malicious web page reaching it
 
 - Bind `127.0.0.1` only
 - Validate the `Host` header on every request — this, not the loopback bind, is what stops DNS rebinding
-- Random per-run token in the launch URL, exchanged for an HttpOnly cookie; same token in `~/.ccwt/token` for hook callbacks
+- Random per-run token in the launch URL, exchanged for an HttpOnly cookie; the same token is kept at `~/.ccwt/token`, mode 600
 - Validate `Origin` on WebSocket upgrades — WebSockets ignore CORS
 - Always `shell: false` with argv arrays; all paths checked to be inside a registered project
 
@@ -266,13 +271,13 @@ The backend runs `git` and spawns processes, so a malicious web page reaching it
 Register project → create worktree → provision → start dev server → logs → open URL → remove. One service, minimal config.
 
 **Milestone 2 — Claude Code aware**
-Discover and adopt Claude-created worktrees (§5.1). Read `.worktreeinclude` (§5.4). Respect worktree locks (§5.5). Launch a session from the dashboard.
+Discover and adopt Claude-created worktrees (§5.1). Read `.worktreeinclude` (§5.4). Respect worktree locks (§5.5).
 
 **Milestone 3 — configurable**
 Full `ccwt.config.json` with validation, auto-detection, multiple services, recipe editor.
 
 **Milestone 4 — polish**
-Session status hooks (§5.2), port map view, git status per worktree, `.env` diff, drift detection and repair.
+Port map view, git status per worktree, `.env` diff, drift detection and repair.
 
 **Milestone 5 — optional**
 `WorktreeCreate` ownership (§5.3).
@@ -286,7 +291,7 @@ Session status hooks (§5.2), port map view, git status per worktree, `.env` dif
 | D1 | Do dev servers keep running after you close ccwt? | No — simpler; revisit if annoying |
 | D2 | Where do ccwt-created worktrees live? | `../.worktrees/<name>`, but adopt `.claude/worktrees/*` as first-class |
 | D3 | Auto-start services when a worktree is created? | Off by default, checkbox in the create dialog |
-| D4 | How does "launch Claude Code" open? | Spawn in the user's terminal app vs an embedded terminal in the dashboard |
+| ~~D4~~ | ~~How does "launch Claude Code" open?~~ | **Moot** — launching was dropped, see §5.2 |
 
 ---
 

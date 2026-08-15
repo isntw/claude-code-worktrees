@@ -15,7 +15,7 @@ const data = ref<Overview | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
-const filter = ref<'all' | 'running' | 'agent' | 'attention'>('all')
+const filter = ref<'all' | 'running' | 'attention'>('all')
 
 const load = async () => {
   loading.value = true
@@ -38,30 +38,25 @@ const isRunning = (row: OverviewRow) =>
     (service) => service.state === 'running' || service.state === 'starting',
   )
 
-const isBusy = (row: OverviewRow) => row.worktree.agent.state !== 'idle'
-
 const wantsAttention = (row: OverviewRow) =>
   row.worktree.prunable ||
   !row.worktree.provisioned ||
   row.worktree.services.some((service) => service.state === 'crashed') ||
   row.worktree.issues.some((issue) => issue.severity === 'error')
 
+const running = computed(() => rows.value.filter(isRunning))
+const attention = computed(() => rows.value.filter(wantsAttention))
+
 const visible = computed(() => {
-  if (filter.value === 'running') return rows.value.filter(isRunning)
-  if (filter.value === 'agent') return rows.value.filter(isBusy)
-  if (filter.value === 'attention') return rows.value.filter(wantsAttention)
+  if (filter.value === 'running') return running.value
+  if (filter.value === 'attention') return attention.value
   return rows.value
 })
 
 const tabs = computed(() => [
   { value: 'all' as const, label: 'all', count: rows.value.length },
-  { value: 'running' as const, label: 'running', count: rows.value.filter(isRunning).length },
-  { value: 'agent' as const, label: 'agent', count: rows.value.filter(isBusy).length },
-  {
-    value: 'attention' as const,
-    label: 'attention',
-    count: rows.value.filter(wantsAttention).length,
-  },
+  { value: 'running' as const, label: 'running', count: running.value.length },
+  { value: 'attention' as const, label: 'attention', count: attention.value.length },
 ])
 
 const tone = (value: number, hot: Variation): Variation => (value > 0 ? hot : 'neutral')
@@ -83,7 +78,7 @@ const stats = computed<Stat[]>(() => {
       label: 'Worktrees',
       value: totals.worktrees,
       variation: tone(totals.worktrees, 'success'),
-      note: `${rows.value.filter(isRunning).length} with something up`,
+      note: `${running.value.length} with something up`,
       hint: 'Every worktree of every registered repository, whoever made it',
     },
     {

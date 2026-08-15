@@ -6,6 +6,8 @@ const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 export const RECIPE_REVISION = 2
 
+const RETIRED_CLAUDE_KEYS = ['trackSessions', 'launchCommand']
+
 const port = z.number().int().min(1).max(65535)
 
 const range = z
@@ -59,11 +61,13 @@ export const configSchema = z
         'Two services share a name.',
       ),
     claude: z
-      .strictObject({
-        trackSessions: z.boolean().default(false),
-        ownWorktreeCreation: z.boolean().default(false),
-        launchCommand: z.string().min(1).default('claude'),
-      })
+      .preprocess((value) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+
+        const rest: Record<string, unknown> = { ...(value as Record<string, unknown>) }
+        for (const key of RETIRED_CLAUDE_KEYS) delete rest[key]
+        return rest
+      }, z.strictObject({ ownWorktreeCreation: z.boolean().default(false) }))
       .prefault({}),
   })
   .superRefine((config, ctx) => {

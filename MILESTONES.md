@@ -4,14 +4,14 @@ Where `ccwt` is against `SPEC.md` §10, and what was added along the way that th
 anticipate. Everything marked **done** was verified by running it, not by reading the code — the
 verification is named in each case.
 
-Last updated 2026-08-12.
+Last updated 2026-08-15.
 
 | Milestone | State |
 |---|---|
 | 1 — the loop works | ✅ **done** |
-| 2 — Claude Code aware | 🟡 **half** — discovery and locks done, session launch and `.worktreeinclude` stubbed |
+| 2 — Claude Code aware | 🟡 **most** — discovery and locks done, session launch **dropped**, `.worktreeinclude` stubbed |
 | 3 — configurable | ✅ **done**, and beyond the spec |
-| 4 — polish | ⬜ **not started** — session-status hooks are the missing centrepiece |
+| 4 — polish | 🟡 **part** — port map done, session status **dropped**, the rest untouched |
 | 5 — `WorktreeCreate` ownership | ⬜ **not started** (spec marks it optional) |
 | — | File browser, zero-touch setup and after-start commands were added outside the plan |
 
@@ -38,7 +38,7 @@ stop and on quit with no strays, branch kept after removal.
 |---|---|
 | §5.1 discover and adopt Claude-created worktrees | ✅ done |
 | §5.5 respect `git worktree lock` | ✅ done |
-| launch a Claude Code session from the dashboard | ⬜ **stub** — `claude.launchSession` |
+| launch a Claude Code session from the dashboard | ❌ **dropped** — see Milestone 4 |
 | §5.4 read `.worktreeinclude` | ⬜ **stub** — `provision.readWorktreeInclude` |
 
 Discovery came free: `git worktree list --porcelain` returns every worktree whoever made it, so
@@ -48,7 +48,12 @@ separate adopt step and no adopt endpoint.
 **Verified**: a real `git worktree lock` is refused with git's own reason, and the card disables the
 control.
 
-**The gap that shows**: the *launch a session* button renders on every card and returns 501.
+The lock carries more weight than it looks. Claude Code locks a worktree while an agent works, so the
+lock **is** the agent signal now that §5.2 is gone — `An agent is working here` on the card comes from
+`lockState === 'live'`, costs nothing and needs no configuration.
+
+**The gap that shows**: `.worktreeinclude` (§5.4) is the only thing left owed here. The *launch a
+session* button is gone — see Milestone 4.
 
 ## Milestone 3 — configurable ✅
 
@@ -71,20 +76,54 @@ team feature §2 puts out of scope, and detection reconstructs the recipe anyway
 exactly, so the hand-written config could be deleted; a dependency taking four seconds to listen
 delayed its dependent by exactly that.
 
-## Milestone 4 — polish ⬜
+## Milestone 4 — polish 🟡
 
 | Item | State |
 |---|---|
-| §5.2 session-status hooks | ⬜ stub — `installHooks`, `applyHook`, `agentStatus` and two more |
-| port map view | ⬜ nothing |
+| §5.2 session-status hooks | ❌ **dropped** — out of the code and out of the spec |
+| port map view | ✅ done — `/overview` |
 | git status per worktree | ⬜ nothing |
 | `.env` diff | ⬜ nothing |
 | drift detection and repair | ⬜ nothing |
 
-**This is the most visible gap in the product.** `AgentBadge` renders on every card and always reads
-"no agent", because `agent` is a hardcoded `IDLE` constant. Spec §5.2 calls session status *"the
-feature that makes the dashboard worth leaving open"*; until the hooks land, that part of the UI is
-inert.
+**The port map** is `/overview`: every registered project read at once, totals, a filterable worktree
+table, every claim on every port, per-project tiles and every diagnostic discovery produced. A row or
+a port claim drills into that worktree.
+
+**Session status was dropped, not deferred.** It had been the spec's centrepiece and it never worked —
+`AgentBadge` rendered on every card and always read "no agent", because `agent` was a hardcoded `IDLE`
+constant behind five stubs. Two things settled it. Installing the hooks means **writing into a
+repository ccwt did not create**, which is the one thing the recipe design refuses to do anywhere
+else. And **the worktree lock already answers the question**: Claude Code locks while an agent works,
+so `git worktree list --porcelain` reports an agent's presence with no hook, no config and no write —
+coarser (present or absent, not working-vs-waiting-vs-done), and already shipped.
+
+Removed with it: `AgentBadge`, the agent filter tab on `/overview` and `/project/:id`, the `agents`
+total, `WorktreeTable`'s Agent column, `AgentState` / `AgentStatus` / `HookEvent` / `HookPayload`, the
+`agent` WebSocket message, `POST /api/hook`, and the `claude.trackSessions` recipe flag.
+
+**Launching a session went with it** (Milestone 2, §2 capability 8). The button spawned nothing — it
+returned 501 — and what it was worth turned on a question the spec never answered: D4, spawn in your
+terminal app or embed a terminal in the dashboard. Neither answer buys much. Starting an agent in a
+directory is one command in a terminal you already have open, and `claude --worktree` makes its own
+worktree without ccwt in the loop at all. Gone: `launchSession`, `POST …/agent/launch`,
+`useApi.launchAgent`, the card's button and `launch` emit, and the `claude.launchCommand` recipe
+field. `server/lib/claude.ts` is gone entirely: all that survived it was `CLAUDE_WORKTREE_DIR`, and
+that path now lives beside its only reader, `classify()` in `git.ts`.
+
+**What this settles: ccwt is not an agent runner.** It provisions worktrees, allocates ports, runs
+services and shows what is live. Whether an agent is in one is git's business, through the lock.
+Starting one is your terminal's.
+
+**One shim was needed.** `claude` in the recipe schema is a `strictObject`, and detection used to emit
+both `trackSessions` and `launchCommand`, so every recipe already stored in `~/.ccwt/state.json`
+carries them — deleting the fields alone would turn a valid stored recipe into a hard validation error
+naming the key. `RETIRED_CLAUDE_KEYS` in `config-schema.ts` strips both before the strict parse, so an
+old recipe loads and sheds them on its next save. Unknown keys still error, which is what the
+strictness is for. `ClaudeConfig` is down to one field, `ownWorktreeCreation`, which Milestone 5 owns.
+
+**Verified**: `typecheck` and `build` both clean, and the typecheck was confirmed to be live by
+planting a type error and watching it exit non-zero.
 
 ## Milestone 5 — `WorktreeCreate` ownership ⬜
 
@@ -130,16 +169,15 @@ the user's, and guessing at intent is worse than saying so.
 
 ## Known gaps, ranked
 
-1. **Session status (Milestone 4).** The agent badge and the launch button are both inert. This is
-   the reason to leave the dashboard open, and it is the largest hole.
-2. **No tests.** Zero. Every bug found so far was found by running the thing. For an open-source
+1. **No tests.** Zero. Every bug found so far was found by running the thing. For an open-source
    project this is the gap most likely to bite.
-3. **Detection is Node-shaped.** A Django, Rails or Laravel project registers, provisions and
+2. **Detection is Node-shaped.** A Django, Rails or Laravel project registers, provisions and
    removes fine, but detects no service. Agreed and unbuilt: replace the filename list in
    `inspect.ts` with a search over git-tracked files, infer a container's role from its port rather
    than its image name, add an ask-once fallback, and mark detected services with their provenance.
-4. **`.worktreeinclude`** (§5.4) — `provision.copy` must *merge* with it, not replace it.
-5. **Milestone 4's smaller items** — port map, per-worktree git status, `.env` diff, drift repair.
+3. **`.worktreeinclude`** (§5.4) — `provision.copy` must *merge* with it, not replace it. It is now
+   the only stub left in the codebase.
+4. **Milestone 4's remaining items** — per-worktree git status, `.env` diff, drift repair.
 
 ## Verifying a claim in this document
 
