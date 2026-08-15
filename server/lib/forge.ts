@@ -57,8 +57,7 @@ const ELSEWHERE = /no git remotes|known GitHub host|not a git repository/i
 const UNAUTHENTICATED = /not logged in|gh auth login|authentication token|HTTP 401/i
 const UNSEEN = /could not resolve to a repository|HTTP 404|SAML|permission/i
 
-const STEER =
-  'Give that account access, or start ccwt with GH_TOKEN or GH_CONFIG_DIR set for the one that has it.'
+const STEER = 'Give that account access, or sign gh in as one that already has it.'
 
 function plainly(said: string): string {
   return said
@@ -78,7 +77,7 @@ async function unreachable(rootPath: string, said: string): Promise<ForgeStatus>
     severity: 'info',
     message: 'Pull request status is unavailable, so cards show local git only.',
     hint: UNAUTHENTICATED.test(said)
-      ? 'gh is not signed in. Run `gh auth login`, or start ccwt with GH_TOKEN set.'
+      ? 'gh is not signed in. Run `gh auth login`.'
       : UNSEEN.test(said)
         ? account
           ? `gh is signed in as ${account}, which cannot see this repository. ${STEER}`
