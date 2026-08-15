@@ -144,8 +144,8 @@ const live = computed(() => props.worktree.services.some((service) => service.st
       </span>
     </header>
 
-    <div v-if="git" class="border-b border-line px-3 py-2">
-      <GitRow :status="git" :pull="pull" :since="since" />
+    <div v-if="git" class="flex min-h-10 items-center border-b border-line px-3 py-2">
+      <GitRow class="min-w-0 flex-1" :status="git" :pull="pull" :since="since" />
     </div>
 
 
