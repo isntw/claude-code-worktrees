@@ -66,12 +66,11 @@ const problems = (worktree: Worktree) =>
     <table class="min-w-[62rem]">
       <colgroup>
         <col style="width: 13%" />
-        <col style="width: 17%" />
+        <col style="width: 26%" />
         <col style="width: 19%" />
-        <col style="width: 13%" />
-        <col style="width: 11%" />
-        <col style="width: 13%" />
         <col style="width: 14%" />
+        <col style="width: 11%" />
+        <col style="width: 17%" />
       </colgroup>
 
       <thead>
@@ -81,7 +80,6 @@ const problems = (worktree: Worktree) =>
           <th scope="col">Branch</th>
           <th scope="col">Pull request</th>
           <th scope="col">Services</th>
-          <th scope="col">Notes</th>
           <th scope="col" class="text-right!">Actions</th>
         </tr>
       </thead>
@@ -113,6 +111,32 @@ const problems = (worktree: Worktree) =>
                 :aria-label="lockHint(row.worktree)"
                 :title="lockHint(row.worktree)"
               />
+              <Badge
+                v-if="row.worktree.prunable"
+                size="sm"
+                variation="warning"
+                class="shrink-0"
+                title="The directory is gone from disk — git still keeps the entry"
+                >missing</Badge
+              >
+              <Badge
+                v-else-if="!row.worktree.provisioned"
+                size="sm"
+                variation="warning"
+                class="shrink-0"
+                title="Dependencies are not in place yet — starting a service will put them there"
+                >unprovisioned</Badge
+              >
+              <span
+                v-if="problems(row.worktree).length"
+                class="flex shrink-0 items-center gap-1"
+                :title="problems(row.worktree).map((problem) => problem.message).join('\n')"
+              >
+                <StateDot variation="error" />
+                <span class="font-mono text-[0.625rem] tabular-nums text-alarm">{{
+                  problems(row.worktree).length
+                }}</span>
+              </span>
             </span>
           </td>
 
@@ -157,33 +181,6 @@ const problems = (worktree: Worktree) =>
               >
             </span>
             <span v-else class="font-sans text-[0.625rem] text-faint">none</span>
-          </td>
-
-          <td>
-            <span class="flex flex-wrap items-center gap-1">
-              <Badge
-                v-if="row.worktree.prunable"
-                variation="warning"
-                title="The directory is gone from disk — git still keeps the entry"
-                >missing</Badge
-              >
-              <Badge
-                v-else-if="!row.worktree.provisioned"
-                variation="warning"
-                title="Dependencies are not in place yet — starting a service will put them there"
-                >unprovisioned</Badge
-              >
-              <span
-                v-if="problems(row.worktree).length"
-                class="flex items-center gap-1"
-                :title="problems(row.worktree).map((problem) => problem.message).join('\n')"
-              >
-                <StateDot variation="error" />
-                <span class="font-mono text-[0.625rem] tabular-nums text-alarm">{{
-                  problems(row.worktree).length
-                }}</span>
-              </span>
-            </span>
           </td>
 
           <td>
