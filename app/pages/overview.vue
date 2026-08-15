@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { Overview, OverviewRow, PortClaim, Severity } from '#shared/types'
+import type {
+  Overview,
+  OverviewRow,
+  PortClaim,
+  PullRequest,
+  Severity,
+  Worktree,
+} from '#shared/types'
 import type { Stat } from '../components/StatBar.vue'
 import type { Tile } from '../components/TileGrid.vue'
 import type { Variation } from '../components/variation'
@@ -147,6 +154,45 @@ const drill = (projectId: string, worktreeId: string) =>
 const open = (row: OverviewRow) => drill(row.projectId, row.worktree.id)
 const pick = (claim: PortClaim) => drill(claim.projectId, claim.worktreeId)
 
+const merging = ref<{ projectId: string; pull: PullRequest } | null>(null)
+
+const act = async (run: () => Promise<unknown>) => {
+  try {
+    await run()
+  } catch (cause) {
+    error.value = (cause as Error).message
+  }
+  await load()
+}
+
+const start = (row: OverviewRow) => act(() => api.startAll(row.projectId, row.worktree.id))
+const stop = (row: OverviewRow) => act(() => api.stopAll(row.projectId, row.worktree.id))
+
+const merge = (row: OverviewRow) => {
+  if (!row.pull) return
+  merging.value = { projectId: row.projectId, pull: row.pull }
+}
+
+const merged = async () => {
+  merging.value = null
+  await load()
+}
+
+const lock = (row: OverviewRow) => act(() => api.lockWorktree(row.projectId, row.worktree.id))
+const unlock = (row: OverviewRow) => act(() => api.unlockWorktree(row.projectId, row.worktree.id))
+
+const doomed = ref<{ projectId: string; worktree: Worktree } | null>(null)
+
+const remove = (row: OverviewRow) => {
+  doomed.value = { projectId: row.projectId, worktree: row.worktree }
+}
+
+const removed = async (kept: string | null) => {
+  doomed.value = null
+  error.value = kept ? `The worktree is gone, but the branch was kept — ${kept}` : null
+  await load()
+}
+
 let disconnect: (() => void) | null = null
 let pending: ReturnType<typeof setTimeout> | null = null
 
@@ -206,17 +252,32 @@ const PANEL = 'border border-line bg-surface'
     </div>
 
     <template v-else>
+      <section :class="PANEL" class="min-w-0">
+        <header :class="HEAD">
+          <p class="t-eyebrow">Worktrees</p>
+          <Tabs v-model="filter" :options="tabs" label="Filter worktrees" class="ml-auto" />
+        </header>
+
+        <WorktreeTable
+          v-if="visible.length"
+          :rows="visible"
+          @open="open"
+          @start="start"
+          @stop="stop"
+          @merge="merge"
+          @lock="lock"
+          @unlock="unlock"
+          @remove="remove"
+        />
+        <p v-else class="px-3 py-4 font-sans text-[0.6875rem] text-faint">
+          Nothing matches this filter.
+        </p>
+      </section>
+
       <div class="grid gap-3 xl:grid-cols-3">
         <section :class="PANEL" class="min-w-0 xl:col-span-2">
-          <header :class="HEAD">
-            <p class="t-eyebrow">Worktrees</p>
-            <Tabs v-model="filter" :options="tabs" label="Filter worktrees" class="ml-auto" />
-          </header>
-
-          <WorktreeTable v-if="visible.length" :rows="visible" @open="open" />
-          <p v-else class="px-3 py-4 font-sans text-[0.6875rem] text-faint">
-            Nothing matches this filter.
-          </p>
+          <header :class="HEAD"><p class="t-eyebrow">Projects</p></header>
+          <div class="p-3"><TileGrid dense :tiles="tiles" /></div>
         </section>
 
         <section :class="PANEL" class="min-w-0">
@@ -230,11 +291,6 @@ const PANEL = 'border border-line bg-surface'
           <PortList :rows="ports" @pick="pick" />
         </section>
       </div>
-
-      <section :class="PANEL">
-        <header :class="HEAD"><p class="t-eyebrow">Projects</p></header>
-        <div class="p-3"><TileGrid dense :tiles="tiles" /></div>
-      </section>
 
       <section v-if="issues.length" :class="PANEL">
         <header :class="HEAD">
@@ -269,4 +325,20 @@ const PANEL = 'border border-line bg-surface'
       </section>
     </template>
   </main>
+
+  <MergeModal
+    v-if="merging"
+    :project-id="merging.projectId"
+    :pull="merging.pull"
+    @close="merging = null"
+    @merged="merged"
+  />
+
+  <RemoveModal
+    v-if="doomed"
+    :project-id="doomed.projectId"
+    :worktree="doomed.worktree"
+    @close="doomed = null"
+    @removed="removed"
+  />
 </template>
