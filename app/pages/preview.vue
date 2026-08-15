@@ -2,14 +2,18 @@
 import { ref } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import type {
+  GitStatus,
   LockState,
   LogLine,
   OverviewRow,
   PortClaim,
   PortRow,
+  PullRequest,
+  PullState,
   ServiceState,
   Worktree,
 } from '#shared/types'
+import type { BadgeSize } from '../components/Badge.vue'
 import type { Stat } from '../components/StatBar.vue'
 import type { Variation } from '../components/variation'
 import { NAV } from '../nav'
@@ -17,6 +21,7 @@ import { NAV } from '../nav'
 const page = NAV.find((item) => item.name === 'preview')!
 
 const VARIATIONS: Variation[] = ['neutral', 'info', 'success', 'live', 'warning', 'error']
+const SIZES: BadgeSize[] = ['sm', 'md', 'lg']
 
 const text = ref('npm run dev -- --port 5200')
 const blank = ref('')
@@ -143,6 +148,39 @@ const LOGS: LogLine[] = [
   said('web', 'stderr', "ENOENT: no such file or directory, open '.env.local'"),
 ]
 
+const gitOf = (over: Partial<GitStatus>): GitStatus => ({
+  branch: 'worktree-preview',
+  upstream: 'origin/worktree-preview',
+  ahead: 0,
+  behind: 0,
+  staged: 0,
+  unstaged: 0,
+  untracked: 0,
+  conflicted: 0,
+  ...over,
+})
+
+const pullOf = (number: number, state: PullState): PullRequest => ({
+  number,
+  title: 'Show git and pull request status per worktree',
+  url: 'https://example.invalid/pull/0',
+  state,
+})
+
+const GITS: { label: string; status: GitStatus; pull: PullRequest | null }[] = [
+  { label: 'never pushed', status: gitOf({ upstream: null, untracked: 2 }), pull: null },
+  { label: 'in sync, clean', status: gitOf({}), pull: null },
+  { label: 'ahead, uncommitted', status: gitOf({ ahead: 3, unstaged: 2 }), pull: pullOf(7, 'draft') },
+  { label: 'behind', status: gitOf({ behind: 4 }), pull: pullOf(8, 'open') },
+  {
+    label: 'conflicted',
+    status: gitOf({ ahead: 1, behind: 2, conflicted: 3 }),
+    pull: pullOf(9, 'open'),
+  },
+  { label: 'merged', status: gitOf({ behind: 6 }), pull: pullOf(10, 'merged') },
+  { label: 'closed unmerged', status: gitOf({ ahead: 2 }), pull: pullOf(11, 'closed') },
+]
+
 const SECTION = 'border border-line bg-surface'
 const HEAD = 'border-b border-line px-3 py-2'
 const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
@@ -198,6 +236,11 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
         <Badge v-for="v in VARIATIONS" :key="v" :variation="v">{{ v }}</Badge>
         <Badge variation="selected">selected</Badge>
         <Badge mono>mono</Badge>
+      </div>
+      <div class="flex flex-wrap items-center gap-3 border-t border-line px-3 py-3">
+        <Badge v-for="s in SIZES" :key="s" :size="s">{{ s }}</Badge>
+        <Badge v-for="s in SIZES" :key="`${s}-live`" :size="s" variation="live">{{ s }}</Badge>
+        <Badge v-for="s in SIZES" :key="`${s}-mono`" :size="s" mono>{{ s }}</Badge>
       </div>
     </section>
 
@@ -255,6 +298,20 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
       </div>
     </section>
 
+    <section :class="SECTION" class="xl:col-span-2">
+      <header :class="HEAD"><p class="t-eyebrow">Git and pull request</p></header>
+      <ul class="flex flex-col">
+        <li
+          v-for="entry in GITS"
+          :key="entry.label"
+          class="flex items-center gap-3 border-b border-line px-3 py-2 last:border-b-0"
+        >
+          <span class="w-32 shrink-0 font-sans text-[0.625rem] text-faint">{{ entry.label }}</span>
+          <GitRow class="min-w-0 flex-1" :status="entry.status" :pull="entry.pull" />
+        </li>
+      </ul>
+    </section>
+
     <section :class="SECTION">
       <header :class="HEAD"><p class="t-eyebrow">Tiles</p></header>
       <div class="px-3 py-3">
@@ -292,7 +349,13 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
     <section class="xl:col-span-2">
       <p class="t-eyebrow mb-2">Worktree cards</p>
       <div class="grid gap-2 lg:grid-cols-2 2xl:grid-cols-4">
-        <WorktreeCard v-for="card in CARDS" :key="card.id" :worktree="card" />
+        <WorktreeCard
+          v-for="(card, index) in CARDS"
+          :key="card.id"
+          :worktree="card"
+          :git="GITS[index]?.status ?? null"
+          :pull="GITS[index]?.pull ?? null"
+        />
       </div>
     </section>
 
