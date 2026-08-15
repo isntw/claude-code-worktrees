@@ -10,6 +10,7 @@ import type {
   Project,
   ServiceStatus,
   SocketMessage,
+  ToolCheck,
   Worktree,
 } from '#shared/types'
 
@@ -39,6 +40,7 @@ export function useApi() {
 
   return {
     getOverview: () => call<Overview>('/overview'),
+    getRequirements: () => call<ToolCheck[]>('/requirements'),
 
     listProjects: () => call<Project[]>('/projects'),
     getProject: (id: string) => call<Project>(`/projects/${id}`),

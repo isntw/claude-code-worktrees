@@ -162,8 +162,9 @@ be** — `Nuxt UI` is in `SPEC.md` §3 and was rejected because its radii and co
 different product.
 
 - **Warm is broken.** `--ccwt-alarm` and `--ccwt-caution` are the only warm hues.
-- **`--ccwt-live` is alive** — one desaturated green, for a running service or a working agent. **Do
-  not extend it.** A second cool hue means the palette needs rethinking.
+- **`--ccwt-live` is alive** — one desaturated green for something the machine has confirmed is up
+  and usable: a running service, a working agent, a satisfied host requirement. **Do not extend it.**
+  A second cool hue means the palette needs rethinking.
 - **Interaction uses neither.** Selection inverts (`bg → ink`, `text → canvas`).
 - **`success` is achromatic**, never green — a finished agent is not a running one.
 - **Mono is what the machine said** (names, branches, paths, ports); **sans is what we think about
