@@ -83,8 +83,8 @@ const live = computed(() => props.worktree.services.some((service) => service.st
 const finished = computed(() => {
   if (props.worktree.root || props.pull?.state !== 'merged') return ''
   return live.value
-    ? 'Merged. Its services are still running here.'
-    : 'Merged. This worktree is finished.'
+    ? 'This worktree is finished, and its services are still running.'
+    : 'This worktree is finished.'
 })
 
 const mergeable = computed(
@@ -156,22 +156,10 @@ const mergeable = computed(
       </span>
     </header>
 
-    <div v-if="git" class="flex min-h-10 items-center border-b border-line px-3 py-2">
+    <div v-if="git" class="flex min-h-10 items-center gap-2 border-b border-line px-3 py-2">
       <GitRow class="min-w-0 flex-1" :status="git" :pull="pull" :since="since" />
-    </div>
-
-    <div v-if="finished" class="flex min-h-9 items-center border-b border-line px-3 py-2">
-      <span class="min-w-0 flex-1 font-sans text-[0.6875rem] text-dim">{{ finished }}</span>
-    </div>
-
-    <div
-      v-else-if="mergeable"
-      class="flex items-center gap-2 border-b border-line px-3 py-2"
-    >
-      <span class="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-faint"
-        >#{{ pull?.number }} → {{ pull?.baseRef }}</span
-      >
       <Button
+        v-if="mergeable"
         size="sm"
         :disabled="pull?.state === 'draft'"
         :title="
@@ -182,6 +170,10 @@ const mergeable = computed(
         @click="emit('merge')"
         >merge</Button
       >
+    </div>
+
+    <div v-if="finished" class="flex min-h-9 items-center border-b border-line px-3 py-2">
+      <span class="min-w-0 flex-1 font-sans text-[0.6875rem] text-dim">{{ finished }}</span>
     </div>
 
 
