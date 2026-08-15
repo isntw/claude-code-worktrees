@@ -85,9 +85,7 @@ export function defaultConfig(services: ServiceConfig[]): CcwtConfig {
     },
     services,
     claude: {
-      trackSessions: false,
       ownWorktreeCreation: false,
-      launchCommand: 'claude',
     },
   }
 }

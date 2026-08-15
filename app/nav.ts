@@ -40,6 +40,6 @@ export const NAV: NavPage[] = [
 export const DETAIL_PAGES: Record<string, { title: string; blurb: string }> = {
   'project-id': {
     title: 'Worktrees',
-    blurb: 'What exists, what is running, and which agent is in it.',
+    blurb: 'What exists, what is running, and which ports it holds.',
   },
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Lock, LockOpen, SquareTerminal, Trash2 } from 'lucide-vue-next'
+import { Lock, LockOpen, Trash2 } from 'lucide-vue-next'
 import type { ServiceStatus, Worktree, WorktreeOrigin } from '#shared/types'
 import type { StackPart } from '../compose'
 import type { Variation } from './variation'
@@ -25,7 +25,6 @@ const emit = defineEmits<{
   stopAll: []
   start: [service: string]
   stop: [service: string]
-  launch: []
   lock: []
   unlock: []
   remove: []
@@ -76,7 +75,6 @@ const allRunning = computed(() =>
 )
 
 const live = computed(() => props.worktree.services.some((service) => service.state === 'running'))
-
 </script>
 
 <template>
@@ -142,19 +140,6 @@ const live = computed(() => props.worktree.services.some((service) => service.st
         </span>
       </span>
     </header>
-
-    <div class="flex items-center gap-2 border-b border-line px-3 py-2">
-      <AgentBadge :status="worktree.agent" />
-      <Button
-        size="sm"
-        icon
-        class="ml-auto"
-        title="Launch a Claude Code session here"
-        @click="emit('launch')"
-      >
-        <SquareTerminal :size="12" aria-hidden="true" />
-      </Button>
-    </div>
 
     <div
       v-if="worktree.services.length > 1"
