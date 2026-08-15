@@ -142,12 +142,18 @@
   }
 
   .t-badge {
-    display: inline-flex;
-    align-items: center;
+    display: inline-grid;
+    grid-auto-flow: column;
+    place-items: center;
     border: 1px solid currentColor;
     font-family: var(--font-sans);
     line-height: 1.3;
     white-space: nowrap;
+  }
+
+  .t-badge-label {
+    display: block;
+    text-box: trim-both ex alphabetic;
   }
 
   .t-tabs {
