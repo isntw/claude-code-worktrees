@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import type {
-  AgentState,
   GitStatus,
   LockState,
   LogLine,
@@ -34,11 +33,10 @@ const switched = ref(true)
 const tab = ref<'a' | 'b' | 'c'>('a')
 const modal = ref(false)
 
-const AGENTS: AgentState[] = ['idle', 'running', 'waiting', 'done']
 const LOCKS: (LockState | undefined)[] = [undefined, 'unknown', 'live', 'gone']
 const SERVICES: ServiceState[] = ['stopped', 'starting', 'running', 'crashed']
 
-const sample = (index: number, service: ServiceState, agent: AgentState): Worktree => ({
+const sample = (index: number, service: ServiceState): Worktree => ({
   id: `w${index}`,
   projectId: 'p',
   name: ['checkout-rewrite', 'flaky-tests', 'worktree-a11y', 'bump-nuxt'][index] ?? 'sample',
@@ -72,16 +70,10 @@ const sample = (index: number, service: ServiceState, agent: AgentState): Worktr
       taken: service === 'stopped' && index === 0,
     },
   ],
-  agent: {
-    state: agent,
-    sessionId: agent === 'idle' ? null : 'a1b2c3d4',
-    subagents: agent === 'running' ? 2 : 0,
-    updatedAt: null,
-  },
   issues: index === 3 ? [{ code: 'worktree.drift', severity: 'error', message: 'env drift' }] : [],
 })
 
-const CARDS = SERVICES.map((service, index) => sample(index, service, AGENTS[index]!))
+const CARDS = SERVICES.map((service, index) => sample(index, service))
 
 const PROJECTS = ['app', 'app', 'kape-kb', 'legacy']
 
@@ -300,24 +292,8 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
           :options="[
             { value: 'a', label: 'all', count: 12 },
             { value: 'b', label: 'running', count: 3 },
-            { value: 'c', label: 'agent' },
+            { value: 'c', label: 'attention' },
           ]"
-        />
-      </div>
-    </section>
-
-    <section :class="SECTION">
-      <header :class="HEAD"><p class="t-eyebrow">Agent state</p></header>
-      <div class="flex flex-col gap-3 px-3 py-3">
-        <AgentBadge
-          v-for="state in AGENTS"
-          :key="state"
-          :status="{
-            state,
-            sessionId: null,
-            subagents: state === 'running' ? 2 : 0,
-            updatedAt: null,
-          }"
         />
       </div>
     </section>

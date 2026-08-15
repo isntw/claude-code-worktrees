@@ -10,8 +10,6 @@ export type LockState = 'live' | 'gone' | 'unknown'
 
 export type ServiceState = 'stopped' | 'starting' | 'running' | 'crashed'
 
-export type AgentState = 'idle' | 'running' | 'waiting' | 'done'
-
 export type Severity = 'info' | 'warning' | 'error'
 
 export interface Diagnostic {
@@ -50,9 +48,7 @@ export interface ProvisionConfig {
 }
 
 export interface ClaudeConfig {
-  trackSessions: boolean
   ownWorktreeCreation: boolean
-  launchCommand: string
 }
 
 export interface CcwtConfig {
@@ -89,13 +85,6 @@ export interface ServiceStatus {
   extra?: Record<string, number>
 }
 
-export interface AgentStatus {
-  state: AgentState
-  sessionId: string | null
-  subagents: number
-  updatedAt: string | null
-}
-
 export interface Worktree {
   id: string
   projectId: string
@@ -113,7 +102,6 @@ export interface Worktree {
   prunable: boolean
   provisioned: boolean
   services: ServiceStatus[]
-  agent: AgentStatus
   issues: Diagnostic[]
 }
 
@@ -250,7 +238,6 @@ export interface OverviewTotals {
   running: number
   starting: number
   crashed: number
-  agents: number
   errors: number
   ports: number
 }
@@ -264,23 +251,7 @@ export interface Overview {
   issues: OverviewIssue[]
 }
 
-export type HookEvent =
-  | 'SessionStart'
-  | 'SessionEnd'
-  | 'Notification'
-  | 'SubagentStart'
-  | 'SubagentStop'
-
-export interface HookPayload {
-  hook_event_name: HookEvent
-  session_id: string
-  cwd: string
-  matcher?: string
-  message?: string
-}
-
 export type SocketMessage =
   | { type: 'log'; line: LogLine }
   | { type: 'service'; worktreeId: string; status: ServiceStatus }
-  | { type: 'agent'; worktreeId: string; status: AgentStatus }
   | { type: 'worktrees'; projectId: string }

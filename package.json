@@ -1,7 +1,7 @@
 {
   "name": "claude-code-worktrees",
   "version": "0.1.0",
-  "description": "Manage git worktrees as running environments — provisioned, ported, served and aware of the Claude Code sessions inside them.",
+  "description": "Manage git worktrees as running environments — provisioned, ported, served.",
   "type": "module",
   "bin": {
     "ccwt": "./bin/ccwt.mjs",

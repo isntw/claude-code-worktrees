@@ -36,12 +36,11 @@ const problems = (worktree: Worktree) =>
   <div class="ccwt-table overflow-x-auto">
     <table class="min-w-[44rem]">
       <colgroup>
-        <col style="width: 19%" />
-        <col style="width: 24%" />
-        <col style="width: 19%" />
-        <col style="width: 12%" />
-        <col style="width: 13%" />
-        <col style="width: 13%" />
+        <col style="width: 20%" />
+        <col style="width: 27%" />
+        <col style="width: 21%" />
+        <col style="width: 14%" />
+        <col style="width: 18%" />
       </colgroup>
 
       <thead>
@@ -50,7 +49,6 @@ const problems = (worktree: Worktree) =>
           <th scope="col">Worktree</th>
           <th scope="col">Branch</th>
           <th scope="col">Services</th>
-          <th scope="col">Agent</th>
           <th scope="col">Notes</th>
         </tr>
       </thead>
@@ -107,8 +105,6 @@ const problems = (worktree: Worktree) =>
             </span>
             <span v-else class="font-sans text-[0.625rem] text-faint">none</span>
           </td>
-
-          <td><AgentBadge :status="row.worktree.agent" /></td>
 
           <td>
             <span class="flex flex-wrap items-center gap-1">

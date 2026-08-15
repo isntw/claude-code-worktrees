@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { resolve, sep } from 'node:path'
 import type { GitReport, GitStatus, WorktreeOrigin } from '../../shared/types'
 import { git, gitOut } from './exec'
-import { CLAUDE_WORKTREE_DIR } from './claude'
+
+const CLAUDE_WORKTREE_DIR = '.claude/worktrees'
 
 export interface RawWorktree {
   path: string

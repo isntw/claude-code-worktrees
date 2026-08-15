@@ -32,19 +32,15 @@ async function gather(project: Project): Promise<Gathered> {
   }
 }
 
-function tally(rows: OverviewRow[]): Pick<
-  OverviewTotals,
-  'services' | 'running' | 'starting' | 'crashed' | 'agents'
-> {
+function tally(
+  rows: OverviewRow[],
+): Pick<OverviewTotals, 'services' | 'running' | 'starting' | 'crashed'> {
   let services = 0
   let running = 0
   let starting = 0
   let crashed = 0
-  let agents = 0
 
   for (const row of rows) {
-    if (row.worktree.agent.state !== 'idle') agents += 1
-
     for (const service of row.worktree.services) {
       services += 1
       if (service.state === 'running') running += 1
@@ -53,7 +49,7 @@ function tally(rows: OverviewRow[]): Pick<
     }
   }
 
-  return { services, running, starting, crashed, agents }
+  return { services, running, starting, crashed }
 }
 
 function portRows(claims: Map<number, PortClaim[]>): PortRow[] {

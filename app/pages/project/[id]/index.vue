@@ -12,6 +12,9 @@ import type {
 } from '#shared/types'
 import type { StackPart } from '../../../compose'
 import { composeFileOf, containerFor, serviceNames } from '../../../compose'
+import { DETAIL_PAGES } from '../../../nav'
+
+const page = DETAIL_PAGES['project-id']!
 
 const api = useApi()
 const route = useRoute()
@@ -80,25 +83,18 @@ const createError = ref<string | null>(null)
 const doomed = ref<Worktree | null>(null)
 const removeBusy = ref(false)
 
-const filter = ref<'all' | 'running' | 'agent'>('all')
+const filter = ref<'all' | 'running'>('all')
 
 const isRunning = (worktree: Worktree) =>
   worktree.services.some((service) => service.state === 'running' || service.state === 'starting')
 
-const visible = computed(() => {
-  if (filter.value === 'running') return worktrees.value.filter(isRunning)
-  if (filter.value === 'agent') return worktrees.value.filter((w) => w.agent.state !== 'idle')
-  return worktrees.value
-})
+const running = computed(() => worktrees.value.filter(isRunning))
+
+const visible = computed(() => (filter.value === 'running' ? running.value : worktrees.value))
 
 const tabs = computed(() => [
   { value: 'all' as const, label: 'all', count: worktrees.value.length },
-  { value: 'running' as const, label: 'running', count: worktrees.value.filter(isRunning).length },
-  {
-    value: 'agent' as const,
-    label: 'agent',
-    count: worktrees.value.filter((w) => w.agent.state !== 'idle').length,
-  },
+  { value: 'running' as const, label: 'running', count: running.value.length },
 ])
 
 const load = async () => {
@@ -239,8 +235,8 @@ onBeforeUnmount(() => {
 
 <template>
   <ConsoleHeader
-    :title="project?.name ?? 'Worktrees'"
-    blurb="What exists, what is running, and which agent is in it."
+    :title="project?.name ?? page.title"
+    :blurb="page.blurb"
     :loading="loading"
   >
     <Tabs v-model="filter" :options="tabs" label="Filter worktrees" />
@@ -313,7 +309,6 @@ onBeforeUnmount(() => {
           (service) => watching(worktree, () => api.startService(projectId, worktree.id, service))
         "
         @stop="(service) => act(() => api.stopService(projectId, worktree.id, service))"
-        @launch="act(() => api.launchAgent(projectId, worktree.id))"
         @lock="act(() => api.lockWorktree(projectId, worktree.id))"
         @unlock="act(() => api.unlockWorktree(projectId, worktree.id))"
         @remove="doomed = worktree"
