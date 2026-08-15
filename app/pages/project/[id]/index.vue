@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
-import type { LogLine, Project, Worktree } from '#shared/types'
+import type {
+  Diagnostic,
+  ForgeStatus,
+  GitReport,
+  LogLine,
+  Project,
+  Severity,
+  Worktree,
+} from '#shared/types'
 import type { StackPart } from '../../../compose'
 import { composeFileOf, containerFor, serviceNames } from '../../../compose'
 
@@ -45,8 +53,24 @@ const parts = computed(() => {
   return found
 })
 const worktrees = ref<Worktree[]>([])
+const git = ref<GitReport>({})
+const forge = ref<ForgeStatus | null>(null)
 const lines = ref<LogLine[]>([])
 const selected = ref<string | null>(null)
+
+const pullFor = (worktree: Worktree) =>
+  worktree.branch ? (forge.value?.pulls[worktree.branch] ?? null) : null
+
+const NOTICE: Record<Severity, string> = {
+  error: 'border-alarm text-alarm',
+  warning: 'border-caution text-caution',
+  info: 'border-line text-faint',
+}
+
+const notices = computed<Diagnostic[]>(() => [
+  ...(project.value?.issues ?? []),
+  ...(forge.value?.issues ?? []),
+])
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -80,18 +104,24 @@ const tabs = computed(() => [
 const load = async () => {
   loading.value = true
   try {
-    const [next, list] = await Promise.all([
+    const [next, list, status] = await Promise.all([
       api.getProject(projectId.value),
       api.listWorktrees(projectId.value),
+      api.getGit(projectId.value).catch(() => ({}) as GitReport),
     ])
     project.value = next
     worktrees.value = list
+    git.value = status
     error.value = null
   } catch (cause) {
     error.value = (cause as Error).message
   } finally {
     loading.value = false
   }
+}
+
+const loadPulls = async () => {
+  forge.value = await api.getPulls(projectId.value).catch(() => null)
 }
 
 const show = async (worktreeId: string) => {
@@ -177,6 +207,7 @@ const forget = async () => {
 }
 
 let disconnect: (() => void) | null = null
+let polling: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   disconnect = api.connect((message) => {
@@ -191,13 +222,19 @@ onMounted(async () => {
 
   await load()
 
+  loadPulls()
+  polling = setInterval(loadPulls, 15_000)
+
   const remembered = route.query.worktree
   if (typeof remembered === 'string' && worktrees.value.some((w) => w.id === remembered)) {
     await show(remembered)
   }
 })
 
-onBeforeUnmount(() => disconnect?.())
+onBeforeUnmount(() => {
+  disconnect?.()
+  if (polling) clearInterval(polling)
+})
 </script>
 
 <template>
@@ -250,12 +287,10 @@ onBeforeUnmount(() => disconnect?.())
     <SetupPanel v-if="project" :setup="project.setup" class="mb-3" />
 
     <p
-      v-for="issue in project?.issues ?? []"
+      v-for="issue in notices"
       :key="issue.code"
       class="mb-2 border px-3 py-2 font-sans text-[0.6875rem]"
-      :class="
-        issue.severity === 'error' ? 'border-alarm text-alarm' : 'border-caution text-caution'
-      "
+      :class="NOTICE[issue.severity]"
     >
       {{ issue.message }}
       <span v-if="issue.hint" class="text-faint"> — {{ issue.hint }}</span>
@@ -267,6 +302,9 @@ onBeforeUnmount(() => disconnect?.())
         :key="worktree.id"
         :worktree="worktree"
         :parts="parts"
+        :git="git[worktree.id] ?? null"
+        :pull="pullFor(worktree)"
+        :since="forge?.at ?? null"
         :selected="selected === worktree.id"
         @select="select(worktree)"
         @start-all="watching(worktree, () => api.startAll(projectId, worktree.id))"

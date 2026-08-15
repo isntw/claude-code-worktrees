@@ -117,6 +117,34 @@ export interface Worktree {
   issues: Diagnostic[]
 }
 
+export interface GitStatus {
+  branch: string | null
+  upstream: string | null
+  ahead: number
+  behind: number
+  staged: number
+  unstaged: number
+  untracked: number
+  conflicted: number
+}
+
+export type GitReport = Record<string, GitStatus>
+
+export type PullState = 'open' | 'draft' | 'merged' | 'closed'
+
+export interface PullRequest {
+  number: number
+  title: string
+  url: string
+  state: PullState
+}
+
+export interface ForgeStatus {
+  at: string | null
+  pulls: Record<string, PullRequest>
+  issues: Diagnostic[]
+}
+
 export interface LogLine {
   worktreeId: string
   service: string

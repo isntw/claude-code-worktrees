@@ -2,6 +2,8 @@ import type {
   CcwtConfig,
   ConfigView,
   DirListing,
+  ForgeStatus,
+  GitReport,
   LogLine,
   Overview,
   ProbeResult,
@@ -58,6 +60,9 @@ export function useApi() {
       call<{ config: CcwtConfig; text: string }>(`/projects/${projectId}/config/suggest`, {
         method: 'POST',
       }),
+
+    getGit: (projectId: string) => call<GitReport>(`/projects/${projectId}/git`),
+    getPulls: (projectId: string) => call<ForgeStatus>(`/projects/${projectId}/pulls`),
 
     listWorktrees: (projectId: string) => call<Worktree[]>(`/projects/${projectId}/worktrees`),
     createWorktree: (projectId: string, input: { name: string; branch: string; start: boolean }) =>

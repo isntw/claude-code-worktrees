@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { resolve, sep } from 'node:path'
-import type { WorktreeOrigin } from '../../shared/types'
+import type { GitReport, GitStatus, WorktreeOrigin } from '../../shared/types'
 import { git, gitOut } from './exec'
 import { CLAUDE_WORKTREE_DIR } from './claude'
 
@@ -39,6 +39,100 @@ export async function defaultBranch(rootPath: string): Promise<string | null> {
 export async function branchExists(rootPath: string, branch: string): Promise<boolean> {
   const result = await git(rootPath, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`])
   return result.code === 0
+}
+
+const HEADERS = {
+  head: '# branch.head ',
+  upstream: '# branch.upstream ',
+  ab: '# branch.ab ',
+} as const
+
+export async function readStatus(worktreePath: string): Promise<GitStatus | null> {
+  const out = await gitOut(worktreePath, ['status', '--porcelain=v2', '--branch'])
+  if (out === null) return null
+
+  const status: GitStatus = {
+    branch: null,
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    staged: 0,
+    unstaged: 0,
+    untracked: 0,
+    conflicted: 0,
+  }
+
+  for (const line of out.split('\n')) {
+    if (line.startsWith(HEADERS.head)) {
+      const value = line.slice(HEADERS.head.length)
+      status.branch = value === '(detached)' ? null : value
+      continue
+    }
+
+    if (line.startsWith(HEADERS.upstream)) {
+      status.upstream = line.slice(HEADERS.upstream.length) || null
+      continue
+    }
+
+    if (line.startsWith(HEADERS.ab)) {
+      const found = line.slice(HEADERS.ab.length).match(/^\+(\d+) -(\d+)$/)
+      if (found?.[1] && found[2]) {
+        status.ahead = Number(found[1])
+        status.behind = Number(found[2])
+      }
+      continue
+    }
+
+    if (line.startsWith('1 ') || line.startsWith('2 ')) {
+      const xy = line.slice(2, 4)
+      if (xy.length !== 2) continue
+      if (xy[0] !== '.') status.staged += 1
+      if (xy[1] !== '.') status.unstaged += 1
+      continue
+    }
+
+    if (line.startsWith('u ')) status.conflicted += 1
+    else if (line.startsWith('? ')) status.untracked += 1
+  }
+
+  if (!status.upstream && status.branch) {
+    const remote = `origin/${status.branch}`
+    const found = await git(worktreePath, ['rev-parse', '--verify', '--quiet', `${remote}^{commit}`])
+
+    if (found.code === 0) {
+      const counts = await gitOut(worktreePath, [
+        'rev-list',
+        '--left-right',
+        '--count',
+        `${remote}...HEAD`,
+      ])
+      const [behind, ahead] = (counts ?? '').split(/\s+/)
+
+      if (behind !== undefined && ahead !== undefined) {
+        status.upstream = remote
+        status.behind = Number(behind)
+        status.ahead = Number(ahead)
+      }
+    }
+  }
+
+  return status
+}
+
+export async function statusReport(rootPath: string): Promise<GitReport> {
+  const raw = await listWorktrees(rootPath)
+
+  const found = await Promise.all(
+    raw
+      .filter((entry) => !entry.bare)
+      .map(async (entry) => [idFor(entry.path), await readStatus(entry.path)] as const),
+  )
+
+  const report: GitReport = {}
+  for (const [id, status] of found) {
+    if (status) report[id] = status
+  }
+  return report
 }
 
 export async function listWorktrees(rootPath: string): Promise<RawWorktree[]> {
