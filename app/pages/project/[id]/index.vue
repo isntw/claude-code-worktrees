@@ -86,6 +86,7 @@ const createBusy = ref(false)
 const createError = ref<string | null>(null)
 const doomed = ref<Worktree | null>(null)
 const removeBusy = ref(false)
+const removeBranch = ref(false)
 
 const merging = ref<{ worktree: Worktree; pull: PullRequest } | null>(null)
 const mergeState = ref<Mergeability | null>(null)
@@ -206,15 +207,18 @@ const confirmRemove = async () => {
 
   removeBusy.value = true
   try {
-    await api.removeWorktree(projectId.value, target.id)
+    const outcome = await api.removeWorktree(projectId.value, target.id, removeBranch.value)
     if (selected.value === target.id) hide()
     doomed.value = null
-    error.value = null
+    error.value = outcome.branchIssue
+      ? `The worktree is gone, but ${outcome.branch} was kept — ${outcome.branchIssue}`
+      : null
   } catch (cause) {
     error.value = (cause as Error).message
     doomed.value = null
   } finally {
     removeBusy.value = false
+    removeBranch.value = false
     await load()
   }
 }
@@ -462,10 +466,23 @@ onBeforeUnmount(() => {
       untracked files ccwt put there — <code class="font-mono">node_modules</code>, copied
       <code class="font-mono">.env</code> files, and anything else not committed.
     </p>
-    <p class="mt-3 font-sans text-xs text-dim">
-      The branch <code class="font-mono text-ink">{{ doomed.branch ?? 'detached' }}</code> is kept.
-      Committed work is safe.
+    <p v-if="!doomed.branch" class="mt-3 font-sans text-xs text-dim">
+      This worktree is detached, so there is no branch to keep or delete.
     </p>
+    <p v-else-if="!removeBranch" class="mt-3 font-sans text-xs text-dim">
+      The branch <code class="font-mono text-ink">{{ doomed.branch }}</code> is kept. Committed work
+      is safe.
+    </p>
+    <p v-else class="mt-3 font-sans text-xs text-caution">
+      The branch <code class="font-mono">{{ doomed.branch }}</code> is deleted from this computer.
+      Nothing on GitHub changes. If it still holds commits that are not merged anywhere, it is kept.
+    </p>
+
+    <Checkbox v-if="doomed.branch" v-model="removeBranch" class="mt-3">
+      <span class="font-sans text-xs text-dim"
+        >Also delete <code class="font-mono text-ink">{{ doomed.branch }}</code></span
+      >
+    </Checkbox>
 
     <template #footer>
       <Button size="sm" @click="doomed = null">cancel</Button>

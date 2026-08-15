@@ -48,7 +48,7 @@ const stale = computed(() => {
 })
 
 const asOf = computed(() =>
-  props.since ? `Read from the forge at ${new Date(props.since).toLocaleTimeString()}` : '',
+  props.since ? `Read from GitHub at ${new Date(props.since).toLocaleTimeString()}` : '',
 )
 </script>
 

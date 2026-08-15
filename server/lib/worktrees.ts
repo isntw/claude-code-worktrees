@@ -2,6 +2,7 @@ import { basename, join, resolve } from 'node:path'
 import type {
   LockState,
   Project,
+  RemoveOutcome,
   ServiceConfig,
   ServiceStatus,
   Worktree,
@@ -9,6 +10,7 @@ import type {
 import {
   addWorktree,
   classify,
+  deleteBranch,
   enableWorktreeConfig,
   idFor,
   isIgnored,
@@ -519,7 +521,22 @@ export async function unlock(project: Project, worktreeId: string): Promise<Work
   return after
 }
 
-export async function remove(project: Project, worktreeId: string): Promise<void> {
+async function dropBranch(
+  rootPath: string,
+  branch: string | null,
+  wanted: boolean,
+): Promise<RemoveOutcome> {
+  if (!wanted || !branch) return { branch, branchDeleted: false, branchIssue: null }
+
+  const refused = await deleteBranch(rootPath, branch).catch((cause: Error) => cause.message)
+  return { branch, branchDeleted: refused === null, branchIssue: refused }
+}
+
+export async function remove(
+  project: Project,
+  worktreeId: string,
+  alsoBranch = false,
+): Promise<RemoveOutcome> {
   const worktree = await find(project, worktreeId)
   if (!worktree) throw new Error('No such worktree.')
   if (worktree.root) throw new Error('That is the repository root, not a worktree ccwt can remove.')
@@ -530,7 +547,7 @@ export async function remove(project: Project, worktreeId: string): Promise<void
   if (worktree.prunable) {
     await supervisor.stopWorktree(worktreeId)
     await pruneWorktrees(project.rootPath)
-    return
+    return dropBranch(project.rootPath, worktree.branch, alsoBranch)
   }
 
   const config = project.config
@@ -607,4 +624,6 @@ export async function remove(project: Project, worktreeId: string): Promise<void
   }
 
   await removeWorktree(project.rootPath, worktree.path)
+
+  return dropBranch(project.rootPath, worktree.branch, alsoBranch)
 }

@@ -144,6 +144,12 @@ export interface ForgeStatus {
   issues: Diagnostic[]
 }
 
+export interface RemoveOutcome {
+  branch: string | null
+  branchDeleted: boolean
+  branchIssue: string | null
+}
+
 export type MergeMethod = 'merge' | 'squash' | 'rebase'
 
 export interface Mergeability {
