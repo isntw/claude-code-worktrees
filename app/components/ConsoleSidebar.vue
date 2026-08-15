@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-vue-next'
+import { BookOpen, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-vue-next'
 import { NAV } from '../nav'
 
 const route = useRoute()
-const { sidebarCollapsed, toggleSidebar } = useShell()
+const { sidebarCollapsed, toggleSidebar, openGuide } = useShell()
 const { dark, toggle } = useTheme()
 
 const pages = computed(() => NAV.filter((item) => item.nav === 'page'))
@@ -80,6 +80,17 @@ const hint = (label: string) => (sidebarCollapsed.value ? label : undefined)
         <component :is="item.icon" :size="13" class="shrink-0" aria-hidden="true" />
         <span :class="sidebarCollapsed ? 'sr-only' : 'flex-1'">{{ item.title }}</span>
       </NuxtLink>
+
+      <button
+        type="button"
+        class="h-9 border-b border-line text-xs text-dim transition-colors hover:bg-raised hover:text-ink"
+        :class="[ITEM, PAD]"
+        :title="hint('Guide')"
+        @click="openGuide"
+      >
+        <BookOpen :size="13" class="shrink-0" aria-hidden="true" />
+        <span :class="sidebarCollapsed ? 'sr-only' : 'flex-1'">Guide</span>
+      </button>
 
       <button
         type="button"

@@ -223,6 +223,18 @@ export interface Overview {
   issues: OverviewIssue[]
 }
 
+export type ToolState = 'present' | 'missing' | 'outdated'
+
+export interface ToolCheck {
+  name: string
+  required: boolean
+  state: ToolState
+  version: string | null
+  minimum: string | null
+  purpose: string
+  install: string
+}
+
 export type SocketMessage =
   | { type: 'log'; line: LogLine }
   | { type: 'service'; worktreeId: string; status: ServiceStatus }
