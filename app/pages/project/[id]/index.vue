@@ -3,10 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
 import type {
   Diagnostic,
+  ForgeSession,
   ForgeStatus,
   GitReport,
   LogLine,
+  MergeMethod,
+  Mergeability,
   Project,
+  PullRequest,
   Severity,
   Worktree,
 } from '#shared/types'
@@ -82,6 +86,24 @@ const createBusy = ref(false)
 const createError = ref<string | null>(null)
 const doomed = ref<Worktree | null>(null)
 const removeBusy = ref(false)
+
+const merging = ref<{ worktree: Worktree; pull: PullRequest } | null>(null)
+const mergeState = ref<Mergeability | null>(null)
+const mergeMethod = ref<MergeMethod>('merge')
+const mergeBusy = ref(false)
+const mergeError = ref<string | null>(null)
+const forgeSession = ref<ForgeSession | null>(null)
+
+const METHODS: { value: MergeMethod; label: string }[] = [
+  { value: 'merge', label: 'merge' },
+  { value: 'squash', label: 'squash' },
+  { value: 'rebase', label: 'rebase' },
+]
+
+const blocked = computed(() => {
+  const state = mergeState.value?.state
+  return state === 'dirty' || state === 'blocked' || state === 'draft' || state === 'behind'
+})
 
 const filter = ref<'all' | 'running'>('all')
 
@@ -194,6 +216,45 @@ const confirmRemove = async () => {
   } finally {
     removeBusy.value = false
     await load()
+  }
+}
+
+const openMerge = async (worktree: Worktree) => {
+  const pull = pullFor(worktree)
+  if (!pull) return
+
+  merging.value = { worktree, pull }
+  mergeState.value = null
+  mergeError.value = null
+
+  forgeSession.value = await api.getForgeSession().catch(() => null)
+  mergeState.value = await api
+    .getMergeability(projectId.value, pull.number)
+    .catch((cause: Error) => {
+      mergeError.value = cause.message
+      return null
+    })
+}
+
+const confirmMerge = async () => {
+  const target = merging.value
+  if (!target) return
+
+  mergeBusy.value = true
+  mergeError.value = null
+  try {
+    await api.mergePull(
+      projectId.value,
+      target.pull.number,
+      mergeMethod.value,
+      mergeState.value?.headSha || target.pull.headSha,
+    )
+    merging.value = null
+    await Promise.all([load(), loadPulls()])
+  } catch (cause) {
+    mergeError.value = (cause as Error).message
+  } finally {
+    mergeBusy.value = false
   }
 }
 
@@ -312,6 +373,7 @@ onBeforeUnmount(() => {
         @lock="act(() => api.lockWorktree(projectId, worktree.id))"
         @unlock="act(() => api.unlockWorktree(projectId, worktree.id))"
         @remove="doomed = worktree"
+        @merge="openMerge(worktree)"
       />
     </div>
 
@@ -333,6 +395,58 @@ onBeforeUnmount(() => {
     @close="creating = false"
     @create="create"
   />
+
+  <ModalPanel
+    v-if="merging"
+    :title="`Merge #${merging.pull.number} into ${merging.pull.baseRef}`"
+    @close="merging = null"
+  >
+    <p class="font-sans text-xs text-dim">
+      <span class="font-mono text-ink">{{ merging.pull.title }}</span>
+    </p>
+
+    <p class="mt-3 font-sans text-xs text-dim">
+      This merges on GitHub, as
+      <span class="font-mono text-ink">{{ forgeSession?.login ?? 'the signed-in account' }}</span
+      >. It changes the remote, not this worktree — nothing here is stopped or deleted.
+    </p>
+
+    <p v-if="!mergeState && !mergeError" class="mt-3 font-sans text-xs text-faint">
+      Asking GitHub whether it can be merged…
+    </p>
+
+    <p
+      v-else-if="mergeState"
+      class="mt-3 font-sans text-xs"
+      :class="blocked ? 'text-caution' : 'text-dim'"
+    >
+      {{ mergeState.reason }}
+    </p>
+
+    <div class="mt-3 flex items-center gap-2">
+      <span class="t-eyebrow">Method</span>
+      <Tabs v-model="mergeMethod" :options="METHODS" label="Merge method" />
+    </div>
+
+    <p class="mt-3 font-sans text-[0.6875rem] text-faint">
+      ccwt merges the commit this card was drawn from
+      <code class="font-mono">{{ (mergeState?.headSha || merging.pull.headSha).slice(0, 8) }}</code
+      >. If the branch moved since, GitHub refuses and nothing is merged.
+    </p>
+
+    <p v-if="mergeError" class="mt-3 font-sans text-xs text-alarm">{{ mergeError }}</p>
+
+    <template #footer>
+      <Button size="sm" @click="merging = null">cancel</Button>
+      <Button
+        size="sm"
+        :outline="false"
+        :disabled="mergeBusy || blocked || !mergeState"
+        @click="confirmMerge"
+        >{{ mergeBusy ? 'merging…' : `${mergeMethod} and close` }}</Button
+      >
+    </template>
+  </ModalPanel>
 
   <ModalPanel
     v-if="doomed"

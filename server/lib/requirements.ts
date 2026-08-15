@@ -30,14 +30,6 @@ const TOOLS: Probe[] = [
     install: 'https://nodejs.org',
     running: process.versions.node,
   },
-  {
-    name: 'gh',
-    required: false,
-    minimum: null,
-    purpose:
-      'For reading branch and pull request state from the forge. Nothing in ccwt reaches for it today.',
-    install: 'https://cli.github.com',
-  },
 ]
 
 function parseVersion(text: string): string | null {

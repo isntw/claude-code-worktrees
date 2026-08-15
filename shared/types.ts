@@ -120,11 +120,22 @@ export type GitReport = Record<string, GitStatus>
 
 export type PullState = 'open' | 'draft' | 'merged' | 'closed'
 
+export type MergeState =
+  | 'clean'
+  | 'blocked'
+  | 'dirty'
+  | 'behind'
+  | 'unstable'
+  | 'draft'
+  | 'unknown'
+
 export interface PullRequest {
   number: number
   title: string
   url: string
   state: PullState
+  baseRef: string
+  headSha: string
 }
 
 export interface ForgeStatus {
@@ -132,6 +143,41 @@ export interface ForgeStatus {
   pulls: Record<string, PullRequest>
   issues: Diagnostic[]
 }
+
+export type MergeMethod = 'merge' | 'squash' | 'rebase'
+
+export interface Mergeability {
+  number: number
+  state: MergeState
+  headSha: string
+  reason: string
+}
+
+export interface MergeOutcome {
+  merged: boolean
+  sha: string | null
+  message: string
+}
+
+export interface ForgeSession {
+  login: string | null
+  scopes: string[]
+  canMerge: boolean
+  configured: boolean
+}
+
+export interface DeviceCode {
+  handle: string
+  userCode: string
+  verificationUri: string
+  expiresAt: string
+  interval: number
+}
+
+export type DeviceOutcome =
+  | { state: 'pending'; interval: number }
+  | { state: 'done'; session: ForgeSession }
+  | { state: 'failed'; message: string }
 
 export interface LogLine {
   worktreeId: string

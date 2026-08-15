@@ -1,4 +1,4 @@
-import { Activity, FolderGit2, SwatchBook } from 'lucide-vue-next'
+import { Activity, FolderGit2, Settings, SwatchBook } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavPage {
@@ -26,6 +26,14 @@ export const NAV: NavPage[] = [
     blurb: 'Every repository ccwt knows how to build a worktree for.',
     nav: 'page',
     icon: FolderGit2,
+  },
+  {
+    name: 'settings',
+    path: '/settings',
+    title: 'Settings',
+    blurb: 'The accounts and hosts ccwt talks to on your behalf.',
+    nav: 'pinned',
+    icon: Settings,
   },
   {
     name: 'preview',
