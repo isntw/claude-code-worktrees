@@ -160,19 +160,8 @@ const mergeable = computed(
       <GitRow class="min-w-0 flex-1" :status="git" :pull="pull" :since="since" />
     </div>
 
-    <div
-      v-if="finished"
-      class="flex items-center gap-2 border-b border-line px-3 py-2"
-    >
+    <div v-if="finished" class="flex min-h-9 items-center border-b border-line px-3 py-2">
       <span class="min-w-0 flex-1 font-sans text-[0.6875rem] text-dim">{{ finished }}</span>
-      <Button
-        size="sm"
-        variation="error"
-        :disabled="worktree.locked"
-        :title="worktree.locked ? lock : 'Remove this worktree'"
-        @click="emit('remove')"
-        >remove worktree</Button
-      >
     </div>
 
     <div
