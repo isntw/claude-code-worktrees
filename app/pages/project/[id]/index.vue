@@ -474,8 +474,8 @@ onBeforeUnmount(() => {
       is safe.
     </p>
     <p v-else class="mt-3 font-sans text-xs text-caution">
-      The branch <code class="font-mono">{{ doomed.branch }}</code> goes too, here — the one on the
-      forge is untouched. It is kept anyway if it holds commits that are not merged.
+      The branch <code class="font-mono">{{ doomed.branch }}</code> is deleted from this computer.
+      Nothing on GitHub changes. If it still holds commits that are not merged anywhere, it is kept.
     </p>
 
     <Checkbox v-if="doomed.branch" v-model="removeBranch" class="mt-3">
