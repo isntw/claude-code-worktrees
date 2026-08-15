@@ -14,10 +14,11 @@ import {
   enableWorktreeConfig,
   idFor,
   isIgnored,
-  isInside,
+  isProvisionedByCcwt,
   listWorktrees,
   lockWorktree,
   pruneWorktrees,
+  readUnsaved,
   removeWorktree,
   unlockWorktree,
 } from './git'
@@ -199,7 +200,7 @@ export async function list(project: Project): Promise<Worktree[]> {
           root,
           branch: entry.branch,
           head: entry.head,
-          origin: classify(project.rootPath, dir, entry.path),
+          origin: classify(project.rootPath, dir, entry.path, await isProvisionedByCcwt(entry.path)),
           detached: entry.detached,
           bare: entry.bare,
           locked: entry.locked,
@@ -532,6 +533,27 @@ async function dropBranch(
   return { branch, branchDeleted: refused === null, branchIssue: refused }
 }
 
+function naming(paths: string[]): string {
+  const shown = paths.slice(0, 3).join(', ')
+  return paths.length > 3 ? `${shown} and ${paths.length - 3} more` : shown
+}
+
+async function assertNothingToLose(worktreePath: string): Promise<void> {
+  const unsaved = await readUnsaved(worktreePath)
+
+  if (unsaved.changed.length) {
+    throw new Error(
+      `${worktreePath} has uncommitted changes (${naming(unsaved.changed)}). ccwt did not create this worktree, so it will not delete them — commit or discard them first.`,
+    )
+  }
+
+  if (unsaved.ignored.length) {
+    throw new Error(
+      `${worktreePath} holds files git ignores (${naming(unsaved.ignored)}). ccwt did not create this worktree, so it will not delete them — clear them first.`,
+    )
+  }
+}
+
 export async function remove(
   project: Project,
   worktreeId: string,
@@ -551,13 +573,9 @@ export async function remove(
   }
 
   const config = project.config
-  const dir = config ? worktreesDirFor(project.rootPath, config) : null
+  const owned = worktree.origin !== 'manual'
 
-  if (!dir || !isInside(dir, worktree.path)) {
-    if (worktree.origin !== 'claude') {
-      throw new Error(`${worktree.path} is outside this project's worktrees directory.`)
-    }
-  }
+  if (!owned) await assertNothingToLose(worktree.path)
 
   await supervisor.stopWorktree(worktreeId)
 
@@ -623,7 +641,7 @@ export async function remove(
     }
   }
 
-  await removeWorktree(project.rootPath, worktree.path)
+  await removeWorktree(project.rootPath, worktree.path, owned)
 
   return dropBranch(project.rootPath, worktree.branch, alsoBranch)
 }

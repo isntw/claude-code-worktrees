@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { Worktree } from '#shared/types'
 
 const props = defineProps<{ projectId: string; worktree: Worktree }>()
@@ -11,6 +11,8 @@ const api = useApi()
 const branch = ref(false)
 const busy = ref(false)
 const error = ref<string | null>(null)
+
+const owned = computed(() => props.worktree.origin !== 'manual')
 
 const confirm = async () => {
   busy.value = true
@@ -34,10 +36,15 @@ const confirm = async () => {
       <code class="font-mono text-ink">{{ worktree.path }}</code> is already gone from disk. This
       drops the entry git still keeps for it. Nothing on disk changes.
     </p>
-    <p v-else class="font-sans text-xs text-dim">
+    <p v-else-if="owned" class="font-sans text-xs text-dim">
       This deletes <code class="font-mono text-ink">{{ worktree.path }}</code> from disk, including
       untracked files ccwt put there — <code class="font-mono">node_modules</code>, copied
       <code class="font-mono">.env</code> files, and anything else not committed.
+    </p>
+    <p v-else class="font-sans text-xs text-dim">
+      ccwt did not create <code class="font-mono text-ink">{{ worktree.path }}</code
+      >, so it removes the directory only if nothing would be lost — no uncommitted changes, and no
+      files git ignores. If anything is there, the removal is refused and names it.
     </p>
 
     <p v-if="!worktree.branch" class="mt-3 font-sans text-xs text-dim">

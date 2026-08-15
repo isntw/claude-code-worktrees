@@ -5,6 +5,11 @@ import { git, gitOut } from './exec'
 
 const CLAUDE_WORKTREE_DIR = '.claude/worktrees'
 
+export interface Unsaved {
+  changed: string[]
+  ignored: string[]
+}
+
 export interface RawWorktree {
   path: string
   head: string | null
@@ -185,15 +190,21 @@ export async function listWorktrees(rootPath: string): Promise<RawWorktree[]> {
   return worktrees
 }
 
+export async function isProvisionedByCcwt(worktreePath: string): Promise<boolean> {
+  const result = await git(worktreePath, ['config', '--worktree', '--get-regexp', '^ccwt\\.'])
+  return result.code === 0
+}
+
 export function classify(
   rootPath: string,
   worktreesDir: string,
   worktreePath: string,
+  adopted: boolean,
 ): WorktreeOrigin {
   if (resolve(worktreePath) === resolve(rootPath)) return 'manual'
   if (isInside(resolve(rootPath, CLAUDE_WORKTREE_DIR), worktreePath)) return 'claude'
   if (isInside(worktreesDir, worktreePath)) return 'ccwt'
-  return 'manual'
+  return adopted ? 'ccwt' : 'manual'
 }
 
 export async function addWorktree(
@@ -212,11 +223,33 @@ export async function addWorktree(
   }
 }
 
-export async function removeWorktree(rootPath: string, worktreePath: string): Promise<void> {
-  const result = await git(rootPath, ['worktree', 'remove', '--force', worktreePath])
+export async function removeWorktree(
+  rootPath: string,
+  worktreePath: string,
+  force = true,
+): Promise<void> {
+  const args = force
+    ? ['worktree', 'remove', '--force', worktreePath]
+    : ['worktree', 'remove', worktreePath]
+
+  const result = await git(rootPath, args)
   if (result.code !== 0) {
     throw new Error(result.stderr.trim() || `git worktree remove exited ${result.code}`)
   }
+}
+
+export async function readUnsaved(worktreePath: string): Promise<Unsaved> {
+  const out = await gitOut(worktreePath, ['status', '--porcelain', '--ignored'])
+  const unsaved: Unsaved = { changed: [], ignored: [] }
+  if (!out) return unsaved
+
+  for (const line of out.split('\n')) {
+    if (line.length < 4) continue
+    if (line.startsWith('!! ')) unsaved.ignored.push(line.slice(3))
+    else unsaved.changed.push(line.slice(3))
+  }
+
+  return unsaved
 }
 
 export async function pruneWorktrees(rootPath: string): Promise<void> {
