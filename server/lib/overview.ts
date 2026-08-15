@@ -7,9 +7,12 @@ import type {
   PortClaim,
   PortRow,
   Project,
+  PullRequest,
   ServiceState,
   Worktree,
 } from '../../shared/types'
+import * as forge from './forge'
+import { credential } from './forgeauth'
 import * as projects from './projects'
 import * as worktrees from './worktrees'
 
@@ -58,9 +61,24 @@ function portRows(claims: Map<number, PortClaim[]>): PortRow[] {
     .map(([port, at]) => ({ port, claims: at }))
 }
 
+async function pullsFor(project: Project): Promise<Record<string, PullRequest>> {
+  const status = await forge.pulls(project.id, project.rootPath).catch(() => null)
+  return status?.pulls ?? {}
+}
+
 export async function build(): Promise<Overview> {
   const registered = await projects.list()
   const gathered = await Promise.all(registered.map(gather))
+
+  const signedIn = (await credential().catch(() => null)) !== null
+
+  const pulls = new Map<string, Record<string, PullRequest>>()
+  if (signedIn) {
+    const read = await Promise.all(
+      registered.map(async (project) => [project.id, await pullsFor(project)] as const),
+    )
+    for (const [id, found] of read) pulls.set(id, found)
+  }
 
   const rows: OverviewRow[] = []
   const summaries: OverviewProject[] = []
@@ -91,8 +109,14 @@ export async function build(): Promise<Overview> {
       })
     }
 
+    const forProject = pulls.get(project.id) ?? {}
+
     for (const worktree of found) {
-      rows.push({ ...where, worktree })
+      rows.push({
+        ...where,
+        worktree,
+        pull: worktree.branch ? (forProject[worktree.branch] ?? null) : null,
+      })
 
       for (const issue of worktree.issues) {
         record({ ...issue, ...where, worktree: worktree.name })
@@ -131,6 +155,7 @@ export async function build(): Promise<Overview> {
 
   return {
     at: new Date().toISOString(),
+    signedIn,
     totals: {
       projects: summaries.length,
       worktrees: rows.length,

@@ -263,6 +263,7 @@ export interface OverviewRow {
   projectId: string
   projectName: string
   worktree: Worktree
+  pull: PullRequest | null
 }
 
 export interface OverviewProject {
@@ -296,6 +297,7 @@ export interface OverviewTotals {
 
 export interface Overview {
   at: string
+  signedIn: boolean
   totals: OverviewTotals
   projects: OverviewProject[]
   rows: OverviewRow[]

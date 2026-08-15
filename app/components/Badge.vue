@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Variation } from './variation'
-
-type BadgeVariation = Variation | 'selected'
+import type { BadgeVariation } from './variation'
 
 export type BadgeSize = 'sm' | 'md' | 'lg'
 
@@ -11,6 +9,7 @@ const OUTLINE: Record<BadgeVariation, string> = {
   info: 'text-dim',
   success: 'text-ink',
   live: 'text-live',
+  merged: 'text-merged',
   warning: 'text-caution',
   error: 'text-alarm',
   selected: 'border-ink! bg-ink text-canvas',
@@ -21,6 +20,7 @@ const FILLED: Record<BadgeVariation, string> = {
   info: 'border-dim! bg-dim text-canvas',
   success: 'border-ink! bg-ink text-canvas',
   live: 'border-live! bg-live text-canvas',
+  merged: 'border-merged! bg-merged text-canvas',
   warning: 'border-caution! bg-caution text-canvas',
   error: 'border-alarm! bg-alarm text-canvas',
   selected: 'border-ink! bg-ink text-canvas',

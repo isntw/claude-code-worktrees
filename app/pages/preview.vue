@@ -77,10 +77,27 @@ const CARDS = SERVICES.map((service, index) => sample(index, service))
 
 const PROJECTS = ['app', 'app', 'kape-kb', 'legacy']
 
+const pullOf = (number: number, state: PullState): PullRequest => ({
+  number,
+  title: 'Show git and pull request status per worktree',
+  url: 'https://example.invalid/pull/0',
+  state,
+  baseRef: 'main',
+  headSha: '0000000000000000000000000000000000000000',
+})
+
+const ROW_PULLS: (PullRequest | null)[] = [
+  pullOf(12, 'open'),
+  pullOf(11, 'draft'),
+  pullOf(10, 'merged'),
+  null,
+]
+
 const ROWS: OverviewRow[] = CARDS.map((worktree, index) => ({
   projectId: 'p',
   projectName: PROJECTS[index] ?? 'app',
   worktree,
+  pull: ROW_PULLS[index] ?? null,
 }))
 
 const STATS: Stat[] = [
@@ -158,15 +175,6 @@ const gitOf = (over: Partial<GitStatus>): GitStatus => ({
   untracked: 0,
   conflicted: 0,
   ...over,
-})
-
-const pullOf = (number: number, state: PullState): PullRequest => ({
-  number,
-  title: 'Show git and pull request status per worktree',
-  url: 'https://example.invalid/pull/0',
-  state,
-  baseRef: 'main',
-  headSha: '0000000000000000000000000000000000000000',
 })
 
 const GITS: { label: string; status: GitStatus; pull: PullRequest | null }[] = [

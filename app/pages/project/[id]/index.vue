@@ -3,12 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
 import type {
   Diagnostic,
-  ForgeSession,
   ForgeStatus,
   GitReport,
   LogLine,
-  MergeMethod,
-  Mergeability,
   Project,
   PullRequest,
   Severity,
@@ -85,26 +82,8 @@ const creating = ref(false)
 const createBusy = ref(false)
 const createError = ref<string | null>(null)
 const doomed = ref<Worktree | null>(null)
-const removeBusy = ref(false)
-const removeBranch = ref(false)
 
-const merging = ref<{ worktree: Worktree; pull: PullRequest } | null>(null)
-const mergeState = ref<Mergeability | null>(null)
-const mergeMethod = ref<MergeMethod>('merge')
-const mergeBusy = ref(false)
-const mergeError = ref<string | null>(null)
-const forgeSession = ref<ForgeSession | null>(null)
-
-const METHODS: { value: MergeMethod; label: string }[] = [
-  { value: 'merge', label: 'merge' },
-  { value: 'squash', label: 'squash' },
-  { value: 'rebase', label: 'rebase' },
-]
-
-const blocked = computed(() => {
-  const state = mergeState.value?.state
-  return state === 'dirty' || state === 'blocked' || state === 'draft' || state === 'behind'
-})
+const merging = ref<PullRequest | null>(null)
 
 const filter = ref<'all' | 'running'>('all')
 
@@ -201,65 +180,21 @@ const create = async (input: { name: string; branch: string; start: boolean }) =
   }
 }
 
-const confirmRemove = async () => {
+const removed = async (kept: string | null) => {
   const target = doomed.value
-  if (!target) return
-
-  removeBusy.value = true
-  try {
-    const outcome = await api.removeWorktree(projectId.value, target.id, removeBranch.value)
-    if (selected.value === target.id) hide()
-    doomed.value = null
-    error.value = outcome.branchIssue
-      ? `The worktree is gone, but ${outcome.branch} was kept — ${outcome.branchIssue}`
-      : null
-  } catch (cause) {
-    error.value = (cause as Error).message
-    doomed.value = null
-  } finally {
-    removeBusy.value = false
-    removeBranch.value = false
-    await load()
-  }
+  if (target && selected.value === target.id) hide()
+  doomed.value = null
+  error.value = kept ? `The worktree is gone, but the branch was kept — ${kept}` : null
+  await load()
 }
 
-const openMerge = async (worktree: Worktree) => {
-  const pull = pullFor(worktree)
-  if (!pull) return
-
-  merging.value = { worktree, pull }
-  mergeState.value = null
-  mergeError.value = null
-
-  forgeSession.value = await api.getForgeSession().catch(() => null)
-  mergeState.value = await api
-    .getMergeability(projectId.value, pull.number)
-    .catch((cause: Error) => {
-      mergeError.value = cause.message
-      return null
-    })
+const openMerge = (worktree: Worktree) => {
+  merging.value = pullFor(worktree)
 }
 
-const confirmMerge = async () => {
-  const target = merging.value
-  if (!target) return
-
-  mergeBusy.value = true
-  mergeError.value = null
-  try {
-    await api.mergePull(
-      projectId.value,
-      target.pull.number,
-      mergeMethod.value,
-      mergeState.value?.headSha || target.pull.headSha,
-    )
-    merging.value = null
-    await Promise.all([load(), loadPulls()])
-  } catch (cause) {
-    mergeError.value = (cause as Error).message
-  } finally {
-    mergeBusy.value = false
-  }
+const merged = async () => {
+  merging.value = null
+  await Promise.all([load(), loadPulls()])
 }
 
 const forget = async () => {
@@ -400,102 +335,19 @@ onBeforeUnmount(() => {
     @create="create"
   />
 
-  <ModalPanel
+  <MergeModal
     v-if="merging"
-    :title="`Merge #${merging.pull.number} into ${merging.pull.baseRef}`"
+    :project-id="projectId"
+    :pull="merging"
     @close="merging = null"
-  >
-    <p class="font-sans text-xs text-dim">
-      <span class="font-mono text-ink">{{ merging.pull.title }}</span>
-    </p>
+    @merged="merged"
+  />
 
-    <p class="mt-3 font-sans text-xs text-dim">
-      This merges on GitHub, as
-      <span class="font-mono text-ink">{{ forgeSession?.login ?? 'the signed-in account' }}</span
-      >. It changes the remote, not this worktree — nothing here is stopped or deleted.
-    </p>
-
-    <p v-if="!mergeState && !mergeError" class="mt-3 font-sans text-xs text-faint">
-      Asking GitHub whether it can be merged…
-    </p>
-
-    <p
-      v-else-if="mergeState"
-      class="mt-3 font-sans text-xs"
-      :class="blocked ? 'text-caution' : 'text-dim'"
-    >
-      {{ mergeState.reason }}
-    </p>
-
-    <div class="mt-3 flex items-center gap-2">
-      <span class="t-eyebrow">Method</span>
-      <Tabs v-model="mergeMethod" :options="METHODS" label="Merge method" />
-    </div>
-
-    <p class="mt-3 font-sans text-[0.6875rem] text-faint">
-      ccwt merges the commit this card was drawn from
-      <code class="font-mono">{{ (mergeState?.headSha || merging.pull.headSha).slice(0, 8) }}</code
-      >. If the branch moved since, GitHub refuses and nothing is merged.
-    </p>
-
-    <p v-if="mergeError" class="mt-3 font-sans text-xs text-alarm">{{ mergeError }}</p>
-
-    <template #footer>
-      <Button size="sm" @click="merging = null">cancel</Button>
-      <Button
-        size="sm"
-        :outline="false"
-        :disabled="mergeBusy || blocked || !mergeState"
-        @click="confirmMerge"
-        >{{ mergeBusy ? 'merging…' : `${mergeMethod} and close` }}</Button
-      >
-    </template>
-  </ModalPanel>
-
-  <ModalPanel
+  <RemoveModal
     v-if="doomed"
-    :title="doomed.prunable ? 'Drop stale entry' : 'Remove worktree'"
+    :project-id="projectId"
+    :worktree="doomed"
     @close="doomed = null"
-  >
-    <p v-if="doomed.prunable" class="font-sans text-xs text-dim">
-      <code class="font-mono text-ink">{{ doomed.path }}</code> is already gone from disk. This drops
-      the entry git still keeps for it. Nothing on disk changes.
-    </p>
-    <p v-else class="font-sans text-xs text-dim">
-      This deletes <code class="font-mono text-ink">{{ doomed.path }}</code> from disk, including
-      untracked files ccwt put there — <code class="font-mono">node_modules</code>, copied
-      <code class="font-mono">.env</code> files, and anything else not committed.
-    </p>
-    <p v-if="!doomed.branch" class="mt-3 font-sans text-xs text-dim">
-      This worktree is detached, so there is no branch to keep or delete.
-    </p>
-    <p v-else-if="!removeBranch" class="mt-3 font-sans text-xs text-dim">
-      The branch <code class="font-mono text-ink">{{ doomed.branch }}</code> is kept. Committed work
-      is safe.
-    </p>
-    <p v-else class="mt-3 font-sans text-xs text-caution">
-      The branch <code class="font-mono">{{ doomed.branch }}</code> is deleted from this computer.
-      Nothing on GitHub changes. If it still holds commits that are not merged anywhere, it is kept.
-    </p>
-
-    <Checkbox v-if="doomed.branch" v-model="removeBranch" class="mt-3">
-      <span class="font-sans text-xs text-dim"
-        >Also delete <code class="font-mono text-ink">{{ doomed.branch }}</code></span
-      >
-    </Checkbox>
-
-    <template #footer>
-      <Button size="sm" @click="doomed = null">cancel</Button>
-      <Button
-        size="sm"
-        variation="error"
-        :outline="false"
-        :disabled="removeBusy"
-        @click="confirmRemove"
-        >{{
-          removeBusy ? 'working…' : doomed.prunable ? 'drop entry' : 'remove'
-        }}</Button
-      >
-    </template>
-  </ModalPanel>
+    @removed="removed"
+  />
 </template>

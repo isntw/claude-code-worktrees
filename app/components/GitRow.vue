@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { GitStatus, PullRequest, PullState } from '#shared/types'
-import type { Variation } from './variation'
+import type { GitStatus, PullRequest } from '#shared/types'
+import { PULL } from './pull'
 
 const props = withDefaults(
   defineProps<{
@@ -11,17 +11,6 @@ const props = withDefaults(
   }>(),
   { pull: null, since: null },
 )
-
-const PULL: Record<PullState, { label: string; variation: Variation; hint: string }> = {
-  open: { label: 'open', variation: 'live', hint: 'Its pull request is open' },
-  draft: { label: 'draft', variation: 'warning', hint: 'Its pull request is still a draft' },
-  merged: { label: 'merged', variation: 'success', hint: 'Its pull request was merged' },
-  closed: {
-    label: 'closed',
-    variation: 'neutral',
-    hint: 'Its pull request was closed without merging',
-  },
-}
 
 const dirty = computed(
   () => props.status.staged + props.status.unstaged + props.status.untracked,
