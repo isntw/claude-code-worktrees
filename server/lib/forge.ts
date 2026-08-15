@@ -53,16 +53,39 @@ async function activeAccount(rootPath: string): Promise<string | null> {
   return found?.[1] ?? null
 }
 
+const ELSEWHERE = /no git remotes|known GitHub host|not a git repository/i
+const UNAUTHENTICATED = /not logged in|gh auth login|authentication token|HTTP 401/i
+const UNSEEN = /could not resolve to a repository|HTTP 404|SAML|permission/i
+
+const STEER =
+  'Give that account access, or start ccwt with GH_TOKEN or GH_CONFIG_DIR set for the one that has it.'
+
+function plainly(said: string): string {
+  return said
+    .replace(/^GraphQL:\s*/i, '')
+    .replace(/\s*\(repository\)\s*$/i, '')
+    .split('\n')[0]!
+    .trim()
+}
+
 async function unreachable(rootPath: string, said: string): Promise<ForgeStatus> {
+  if (ELSEWHERE.test(said)) return quiet()
+
   const account = await activeAccount(rootPath)
 
   const issue: Diagnostic = {
     code: 'forge.unreachable',
     severity: 'info',
-    message: `Pull request status is unavailable, so cards show local git only — ${said}`,
-    hint: account
-      ? `gh is signed in as ${account}. Check that account can read this repository — ccwt runs gh directly rather than through your shell, so it is not always the account you use interactively.`
-      : 'Run `gh auth status` to see which account ccwt is using — it runs gh directly rather than through your shell, so it is not always the account you use interactively.',
+    message: 'Pull request status is unavailable, so cards show local git only.',
+    hint: UNAUTHENTICATED.test(said)
+      ? 'gh is not signed in. Run `gh auth login`, or start ccwt with GH_TOKEN set.'
+      : UNSEEN.test(said)
+        ? account
+          ? `gh is signed in as ${account}, which cannot see this repository. ${STEER}`
+          : `gh cannot see this repository. ${STEER}`
+        : account
+          ? `gh is signed in as ${account} and said: ${plainly(said)}`
+          : `gh said: ${plainly(said)}`,
   }
 
   return { at: new Date().toISOString(), pulls: {}, issues: [issue] }
