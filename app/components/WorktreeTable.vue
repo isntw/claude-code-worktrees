@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Lock } from 'lucide-vue-next'
 import type { OverviewRow, ServiceState, ServiceStatus, Worktree } from '#shared/types'
+import { PULL } from './pull'
 import type { Variation } from './variation'
 
 defineProps<{ rows: OverviewRow[] }>()
@@ -36,10 +37,10 @@ const problems = (worktree: Worktree) =>
   <div class="ccwt-table overflow-x-auto">
     <table class="min-w-[44rem]">
       <colgroup>
-        <col style="width: 20%" />
-        <col style="width: 27%" />
-        <col style="width: 21%" />
-        <col style="width: 14%" />
+        <col style="width: 17%" />
+        <col style="width: 22%" />
+        <col style="width: 30%" />
+        <col style="width: 13%" />
         <col style="width: 18%" />
       </colgroup>
 
@@ -83,8 +84,28 @@ const problems = (worktree: Worktree) =>
             </span>
           </td>
 
-          <td class="truncate whitespace-nowrap font-mono text-[0.625rem] text-faint">
-            {{ row.worktree.branch ?? row.worktree.head?.slice(0, 8) ?? 'detached' }}
+          <td>
+            <span class="flex items-center gap-1.5">
+              <span class="truncate font-mono text-[0.625rem] text-faint">{{
+                row.worktree.branch ?? row.worktree.head?.slice(0, 8) ?? 'detached'
+              }}</span>
+              <a
+                v-if="row.pull"
+                :href="row.pull.url"
+                target="_blank"
+                rel="noreferrer"
+                class="flex shrink-0 items-center gap-1"
+                :title="`${row.pull.title} — ${PULL[row.pull.state].hint}`"
+                @click.stop
+              >
+                <span class="font-mono text-[0.5625rem] tabular-nums text-faint"
+                  >#{{ row.pull.number }}</span
+                >
+                <Badge size="sm" :variation="PULL[row.pull.state].variation">{{
+                  PULL[row.pull.state].label
+                }}</Badge>
+              </a>
+            </span>
           </td>
 
           <td>
