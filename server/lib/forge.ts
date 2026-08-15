@@ -34,16 +34,6 @@ function quiet(): ForgeStatus {
   return { at: new Date().toISOString(), pulls: {}, issues: [] }
 }
 
-function unreachable(said: string): ForgeStatus {
-  const issue: Diagnostic = {
-    code: 'forge.unreachable',
-    severity: 'info',
-    message: `Pull request status is unavailable, so cards show local git only — ${said}`,
-    hint: 'ccwt runs `gh` without a shell, so any per-repository account switching your shell does is not applied.',
-  }
-  return { at: new Date().toISOString(), pulls: {}, issues: [issue] }
-}
-
 function gh(rootPath: string, args: string[]) {
   return exec('gh', args, { cwd: rootPath, timeoutMs: CALL_MS }).catch(
     (cause: NodeJS.ErrnoException) => ({
@@ -55,11 +45,34 @@ function gh(rootPath: string, args: string[]) {
   )
 }
 
+async function activeAccount(rootPath: string): Promise<string | null> {
+  const said = await gh(rootPath, ['auth', 'status', '--active'])
+  if (said.code !== 0) return null
+
+  const found = `${said.stdout}${said.stderr}`.match(/Logged in to \S+ account (\S+)/)
+  return found?.[1] ?? null
+}
+
+async function unreachable(rootPath: string, said: string): Promise<ForgeStatus> {
+  const account = await activeAccount(rootPath)
+
+  const issue: Diagnostic = {
+    code: 'forge.unreachable',
+    severity: 'info',
+    message: `Pull request status is unavailable, so cards show local git only — ${said}`,
+    hint: account
+      ? `gh is signed in as ${account}. Check that account can read this repository — ccwt runs gh directly rather than through your shell, so it is not always the account you use interactively.`
+      : 'Run `gh auth status` to see which account ccwt is using — it runs gh directly rather than through your shell, so it is not always the account you use interactively.',
+  }
+
+  return { at: new Date().toISOString(), pulls: {}, issues: [issue] }
+}
+
 async function read(rootPath: string): Promise<ForgeStatus> {
   const probe = await gh(rootPath, ['repo', 'view', '--json', 'nameWithOwner'])
   if ('missing' in probe && probe.missing) return quiet()
   if (probe.code !== 0) {
-    return unreachable(probe.stderr.trim() || 'gh could not read this repository.')
+    return unreachable(rootPath, probe.stderr.trim() || 'gh could not read this repository.')
   }
 
   const listed = await gh(rootPath, [
@@ -73,14 +86,14 @@ async function read(rootPath: string): Promise<ForgeStatus> {
     FIELDS,
   ])
   if (listed.code !== 0) {
-    return unreachable(listed.stderr.trim() || `gh pr list exited ${listed.code}`)
+    return unreachable(rootPath, listed.stderr.trim() || `gh pr list exited ${listed.code}`)
   }
 
   let raw: RawPull[]
   try {
     raw = JSON.parse(listed.stdout) as RawPull[]
   } catch (cause) {
-    return unreachable((cause as Error).message)
+    return unreachable(rootPath, (cause as Error).message)
   }
 
   const pulls: Record<string, PullRequest> = {}
@@ -113,7 +126,7 @@ function refresh(projectId: string, rootPath: string): Promise<ForgeStatus> {
   if (running) return running
 
   const started = read(rootPath)
-    .catch((cause: Error) => unreachable(cause.message))
+    .catch((cause: Error) => unreachable(rootPath, cause.message))
     .then((status) => {
       cache.set(projectId, { status, filled: Date.now() })
       inflight.delete(projectId)
