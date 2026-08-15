@@ -13,9 +13,9 @@ import {
   enableWorktreeConfig,
   idFor,
   isIgnored,
-  isInside,
   listWorktrees,
   lockWorktree,
+  markOrigin,
   pruneWorktrees,
   removeWorktree,
   unlockWorktree,
@@ -192,6 +192,12 @@ export async function list(project: Project): Promise<Worktree[]> {
         const id = idFor(entry.path)
         const root = resolve(entry.path) === resolve(project.rootPath)
 
+        const [origin, provisioned, services] = await Promise.all([
+          classify(project.rootPath, dir, entry.path),
+          isProvisioned(entry.path),
+          servicesFor(project, id, entry.path),
+        ])
+
         return {
           id,
           projectId: project.id,
@@ -200,15 +206,15 @@ export async function list(project: Project): Promise<Worktree[]> {
           root,
           branch: entry.branch,
           head: entry.head,
-          origin: classify(project.rootPath, dir, entry.path),
+          origin,
           detached: entry.detached,
           bare: entry.bare,
           locked: entry.locked,
           lockReason: entry.lockReason,
           lockState: lockStateOf(entry.locked, entry.lockReason),
           prunable: entry.prunable,
-          provisioned: await isProvisioned(entry.path),
-          services: await servicesFor(project, id, entry.path),
+          provisioned,
+          services,
           agent: IDLE,
           issues: [],
         }
@@ -246,6 +252,7 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   supervisor.note(id, 'provision', `git worktree add ${path} (${branch})`)
   await addWorktree(project.rootPath, path, branch)
   await enableWorktreeConfig(project.rootPath)
+  await markOrigin(path)
 
   supervisor.note(id, 'provision', 'provisioning…')
   try {
@@ -538,12 +545,9 @@ export async function remove(project: Project, worktreeId: string): Promise<void
   }
 
   const config = project.config
-  const dir = config ? worktreesDirFor(project.rootPath, config) : null
 
-  if (!dir || !isInside(dir, worktree.path)) {
-    if (worktree.origin !== 'claude') {
-      throw new Error(`${worktree.path} is outside this project's worktrees directory.`)
-    }
+  if (worktree.origin === 'manual') {
+    throw new Error(`${worktree.path} is not a worktree ccwt created or adopted.`)
   }
 
   await supervisor.stopWorktree(worktreeId)

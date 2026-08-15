@@ -1,5 +1,5 @@
 import { cp, link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import type {
   CcwtConfig,
   DependencyStrategy,
@@ -8,6 +8,7 @@ import type {
 } from '../../shared/types'
 import { argv, exec } from './exec'
 import { isDirectory, isSymlink, pathExists } from './fs'
+import { isInside } from './git'
 import { stub } from './stub'
 
 export const ALWAYS_PER_WORKTREE = [
@@ -337,11 +338,19 @@ export function worktreesDirFor(rootPath: string, config: CcwtConfig): string {
   return resolve(rootPath, config.worktreesDir)
 }
 
+export function containedDir(rootPath: string, config: CcwtConfig): string | null {
+  const dir = worktreesDirFor(rootPath, config)
+  if (!isInside(rootPath, dir)) return null
+
+  return relative(rootPath, dir) || null
+}
+
 export function worktreePathFor(
   rootPath: string,
   config: CcwtConfig,
   projectSlug: string,
   slug: string,
 ): string {
-  return join(worktreesDirFor(rootPath, config), projectSlug, slug)
+  const dir = worktreesDirFor(rootPath, config)
+  return containedDir(rootPath, config) ? join(dir, slug) : join(dir, projectSlug, slug)
 }

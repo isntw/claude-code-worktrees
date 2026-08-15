@@ -37,7 +37,7 @@ const sample = (index: number, service: ServiceState, agent: AgentState): Worktr
   id: `w${index}`,
   projectId: 'p',
   name: ['checkout-rewrite', 'flaky-tests', 'worktree-a11y', 'bump-nuxt'][index] ?? 'sample',
-  path: `/Users/you/workspace/projects/app/../.worktrees/sample-${index}`,
+  path: `/Users/you/workspace/projects/app/.claude/worktrees/sample-${index}`,
   root: false,
   branch: ['feature/checkout', 'fix/flaky', 'worktree-a11y', null][index] ?? null,
   head: '9f2c1ab4e7d3',

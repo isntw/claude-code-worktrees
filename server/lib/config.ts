@@ -11,6 +11,10 @@ export function serialise(config: CcwtConfig): string {
 }
 
 export async function readConfig(project: Project): Promise<ConfigView> {
+  return { ...(await buildView(project)), exposed: project.exposed }
+}
+
+async function buildView(project: Project): Promise<Omit<ConfigView, 'exposed'>> {
   const record = await findRecord(project.id)
 
   if (record?.config) {

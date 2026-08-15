@@ -3,6 +3,7 @@ import type { Diagnostic, Project } from '../../shared/types'
 import { detectPackageManager, loadConfig, projectName, suggestConfig } from './detect'
 import { defaultBranch, idFor, repoRoot } from './git'
 import { pathExists } from './fs'
+import { worktreesExposed } from './gitignore'
 import { RECIPE_REVISION, parseConfig } from '../../shared/config-schema'
 import { describeSetup } from './setup'
 import { addRecord, findRecord, listRecords, removeRecord } from './store'
@@ -29,6 +30,7 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
       configPath: null,
       addedAt: record.addedAt,
       setup: { portMode: 'none', headline: 'This path no longer exists.', notes: [] },
+      exposed: null,
       issues,
     }
   }
@@ -71,6 +73,24 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     })
   }
 
+  const [exposed, name, packageManager, branch, committed, setup] = await Promise.all([
+    worktreesExposed(record.rootPath, config),
+    projectName(record.rootPath),
+    detectPackageManager(record.rootPath),
+    defaultBranch(record.rootPath),
+    pathExists(configPath),
+    describeSetup(record.rootPath, config),
+  ])
+
+  if (exposed) {
+    issues.push({
+      code: 'project.worktrees-exposed',
+      severity: 'warning',
+      message: `Worktrees are created in ${exposed}/, which git does not ignore, so every one of them will show as untracked here.`,
+      hint: 'Open the recipe and add it to .gitignore, or point the worktrees directory outside the repository.',
+    })
+  }
+
   if (config.services.length === 0) {
     issues.push({
       code: 'project.no-dev-script',
@@ -95,14 +115,15 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
 
   return {
     id: record.id,
-    name: await projectName(record.rootPath),
+    name,
     rootPath: record.rootPath,
-    packageManager: await detectPackageManager(record.rootPath),
-    defaultBranch: await defaultBranch(record.rootPath),
+    packageManager,
+    defaultBranch: branch,
     config,
-    configPath: (await pathExists(configPath)) ? configPath : null,
+    configPath: committed ? configPath : null,
     addedAt: record.addedAt,
-    setup: await describeSetup(record.rootPath, config),
+    setup,
+    exposed,
     issues,
   }
 }

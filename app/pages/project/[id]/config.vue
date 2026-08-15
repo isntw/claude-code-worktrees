@@ -16,6 +16,7 @@ const mode = ref<'form' | 'json'>('form')
 
 const loading = ref(false)
 const saving = ref(false)
+const ignoring = ref(false)
 const error = ref<string | null>(null)
 const parseError = ref<string | null>(null)
 const confirming = ref(false)
@@ -61,6 +62,18 @@ watch(mode, (next, previous) => {
     }
   }
 })
+
+const ignore = async () => {
+  ignoring.value = true
+  error.value = null
+  try {
+    view.value = await api.ignoreWorktrees(projectId.value)
+  } catch (cause) {
+    error.value = (cause as Error).message
+  } finally {
+    ignoring.value = false
+  }
+}
 
 const reset = async () => {
   error.value = null
@@ -364,13 +377,30 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
         <div class="px-3 py-3">
           <Input
             :model-value="draft.worktreesDir"
-            placeholder="../.worktrees"
+            placeholder=".claude/worktrees"
             label="Worktrees directory"
             @update:model-value="(value) => draft && (draft = { ...draft, worktreesDir: value })"
           />
           <p class="mt-1 font-sans text-[0.625rem] text-faint">
-            Relative to the repository root. Each project gets its own folder inside it.
+            Relative to the repository root. Inside the repository, worktrees sit directly in it;
+            outside, each project gets its own folder so projects cannot collide.
           </p>
+
+          <div v-if="view?.exposed" class="mt-3 flex items-center gap-2 border-t border-line pt-3">
+            <p class="font-sans text-[0.6875rem] text-caution">
+              Git does not ignore <span class="t-data">{{ view.exposed }}/</span>, so every worktree
+              will show as untracked in this repository.
+            </p>
+            <Button
+              size="sm"
+              variation="warning"
+              class="ml-auto shrink-0"
+              :disabled="ignoring"
+              @click="ignore"
+            >
+              {{ ignoring ? 'adding…' : 'add to .gitignore' }}
+            </Button>
+          </div>
         </div>
       </Panel>
     </div>

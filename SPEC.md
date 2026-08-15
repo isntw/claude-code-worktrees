@@ -173,7 +173,8 @@ A `WorktreeCreate` hook replaces Claude Code's git logic entirely, so `claude --
 ## 6. Configuration
 
 > **As built:** the recipe lives in ccwt's own storage (`~/.ccwt/state.json`), **not** in the
-> project. ccwt has no code path that writes a file into a repository. A committed
+> project. ccwt writes no file into a repository on its own — the sole exception is the
+> `.gitignore` line a user asks for by pressing the button on the recipe page. A committed
 > `ccwt.config.json` is still *read* if a project chooses to ship one, but ccwt never creates it.
 > The original decision below assumed a committed file; it was reversed once "never modify the
 > user's project" became a hard constraint, since the sharing it bought is a team feature §2 puts
@@ -183,7 +184,7 @@ The shape, wherever it is stored:
 
 ```jsonc
 {
-  "worktreesDir": "../.worktrees",
+  "worktreesDir": ".claude/worktrees",
   "packageManager": "auto",
 
   "provision": {
@@ -284,7 +285,7 @@ Session status hooks (§5.2), port map view, git status per worktree, `.env` dif
 | # | Question | Leaning |
 |---|---|---|
 | D1 | Do dev servers keep running after you close ccwt? | No — simpler; revisit if annoying |
-| D2 | Where do ccwt-created worktrees live? | `../.worktrees/<name>`, but adopt `.claude/worktrees/*` as first-class |
+| D2 | Where do ccwt-created worktrees live? | `.claude/worktrees/<name>`, matching `claude --worktree`; told apart from Claude's by the `ccwt.origin` stamp. Any path outside the repository keeps a `<project>/` level |
 | D3 | Auto-start services when a worktree is created? | Off by default, checkbox in the create dialog |
 | D4 | How does "launch Claude Code" open? | Spawn in the user's terminal app vs an embedded terminal in the dashboard |
 

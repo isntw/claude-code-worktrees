@@ -41,7 +41,8 @@ milestone** and any other `Error` into a 400 carrying its message. Grep `stub('`
 
 - Allocation is `hashToRange(path + service)` then a linear probe, persisted in
   `git config --worktree ccwt.port.<service>`, which needs `extensions.worktreeConfig` — `create()`
-  sets it. This is **the only place ccwt writes to a repository it did not create.**
+  sets it. Together with `ccwt.origin` it is **all ccwt writes to a repository it did not create
+  without being asked**; the one write a user can ask for is the `.gitignore` line (§Containment).
 - **A git config key may not contain an underscore.** Service names may, so keys are lowercased with
   non-alphanumerics collapsed to dashes.
 - **A persisted port must still satisfy the range it is asked for.** `readAllocated` takes the range
@@ -50,6 +51,24 @@ milestone** and any other `Error` into a 400 carrying its message. Grep `stub('`
   stopped entry's port is stale the moment the range changes.
 - **A range whose ends are equal is a pinned port**, and everything that reports on ports must
   account for it.
+
+### Containment
+
+`worktreesDir` defaults to `.claude/worktrees`, where `claude --worktree` puts its own, so a ccwt
+worktree is one Claude can enter **without an approval prompt** — that prompt fires for any path
+outside it and no permission rule suppresses it.
+
+- **The project slug is inserted only when `worktreesDir` resolves outside the repository.** Inside,
+  the directory is already per-project, and the extra level breaks the match with Claude's layout.
+- **Origin is a stamp, not a path.** `create()` writes `git config --worktree ccwt.origin ccwt` and
+  `classify()` reads it before falling back to the path — in a shared directory the path proves
+  nothing. Worktrees made before the stamp existed still classify by path, so **do not remove the
+  fallback.**
+- **`git check-ignore` needs the trailing slash.** A directory-only pattern does not match a bare
+  path until the directory exists, so `worktreesExposed` probes `<dir>/` or it reports a repository
+  as exposed forever.
+- A contained directory git does not ignore raises `project.worktrees-exposed` and offers the
+  button. **ccwt never adds the line on its own.**
 
 ### Loopback is two address families
 
@@ -112,7 +131,8 @@ ccwt's *own* server still binds `127.0.0.1` explicitly. The rule is: bind narrow
 ccwt puts `node_modules` and copied `.env` files into a worktree, so `git worktree remove` always
 refuses. Two things keep `--force` honest and both must stay: the dashboard confirms with the exact
 path and states the branch survives, and `remove()` refuses any worktree outside the project's
-`worktreesDir` unless it was classified `claude`.
+`worktreesDir` unless it was classified `ccwt` or `claude` — a `manual` worktree is never ccwt's to
+force.
 
 **Never remove a locked worktree** — Claude Code locks while an agent works. Say "an agent is working
 here", not an opaque failure.
@@ -122,8 +142,9 @@ schedule; releasing a port and reaping a process must tolerate the directory bei
 
 ### The recipe is ccwt's, not the project's
 
-`writeConfig` stores it on the project record in `~/.ccwt/state.json`. **There is no code path that
-writes a file into a registered repository, and there must not be one.**
+`writeConfig` stores it on the project record in `~/.ccwt/state.json`. **No code path writes the
+recipe into a registered repository, and there must not be one.** `gitignore.ts` is the only module
+that writes a file into one at all, and only when a user presses the button.
 
 `readConfig` order: the stored recipe → a committed `ccwt.config.json`, **read only** → detection.
 `resetConfig` drops the stored recipe, which is the only way back from a bad edit.

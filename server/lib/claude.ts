@@ -1,8 +1,6 @@
 import type { AgentStatus, HookPayload } from '../../shared/types'
 import { stub } from './stub'
 
-export const CLAUDE_WORKTREE_DIR = '.claude/worktrees'
-
 export const TRACKED_HOOKS = [
   'SessionStart',
   'SessionEnd',

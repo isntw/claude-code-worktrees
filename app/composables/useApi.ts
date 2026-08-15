@@ -54,6 +54,8 @@ export function useApi() {
       call<ConfigView>(`/projects/${projectId}/config`, { method: 'PUT', body: { text } }),
     resetConfig: (projectId: string) =>
       call<ConfigView>(`/projects/${projectId}/config`, { method: 'DELETE' }),
+    ignoreWorktrees: (projectId: string) =>
+      call<ConfigView>(`/projects/${projectId}/gitignore`, { method: 'POST' }),
     suggestConfig: (projectId: string) =>
       call<{ config: CcwtConfig; text: string }>(`/projects/${projectId}/config/suggest`, {
         method: 'POST',

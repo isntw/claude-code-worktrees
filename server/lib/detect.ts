@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { CcwtConfig, PackageManager, ServiceConfig } from '../../shared/types'
 import type { ConfigIssue } from '../../shared/config-schema'
-import { parseConfigText } from '../../shared/config-schema'
+import { CLAUDE_WORKTREE_DIR, parseConfigText } from '../../shared/config-schema'
 import { pathExists, readJsonSafe } from './fs'
 
 const LOCKFILES: [string, PackageManager][] = [
@@ -73,7 +73,7 @@ export async function projectName(rootPath: string): Promise<string> {
 
 export function defaultConfig(services: ServiceConfig[]): CcwtConfig {
   return {
-    worktreesDir: '../.worktrees',
+    worktreesDir: CLAUDE_WORKTREE_DIR,
     packageManager: 'auto',
     provision: {
       dependencies: 'auto',

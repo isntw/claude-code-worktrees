@@ -6,6 +6,8 @@ const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 export const RECIPE_REVISION = 2
 
+export const CLAUDE_WORKTREE_DIR = '.claude/worktrees'
+
 const port = z.number().int().min(1).max(65535)
 
 const range = z
@@ -32,7 +34,7 @@ export const serviceSchema = z
 
 export const configSchema = z
   .strictObject({
-    worktreesDir: z.string().min(1).default('../.worktrees'),
+    worktreesDir: z.string().min(1).default(CLAUDE_WORKTREE_DIR),
     packageManager: z.enum(['auto', 'npm', 'pnpm', 'yarn', 'bun']).default('auto'),
     provision: z
       .strictObject({

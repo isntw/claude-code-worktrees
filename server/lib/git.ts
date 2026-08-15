@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { resolve, sep } from 'node:path'
 import type { WorktreeOrigin } from '../../shared/types'
 import { git, gitOut } from './exec'
-import { CLAUDE_WORKTREE_DIR } from './claude'
+import { CLAUDE_WORKTREE_DIR } from '../../shared/config-schema'
 
 export interface RawWorktree {
   path: string
@@ -90,12 +90,19 @@ export async function listWorktrees(rootPath: string): Promise<RawWorktree[]> {
   return worktrees
 }
 
-export function classify(
+const ORIGIN_KEY = 'ccwt.origin'
+
+export async function markOrigin(worktreePath: string): Promise<void> {
+  await writeWorktreeConfig(worktreePath, ORIGIN_KEY, 'ccwt')
+}
+
+export async function classify(
   rootPath: string,
   worktreesDir: string,
   worktreePath: string,
-): WorktreeOrigin {
+): Promise<WorktreeOrigin> {
   if (resolve(worktreePath) === resolve(rootPath)) return 'manual'
+  if ((await readWorktreeConfig(worktreePath, ORIGIN_KEY)) === 'ccwt') return 'ccwt'
   if (isInside(resolve(rootPath, CLAUDE_WORKTREE_DIR), worktreePath)) return 'claude'
   if (isInside(worktreesDir, worktreePath)) return 'ccwt'
   return 'manual'

@@ -73,6 +73,7 @@ export interface Project {
   configPath: string | null
   addedAt: string
   setup: Setup
+  exposed: string | null
   issues: Diagnostic[]
 }
 
@@ -149,6 +150,7 @@ export interface ConfigView {
   config: CcwtConfig
   issues: { path: string; message: string }[]
   detected: boolean
+  exposed: string | null
 }
 
 export interface DirEntry {
