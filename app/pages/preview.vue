@@ -240,9 +240,18 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
         <Badge mono>mono</Badge>
       </div>
       <div class="flex flex-wrap items-center gap-3 border-t border-line px-3 py-3">
+        <Badge v-for="v in VARIATIONS" :key="`${v}-filled`" :variation="v" :outline="false">{{
+          v
+        }}</Badge>
+        <Badge mono :outline="false">mono</Badge>
+      </div>
+      <div class="flex flex-wrap items-center gap-3 border-t border-line px-3 py-3">
         <Badge v-for="s in SIZES" :key="s" :size="s">{{ s }}</Badge>
         <Badge v-for="s in SIZES" :key="`${s}-live`" :size="s" variation="live">{{ s }}</Badge>
         <Badge v-for="s in SIZES" :key="`${s}-mono`" :size="s" mono>{{ s }}</Badge>
+        <Badge v-for="s in SIZES" :key="`${s}-fill`" :size="s" variation="live" :outline="false">{{
+          s
+        }}</Badge>
       </div>
     </section>
 
