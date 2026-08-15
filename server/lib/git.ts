@@ -223,6 +223,12 @@ export async function pruneWorktrees(rootPath: string): Promise<void> {
   await git(rootPath, ['worktree', 'prune'])
 }
 
+export async function deleteBranch(rootPath: string, branch: string): Promise<string | null> {
+  const result = await git(rootPath, ['branch', '-d', branch])
+  if (result.code === 0) return null
+  return result.stderr.trim() || `git branch -d exited ${result.code}`
+}
+
 export async function lockWorktree(
   rootPath: string,
   worktreePath: string,
