@@ -9,13 +9,13 @@ const props = defineProps<{ setup: Setup }>()
 const open = ref(false)
 
 const TONE: Record<SetupNote['tone'], Variation> = {
-  good: 'live',
+  good: 'success',
   info: 'neutral',
   caution: 'warning',
 }
 
 const headlineTone = computed<Variation>(() =>
-  props.setup.portMode === 'fixed' ? 'warning' : props.setup.portMode === 'none' ? 'neutral' : 'live',
+  props.setup.portMode === 'fixed' ? 'warning' : props.setup.portMode === 'none' ? 'neutral' : 'success',
 )
 </script>
 

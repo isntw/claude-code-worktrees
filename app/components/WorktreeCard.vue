@@ -37,7 +37,7 @@ const emit = defineEmits<{
 const SERVICE: Record<ServiceStatus['state'], { variation: Variation; label: string }> = {
   stopped: { variation: 'neutral', label: 'stopped' },
   starting: { variation: 'info', label: 'starting' },
-  running: { variation: 'live', label: 'running' },
+  running: { variation: 'success', label: 'running' },
   crashed: { variation: 'error', label: 'crashed' },
 }
 
@@ -150,7 +150,7 @@ const mergeable = computed(
 
       <span class="flex shrink-0 items-center gap-1.5 self-center">
         <Badge v-if="finished" variation="success" :title="finishedHint">finished</Badge>
-        <Badge v-if="live" variation="live" title="A service here is up and answering on its port"
+        <Badge v-if="live" variation="success" title="A service here is up and answering on its port"
           >running</Badge
         >
         <Badge

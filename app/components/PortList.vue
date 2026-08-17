@@ -10,7 +10,7 @@ const emit = defineEmits<{ pick: [claim: PortClaim] }>()
 const SERVICE: Record<ServiceState, Variation> = {
   stopped: 'neutral',
   starting: 'info',
-  running: 'live',
+  running: 'success',
   crashed: 'error',
 }
 

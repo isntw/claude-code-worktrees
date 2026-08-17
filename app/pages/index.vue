@@ -113,7 +113,7 @@ onMounted(load)
       <span class="tabular-nums text-dim">{{ projects.length }}</span> projects
     </p>
     <Button :disabled="loading" @click="load">{{ loading ? 'reading…' : 'refresh' }}</Button>
-    <Button variation="success" :outline="false" @click="adding = true">register project</Button>
+    <Button variation="primary" :outline="false" @click="adding = true">register project</Button>
   </ConsoleHeader>
 
   <p
@@ -136,7 +136,7 @@ onMounted(load)
         worktree you make from it gets its files, its dependencies, its own port and its own dev
         server.
       </p>
-      <Button class="mt-4" variation="success" :outline="false" @click="adding = true"
+      <Button class="mt-4" variation="primary" :outline="false" @click="adding = true"
         >register project</Button
       >
     </div>
@@ -176,7 +176,7 @@ onMounted(load)
       <Button size="sm" @click="adding = false">cancel</Button>
       <Button
         size="sm"
-        variation="success"
+        variation="primary"
         :outline="false"
         :disabled="!ready || addBusy"
         @click="add"

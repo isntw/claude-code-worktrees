@@ -39,7 +39,7 @@ const mergeable = (row: OverviewRow) =>
 const SERVICE: Record<ServiceState, Variation> = {
   stopped: 'neutral',
   starting: 'info',
-  running: 'live',
+  running: 'success',
   crashed: 'error',
 }
 

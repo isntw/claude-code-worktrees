@@ -250,7 +250,7 @@ onBeforeUnmount(() => {
     <Tabs v-model="filter" :options="tabs" label="Filter worktrees" />
     <Button :disabled="loading" @click="reload">{{ loading ? 'reading…' : 'refresh' }}</Button>
     <Button
-      variation="success"
+      variation="primary"
       :outline="false"
       :disabled="!project?.config?.services.length"
       :title="

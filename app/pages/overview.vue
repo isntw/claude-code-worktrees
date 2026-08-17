@@ -77,14 +77,14 @@ const stats = computed<Stat[]>(() => {
       key: 'projects',
       label: 'Projects',
       value: totals.projects,
-      variation: tone(totals.projects, 'success'),
+      variation: tone(totals.projects, 'primary'),
       hint: 'Repositories ccwt knows how to build a worktree for',
     },
     {
       key: 'worktrees',
       label: 'Worktrees',
       value: totals.worktrees,
-      variation: tone(totals.worktrees, 'success'),
+      variation: tone(totals.worktrees, 'primary'),
       note: `${running.value.length} with something up`,
       hint: 'Every worktree of every registered repository, whoever made it',
     },
@@ -92,7 +92,7 @@ const stats = computed<Stat[]>(() => {
       key: 'running',
       label: 'Services up',
       value: totals.running,
-      variation: tone(totals.running, 'live'),
+      variation: tone(totals.running, 'success'),
       note: totals.starting
         ? `${totals.starting} still starting · of ${totals.services}`
         : `of ${totals.services} configured`,
@@ -109,7 +109,7 @@ const stats = computed<Stat[]>(() => {
       key: 'ports',
       label: 'Ports allocated',
       value: totals.ports,
-      variation: tone(totals.ports, 'success'),
+      variation: tone(totals.ports, 'primary'),
       hint: 'Distinct ports held across every worktree',
     },
     {
@@ -247,7 +247,7 @@ const PANEL = 'border border-line bg-surface'
         their ports and their services all show up here.
       </p>
       <NuxtLink to="/" class="mt-4 inline-block">
-        <Button variation="success" :outline="false">go to projects</Button>
+        <Button variation="primary" :outline="false">go to projects</Button>
       </NuxtLink>
     </div>
 

@@ -37,7 +37,7 @@ const STEPS = [
 ]
 
 const VARIATION: Record<ToolState, Variation> = {
-  present: 'live',
+  present: 'success',
   outdated: 'warning',
   missing: 'error',
 }
@@ -51,8 +51,8 @@ const ICON: Record<ToolState, Component> = {
 const TINT: Record<Variation, string> = {
   neutral: 'text-faint',
   info: 'text-info',
-  success: 'text-ink',
-  live: 'text-live',
+  primary: 'text-ink',
+  success: 'text-success',
   agent: 'text-agent',
   warning: 'text-caution',
   error: 'text-alarm',
@@ -105,7 +105,7 @@ onMounted(load)
           <p
             v-if="tools"
             class="ml-auto font-mono text-[0.625rem]"
-            :class="TINT[ok ? 'live' : 'error']"
+            :class="TINT[ok ? 'success' : 'error']"
           >
             {{ ok ? 'ready' : 'action needed' }}
           </p>
@@ -149,7 +149,7 @@ onMounted(load)
             <span v-if="index" class="font-mono text-[0.625rem] text-faint" aria-hidden="true"
               >→</span
             >
-            <Badge mono variation="success" class="border-line! bg-canvas">{{ step.name }}</Badge>
+            <Badge mono variation="primary" class="border-line! bg-canvas">{{ step.name }}</Badge>
           </template>
         </div>
 
@@ -168,7 +168,7 @@ onMounted(load)
       <Button size="sm" :disabled="loading" @click="load">{{
         loading ? 'checking…' : 're-check'
       }}</Button>
-      <Button size="sm" variation="success" :outline="false" @click="emit('close')">got it</Button>
+      <Button size="sm" variation="primary" :outline="false" @click="emit('close')">got it</Button>
     </template>
   </ModalPanel>
 </template>

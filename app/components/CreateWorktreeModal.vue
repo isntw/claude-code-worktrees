@@ -58,7 +58,7 @@ const submit = () => {
       <Button size="sm" @click="emit('close')">cancel</Button>
       <Button
         size="sm"
-        variation="success"
+        variation="primary"
         :outline="false"
         :disabled="!valid || busy"
         @click="submit"

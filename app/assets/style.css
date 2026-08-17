@@ -14,7 +14,7 @@
   --color-dim: var(--ccwt-dim);
   --color-faint: var(--ccwt-faint);
 
-  --color-live: var(--ccwt-live);
+  --color-success: var(--ccwt-success);
   --color-merged: var(--ccwt-merged);
   --color-agent: var(--ccwt-agent);
   --color-info: var(--ccwt-info);
@@ -41,7 +41,7 @@
   --ccwt-dim: #5e5b54;
   --ccwt-faint: #918d84;
 
-  --ccwt-live: #3f8f6a;
+  --ccwt-success: #3f8f6a;
   --ccwt-merged: #7350ad;
   --ccwt-agent: #c2603f;
   --ccwt-info: #2f6ea6;
@@ -65,7 +65,7 @@
   --ccwt-dim: #a3a099;
   --ccwt-faint: #6e6b64;
 
-  --ccwt-live: #5cb98d;
+  --ccwt-success: #5cb98d;
   --ccwt-merged: #a98cdb;
   --ccwt-agent: #d97757;
   --ccwt-info: #6fa8d6;
