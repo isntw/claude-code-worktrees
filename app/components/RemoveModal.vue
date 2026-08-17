@@ -64,10 +64,9 @@ const confirm = async () => {
 
     <p v-if="worktree.locked" class="mt-3 font-sans text-xs text-caution">
       <template v-if="worktree.lockState === 'live'"
-        >Something is still working here, so the lock is live. Removing now takes the files away
-        from it.</template
+        >An agent is working here — removing takes the files out from under it.</template
       >
-      <template v-else>This worktree is locked. Removing it releases the lock first.</template>
+      <template v-else>Locked. Removing releases the lock first.</template>
       <code v-if="worktree.lockReason" class="ml-1 font-mono text-[0.6875rem]">{{
         worktree.lockReason
       }}</code>
