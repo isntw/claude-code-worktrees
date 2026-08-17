@@ -90,31 +90,55 @@ export async function readAllocated(
   return range && !withinRange(port, range) ? null : port
 }
 
+export interface Claim {
+  keep?: boolean
+  reserved?: Set<number>
+}
+
+export interface Allocated {
+  port: number
+  from: number | null
+}
+
+const pinned = (service: string, port: number) =>
+  new Error(
+    `\`${service}\` is pinned to port ${port} and something is already listening there, so only one worktree can run it at a time.`,
+  )
+
+async function usable(port: number, reserved: Set<number>): Promise<boolean> {
+  if (reserved.has(port)) return false
+  return isFree(port)
+}
+
 export async function allocate(
   worktreePath: string,
   service: string,
   range: [number, number],
-): Promise<number> {
-  const existing = await readAllocated(worktreePath, service, range)
-  if (existing !== null) return existing
-
+  claim: Claim = {},
+): Promise<Allocated> {
+  const reserved = claim.reserved ?? new Set<number>()
   const [low, high] = range
+
+  const existing = await readAllocated(worktreePath, service, range)
+
+  if (existing !== null) {
+    if (claim.keep) return { port: existing, from: null }
+    if (await usable(existing, reserved)) return { port: existing, from: null }
+    if (low === high) throw pinned(service, low)
+  }
+
   const span = Math.max(1, high - low + 1)
   const start = hashToRange(`${worktreePath}:${service}`, range)
 
   for (let step = 0; step < span; step += 1) {
     const port = low + ((start - low + step) % span)
-    if (await isFree(port)) {
+    if (await usable(port, reserved)) {
       await writeWorktreeConfig(worktreePath, KEY(service), String(port))
-      return port
+      return { port, from: existing }
     }
   }
 
-  if (low === high) {
-    throw new Error(
-      `\`${service}\` is pinned to port ${low} and something is already listening there, so only one worktree can run it at a time.`,
-    )
-  }
+  if (low === high) throw pinned(service, low)
 
   throw new Error(`No free port in ${low}-${high} for ${service}`)
 }

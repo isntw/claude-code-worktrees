@@ -22,12 +22,16 @@ const portOf = (service: ServiceStatus, part: StackPart): number | null => {
   return part.variable ? (service.extra?.[part.variable] ?? null) : null
 }
 
+const contested = (service: ServiceStatus): boolean =>
+  Boolean(service.taken && service.port && !service.movable)
+
 const emit = defineEmits<{
   select: []
   startAll: []
   stopAll: []
   start: [service: string]
   stop: [service: string]
+  take: [service: string]
   lock: []
   unlock: []
   remove: []
@@ -234,10 +238,27 @@ const mergeable = computed(
           >not on port {{ service.port }}</span
         >
         <span
+          v-else-if="service.taken && service.port && service.movable"
+          class="truncate font-sans text-[0.6875rem] text-dim"
+          :title="`Something is answering on ${service.port}, so starting this service takes the next free port in its range and remembers it.`"
+          >{{ service.port }} taken · moves on start</span
+        >
+        <span
+          v-else-if="service.taken && service.port && service.heldBy"
+          class="truncate font-sans text-[0.6875rem] text-dim"
+          :title="`${service.heldBy.service} is running on ${service.port} in ${service.heldBy.same ? service.heldBy.worktree : 'another project'}, and this service is pinned to that port. Only one can hold it at a time.`"
+          >{{ service.port }} held by
+          <span class="font-mono">{{
+            service.heldBy.same ? service.heldBy.worktree : 'another project'
+          }}</span></span
+        >
+        <button
           v-else-if="service.taken && service.port"
-          class="truncate font-sans text-[0.6875rem] text-caution"
-          :title="`Port ${service.port} is answering, but this ccwt is not supervising what is on it — another ccwt, or a process started outside one, is holding it. Starting this service will collide; stop whatever holds the port first, or give the service a wider range.`"
-          >port {{ service.port }} taken</span
+          type="button"
+          class="cursor-pointer truncate font-sans text-[0.6875rem] text-caution underline decoration-dotted underline-offset-[3px] transition-colors hover:text-ink"
+          :title="`Port ${service.port} is answering and this service is pinned to it, so it cannot move. See what is holding it.`"
+          @click="emit('take', service.name)"
+          >port {{ service.port }} taken</button
         >
         <span v-else class="truncate font-mono text-[0.6875rem] text-faint">{{
           service.state === 'starting' && service.port
@@ -253,6 +274,18 @@ const mergeable = computed(
             size="sm"
             @click="emit('stop', service.name)"
             >stop</Button
+          >
+          <Button
+            v-else-if="contested(service)"
+            size="sm"
+            :variation="service.heldBy ? 'info' : 'neutral'"
+            :title="
+              service.heldBy
+                ? `Stop ${service.heldBy.service} where it is running and start ${service.name} here on ${service.port}`
+                : `Port ${service.port} is taken and this service is pinned to it — see what is holding it`
+            "
+            @click="emit('take', service.name)"
+            >{{ service.heldBy ? 'run here' : 'start' }}</Button
           >
           <Button
             v-else
