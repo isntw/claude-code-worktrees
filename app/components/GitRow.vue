@@ -45,16 +45,15 @@ const asOf = computed(() =>
   <div class="flex items-center gap-2">
     <span
       v-if="!status.upstream"
-      class="shrink-0 font-sans text-[0.6875rem] text-caution"
+      class="shrink-0 font-sans text-[0.6875rem] text-faint"
       :title="`No upstream is set and there is no origin/${status.branch} here, so this work has not been pushed under this name. ccwt does not fetch, so a branch pushed from elsewhere shows this until you fetch.`"
-      >not pushed</span
+      >unpushed</span
     >
     <span
       v-else-if="status.ahead || status.behind"
       class="shrink-0 font-mono text-[0.6875rem] tabular-nums"
-      :class="status.behind ? 'text-caution' : 'text-dim'"
       :title="tracking"
-      >+{{ status.ahead }} −{{ status.behind }}</span
+      ><span :class="status.ahead ? 'text-dim' : 'text-faint'">↑{{ status.ahead }}</span> <span :class="status.behind ? 'text-caution' : 'text-faint'">↓{{ status.behind }}</span></span
     >
     <span
       v-else
@@ -65,33 +64,32 @@ const asOf = computed(() =>
 
     <span
       v-if="status.conflicted"
-      class="truncate font-sans text-[0.6875rem] text-alarm"
+      class="shrink-0 text-[0.6875rem] text-alarm"
       :title="`${status.conflicted} path${status.conflicted === 1 ? '' : 's'} in conflict`"
-      >{{ status.conflicted }} conflicted</span
+      ><span class="font-mono tabular-nums">{{ status.conflicted }}</span
+      ><span class="font-sans"> conflicted</span></span
     >
-    <span
-      v-else-if="dirty"
-      class="truncate font-sans text-[0.6875rem] text-caution"
-      :title="changes"
-      >{{ dirty }} uncommitted</span
+    <span v-else-if="dirty" class="shrink-0 text-[0.6875rem]" :title="changes"
+      ><span class="font-mono tabular-nums text-ink">{{ dirty }}</span
+      ><span class="font-sans text-faint"> changed</span></span
     >
-    <span v-else class="truncate font-sans text-[0.6875rem] text-faint" title="Nothing to commit"
+    <span v-else class="shrink-0 font-sans text-[0.6875rem] text-faint" title="Nothing to commit"
       >clean</span
     >
 
-    <span class="ml-auto flex shrink-0 items-center gap-1.5">
+    <template v-if="pull && face">
+      <span class="ml-auto h-3 w-px shrink-0 bg-line" aria-hidden="true" />
       <a
-        v-if="pull && face"
         :href="pull.url"
         target="_blank"
         rel="noreferrer"
-        class="flex items-center gap-1"
+        class="flex shrink-0 items-center gap-1.5"
         :class="stale ? 'opacity-60' : ''"
         :title="`${pull.title} — ${face.hint}${asOf ? `. ${asOf}` : ''}`"
       >
         <span class="font-mono text-[0.625rem] tabular-nums text-faint">#{{ pull.number }}</span>
-        <Badge :variation="face.variation" size="lg">{{ face.label }}</Badge>
+        <Badge :variation="face.variation" :outline="false">{{ face.label }}</Badge>
       </a>
-    </span>
+    </template>
   </div>
 </template>
