@@ -66,8 +66,8 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     issues.push({
       code: 'project.recipe-stale',
       severity: 'warning',
-      message: 'This recipe was saved by an older ccwt and is missing settings it now knows about.',
-      hint: 'Open the recipe and press detect to refresh it — your customisations are shown as a diff before anything is saved.',
+      message: 'This recipe predates a change in what ccwt detects.',
+      hint: 'Open the recipe and press detect — you pick what to bring across, and nothing you wrote is removed. Saving clears this even if you bring nothing.',
     })
   }
 

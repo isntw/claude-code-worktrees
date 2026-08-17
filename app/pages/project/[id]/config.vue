@@ -29,6 +29,8 @@ const payload = computed(() => (mode.value === 'json' ? raw.value : draft.value 
 const diff = computed(() => diffLines(view.value?.text ?? '', payload.value))
 const dirty = computed(() => Boolean(view.value) && changed(diff.value))
 const stored = computed(() => view.value?.source === 'ccwt')
+const stale = computed(() => Boolean(view.value?.stale))
+const savable = computed(() => dirty.value || stale.value)
 const preview = computed(() => collapse(diff.value))
 
 const load = async () => {
@@ -244,7 +246,7 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
     <Button
       variation="success"
       :outline="false"
-      :disabled="!dirty || saving"
+      :disabled="!savable || saving"
       @click="confirming = true"
       >{{ saving ? 'saving…' : 'save' }}</Button
     >
@@ -481,7 +483,12 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
       Kept in ccwt's own storage — your repository is not touched.
     </p>
 
-    <pre class="ccwt-log overflow-x-auto border border-line bg-canvas px-2 py-2"><span
+    <p v-if="!dirty" class="mb-3 max-w-prose font-sans text-xs text-dim">
+      The recipe itself does not change. Saving records that you have seen what detection produces
+      now, which is what clears the warning on this project.
+    </p>
+
+    <pre v-else class="ccwt-log overflow-x-auto border border-line bg-canvas px-2 py-2"><span
       v-for="(line, index) in preview"
       :key="index"
       class="block"
