@@ -102,10 +102,22 @@ ccwt's *own* server still binds `127.0.0.1` explicitly. The rule is: bind narrow
   something linked is removed afterwards.
 - **A symlink standing where real content belongs is replaced, not skipped.** It holds no data, and
   it is invisible inside anything that follows the link rather than the target.
-- `startService` calls `needsProvisioning` first and provisions only when something is missing, so a
-  warm start does no work. There is no provision button.
-- With `dependencies: "hardlink"` the install runs after the link and npm will prune undeclared
-  packages out of the linked tree. Use `"copy"` to link without reconciling.
+- `startService` calls `needsProvisioning` first and repairs only when something is missing, so a warm
+  start does no work. There is no provision button.
+- **Provisioning does only what the recipe names.** There is no dependency strategy and no built-in
+  `node_modules` handling: a worktree gets dependencies because the recipe lists `node_modules` under
+  `link` and an install under `postCreate`. Detection prefills both; nothing acts behind the form.
+- **`placeFiles` and `provision` are two different jobs and must stay apart.** `placeFiles` puts the
+  declared files there — copy, link, write, prune. `provision` is that plus `postCreate`, and it runs
+  **only from `create()`**, on a worktree ccwt has just made. Everything later — a gap found at start,
+  the provision endpoint — calls `repair`, which is files only. A worktree that already exists
+  elsewhere gets its missing files put back and **never** has commands run inside it: `postCreate`
+  generates keys, seeds databases and builds, and a worktree somebody else set up is not ours to
+  rebuild.
+- **`needsProvisioning` compares the recipe against the worktree, nothing else** — and it is what the
+  `unprovisioned` badge reports. A missing `node_modules` counts only because a recipe named it, and
+  for a linked directory `missingBeneath` makes drift from the root count too.
+- **`postCreate` may carry the install, so a failure carries the command's last five stderr lines.**
 
 ### Removal is `--force`
 
@@ -211,3 +223,11 @@ renders every primitive in every state; its sample data must never leak into rea
 - **ccwt is command-agnostic.** It allocates a port, renders a template, spawns a process, probes the
   port, kills the process group. It does not know what any command does, and nothing may teach it
   about a particular stack, framework or runtime.
+- **ccwt must stay versatile, and the projects on this machine are not the test.** It ships to
+  whatever anyone points it at — any language, any package manager, any runtime, any layout, stacks
+  nobody here has heard of. Never build for what happens to be registered locally. Everything a
+  worktree needs is declared in the recipe, by the user, and detection only prefills it; a convenience
+  wired in behind the form silently does the wrong thing for every project that is not the one it was
+  written for.
+- **New work goes in a worktree** — a feature, a bug fix, anything with a shape to it. Not for very
+  small tasks: a one-line change, a typo, a version bump.

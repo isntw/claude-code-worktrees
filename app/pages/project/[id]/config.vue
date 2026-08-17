@@ -11,6 +11,7 @@ const projectId = computed(() => String(route.params.id))
 
 const view = ref<ConfigView | null>(null)
 const draft = ref<CcwtConfig | null>(null)
+const suggested = ref<CcwtConfig | null>(null)
 const raw = ref('')
 const mode = ref<'form' | 'json'>('form')
 
@@ -19,6 +20,7 @@ const saving = ref(false)
 const error = ref<string | null>(null)
 const parseError = ref<string | null>(null)
 const confirming = ref(false)
+const forgetting = ref(false)
 
 const serialise = (config: CcwtConfig) => `${JSON.stringify(config, null, 2)}\n`
 
@@ -69,20 +71,36 @@ const reset = async () => {
     view.value = next
     draft.value = structuredClone(next.config)
     raw.value = next.text
+    forgetting.value = false
   } catch (cause) {
     error.value = (cause as Error).message
+    forgetting.value = false
   }
 }
 
 const detect = async () => {
   error.value = null
+
+  if (mode.value === 'json') {
+    try {
+      draft.value = JSON.parse(raw.value) as CcwtConfig
+    } catch (cause) {
+      parseError.value = (cause as Error).message
+      return
+    }
+  }
+
   try {
-    const suggested = await api.suggestConfig(projectId.value)
-    draft.value = suggested.config
-    raw.value = suggested.text
+    suggested.value = (await api.suggestConfig(projectId.value)).config
   } catch (cause) {
     error.value = (cause as Error).message
   }
+}
+
+const bring = (config: CcwtConfig) => {
+  draft.value = config
+  raw.value = serialise(config)
+  suggested.value = null
 }
 
 const save = async () => {
@@ -117,8 +135,11 @@ const removeService = (index: number) => {
   }
 }
 
+const added = ref<number | null>(null)
+
 const addService = () => {
   if (!draft.value) return
+  added.value = draft.value.services.length
   draft.value = {
     ...draft.value,
     services: [
@@ -169,6 +190,38 @@ const removeWrite = (path: string) => {
   setWrite(draft.value.provision.write.filter((entry) => entry.path !== path))
 }
 
+const open = ref({
+  files: false,
+  postCreate: false,
+  services: false,
+  postRemove: false,
+  worktreesDir: false,
+})
+
+const tally = (counts: [number, string][]) =>
+  counts
+    .filter(([count]) => count)
+    .map(([count, label]) => `${count} ${label}`)
+    .join(' · ')
+
+const plural = (count: number, noun: string) =>
+  count ? `${count} ${noun}${count === 1 ? '' : 's'}` : ''
+
+const summary = computed(() => {
+  const provision = draft.value?.provision
+  if (!provision) return null
+
+  return {
+    files: tally([
+      [provision.copy.length, 'copied'],
+      [provision.link.length, 'linked'],
+      [provision.write.length, 'written'],
+    ]),
+    postCreate: plural(provision.postCreate.length, 'command'),
+    services: plural(draft.value?.services.length ?? 0, 'service'),
+    postRemove: plural(provision.postRemove.length, 'command'),
+  }
+})
 
 const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as const
 </script>
@@ -220,7 +273,9 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
         view.path
       }}</code>
       <Badge v-if="dirty" variation="warning">unsaved</Badge>
-      <Button v-if="stored" size="sm" class="ml-auto" @click="reset">forget customisations</Button>
+      <Button v-if="stored" size="sm" class="ml-auto" @click="forgetting = true"
+        >forget customisations</Button
+      >
     </div>
 
     <div
@@ -239,7 +294,10 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
     </div>
 
     <div v-else-if="draft" class="flex flex-col gap-3">
-      <Panel title="Files in each worktree" aside="before anything runs">
+      <Panel v-model:open="open.files" title="Files in each worktree" aside="before anything runs">
+        <template #label>
+          <span class="truncate font-sans text-[0.625rem] text-faint">{{ summary?.files }}</span>
+        </template>
         <div class="grid gap-4 px-3 py-3 lg:grid-cols-2">
           <div class="flex flex-col gap-1.5">
             <span class="t-eyebrow">Copied from the root checkout</span>
@@ -258,14 +316,14 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
 
           <div class="flex flex-col gap-1.5">
             <span class="t-eyebrow">Hardlinked from the root checkout</span>
-            <p class="font-sans text-[0.625rem] text-caution">
-              The same file, not a copy — editing a linked file in a worktree edits the root
-              checkout too. Right for dependencies and big fixtures, wrong for anything you hand-edit.
+            <p class="font-sans text-[0.625rem] text-faint">
+              The same file, not a copy — editing one here edits the root checkout too. Right for
+              dependencies and big fixtures, wrong for anything you hand-edit.
             </p>
             <ListEditor
               :model-value="draft.provision.link"
-              placeholder="vendor"
-              empty="Nothing linked. node_modules is handled by the dependency strategy."
+              placeholder="node_modules"
+              empty="Nothing linked."
               add-label="path"
               @update:model-value="(value) => setProvision('link', value)"
             />
@@ -274,19 +332,25 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
       </Panel>
 
       <Panel
-       
+        v-model:open="open.postCreate"
         title="Run after creating"
         aside="once, before any service starts"
       >
+        <template #label>
+          <span class="truncate font-sans text-[0.625rem] text-faint">{{
+            summary?.postCreate
+          }}</span>
+        </template>
         <div class="px-3 py-3">
           <p class="mb-1.5 font-sans text-[0.625rem] text-faint">
-            Commands run once in the new worktree, after files are in place and dependencies are
-            installed — a build step, a generated key, anything a service needs before it can start.
-            Nothing is running yet, so this cannot reach into a container.
+            Commands run in the new worktree once the files above are in place — installing
+            dependencies, a build step, a generated key, anything a service needs before it can
+            start. Nothing is running yet, so this cannot reach into a container. They run only when
+            ccwt creates the worktree: never twice, and never in a worktree it did not create.
           </p>
           <ListEditor
             :model-value="draft.provision.postCreate"
-            placeholder="php artisan key:generate"
+            placeholder="npm install"
             empty="Nothing to run."
             add-label="command"
             @update:model-value="(value) => setProvision('postCreate', value)"
@@ -294,7 +358,10 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
         </div>
       </Panel>
 
-      <Panel title="Services" aside="when you press start">
+      <Panel v-model:open="open.services" title="Services" aside="when you press start">
+        <template #label>
+          <span class="truncate font-sans text-[0.625rem] text-faint">{{ summary?.services }}</span>
+        </template>
         <div class="flex flex-col gap-2 px-3 py-3">
           <p v-if="!draft.services.length" class="font-sans text-[0.6875rem] text-faint">
             No services. Worktrees will still be created and provisioned — there is just nothing to
@@ -306,6 +373,7 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
             :service="service"
             :index="index"
             :writes="draft.provision.write"
+            :start-open="index === added"
             @update="updateService"
             @remove="removeService"
             @write="upsertWrite"
@@ -321,10 +389,15 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
       </Panel>
 
       <Panel
-       
+        v-model:open="open.postRemove"
         title="Run before removing"
         aside="when you delete a worktree"
       >
+        <template #label>
+          <span class="truncate font-sans text-[0.625rem] text-faint">{{
+            summary?.postRemove
+          }}</span>
+        </template>
         <div class="px-3 py-3">
           <p class="mb-1.5 font-sans text-[0.625rem] text-faint">
             Dropping whatever the worktree made outside itself — containers, volumes, a database.
@@ -360,7 +433,12 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
         </div>
       </Panel>
 
-      <Panel title="Where worktrees live">
+      <Panel v-model:open="open.worktreesDir" title="Where worktrees live">
+        <template #label>
+          <code class="truncate font-mono text-[0.625rem] text-faint">{{
+            draft.worktreesDir
+          }}</code>
+        </template>
         <div class="px-3 py-3">
           <Input
             :model-value="draft.worktreesDir"
@@ -375,6 +453,28 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
       </Panel>
     </div>
   </main>
+
+  <ModalPanel v-if="forgetting" title="Forget customisations" @close="forgetting = false">
+    <p class="max-w-prose font-sans text-xs text-dim">
+      Drops the recipe ccwt has stored for this project. It is not kept anywhere else, so what you
+      wrote is gone — ccwt goes back to a committed
+      <code class="font-mono">ccwt.config.json</code> if there is one, and to detection if there is
+      not. Worktrees that already exist are untouched.
+    </p>
+
+    <template #footer>
+      <Button size="sm" @click="forgetting = false">cancel</Button>
+      <Button size="sm" variation="error" :outline="false" @click="reset">forget it</Button>
+    </template>
+  </ModalPanel>
+
+  <DetectPicker
+    v-if="suggested && draft"
+    :current="draft"
+    :suggested="suggested"
+    @apply="bring"
+    @close="suggested = null"
+  />
 
   <ModalPanel v-if="confirming" title="Save recipe" @close="confirming = false">
     <p class="mb-3 max-w-prose font-sans text-xs text-dim">

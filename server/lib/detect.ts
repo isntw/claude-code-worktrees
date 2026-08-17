@@ -1,9 +1,10 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { CcwtConfig, PackageManager, ServiceConfig } from '../../shared/types'
+import type { CcwtConfig, PackageManager, ProvisionConfig, ServiceConfig } from '../../shared/types'
 import type { ConfigIssue } from '../../shared/config-schema'
 import { parseConfigText } from '../../shared/config-schema'
-import { pathExists, readJsonSafe } from './fs'
+import { isDirectory, pathExists, readJsonSafe } from './fs'
+import { isIgnored } from './git'
 
 const LOCKFILES: [string, PackageManager][] = [
   ['pnpm-lock.yaml', 'pnpm'],
@@ -71,17 +72,19 @@ export async function projectName(rootPath: string): Promise<string> {
   return fromManifest || rootPath.split('/').filter(Boolean).pop() || rootPath
 }
 
-export function defaultConfig(services: ServiceConfig[]): CcwtConfig {
+export function defaultConfig(
+  services: ServiceConfig[],
+  provision: Partial<ProvisionConfig> = {},
+): CcwtConfig {
   return {
-    worktreesDir: '../.worktrees',
-    packageManager: 'auto',
+    worktreesDir: '.claude/worktrees',
     provision: {
-      dependencies: 'auto',
-      copy: ['.env', '.env.local', '.env.development.local'],
+      copy: [],
       link: [],
       write: [],
       postCreate: [],
       postRemove: [],
+      ...provision,
     },
     services,
     claude: {
@@ -90,11 +93,33 @@ export function defaultConfig(services: ServiceConfig[]): CcwtConfig {
   }
 }
 
+export function suggestDependencies(
+  manager: PackageManager | null,
+): Pick<ProvisionConfig, 'link' | 'postCreate'> {
+  return { link: manager ? ['node_modules'] : [], postCreate: [] }
+}
+
+export async function detectCopies(rootPath: string): Promise<string[]> {
+  const entries = await readdir(rootPath).catch(() => [])
+  const found: string[] = []
+
+  for (const name of entries.sort()) {
+    if (name !== '.env' && !name.startsWith('.env.')) continue
+    if (await isDirectory(join(rootPath, name))) continue
+    if (await isIgnored(rootPath, name)) found.push(name)
+  }
+
+  return found
+}
+
 export async function suggestConfig(rootPath: string): Promise<CcwtConfig> {
-  const manager = (await detectPackageManager(rootPath)) ?? 'npm'
+  const manager = await detectPackageManager(rootPath)
   const { detectServices } = await import('./services')
 
-  return defaultConfig(await detectServices(rootPath, manager))
+  return defaultConfig(await detectServices(rootPath, manager ?? 'npm'), {
+    copy: await detectCopies(rootPath),
+    ...suggestDependencies(manager),
+  })
 }
 
 export type ConfigSource =

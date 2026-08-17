@@ -15,9 +15,16 @@ import {
 } from '../compose'
 
 const props = withDefaults(
-  defineProps<{ service: ServiceConfig; index: number; writes?: WriteEntry[] }>(),
-  { writes: () => [] },
+  defineProps<{
+    service: ServiceConfig
+    index: number
+    writes?: WriteEntry[]
+    startOpen?: boolean
+  }>(),
+  { writes: () => [], startOpen: false },
 )
+
+const open = ref(props.startOpen)
 
 const emit = defineEmits<{
   update: [index: number, service: ServiceConfig]
@@ -304,7 +311,7 @@ const setPinnedPort = (raw: string) => {
 </script>
 
 <template>
-  <Panel title="Service">
+  <Panel v-model:open="open" title="Service">
     <template #label>
       <span class="truncate font-mono text-[0.6875rem] text-ink">{{
         service.name || 'unnamed'

@@ -4,5 +4,5 @@ export default defineEventHandler(async (event) => {
   const project = await requireProject(event)
   const worktreeId = getRouterParam(event, 'worktreeId')!
 
-  return guard(() => worktrees.reprovision(project, worktreeId))
+  return guard(() => worktrees.repair(project, worktreeId))
 })
