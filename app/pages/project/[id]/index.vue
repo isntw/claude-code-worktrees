@@ -118,8 +118,12 @@ const load = async () => {
   }
 }
 
-const loadPulls = async () => {
-  forge.value = await api.getPulls(projectId.value).catch(() => null)
+const loadPulls = async (force = false) => {
+  forge.value = await api.getPulls(projectId.value, force).catch(() => null)
+}
+
+const reload = async () => {
+  await Promise.all([load(), loadPulls(true)])
 }
 
 const show = async (worktreeId: string) => {
@@ -213,6 +217,10 @@ onMounted(async () => {
       }
       return
     }
+    if (message.type === 'pulls') {
+      if (message.projectId === projectId.value) forge.value = message.status
+      return
+    }
     load()
   })
 
@@ -240,7 +248,7 @@ onBeforeUnmount(() => {
     :loading="loading"
   >
     <Tabs v-model="filter" :options="tabs" label="Filter worktrees" />
-    <Button :disabled="loading" @click="load">{{ loading ? 'reading…' : 'refresh' }}</Button>
+    <Button :disabled="loading" @click="reload">{{ loading ? 'reading…' : 'refresh' }}</Button>
     <Button
       variation="success"
       :outline="false"

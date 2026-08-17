@@ -45,6 +45,24 @@ interface Entry {
 const cache = new Map<string, Entry>()
 const inflight = new Map<string, Promise<ForgeStatus>>()
 
+type StatusListener = (projectId: string, status: ForgeStatus) => void
+
+const listeners = new Set<StatusListener>()
+
+export function subscribe(listener: StatusListener): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+function fingerprint(status: ForgeStatus): string {
+  const pulls = Object.entries(status.pulls)
+    .map(([ref, pull]) => `${ref} ${pull.number} ${pull.state} ${pull.headSha} ${pull.baseRef} ${pull.title}`)
+    .sort()
+  const issues = status.issues.map((issue) => `${issue.code} ${issue.message}`).sort()
+
+  return JSON.stringify({ pulls, issues })
+}
+
 function stateOf(raw: RawPull): PullState {
   if (raw.merged_at) return 'merged'
   if (raw.state === 'closed') return 'closed'
@@ -244,8 +262,14 @@ function refresh(projectId: string, rootPath: string): Promise<ForgeStatus> {
       etag: null,
     }))
     .then(({ status, etag }) => {
+      const previous = cache.get(projectId)
       cache.set(projectId, { status, filled: Date.now(), etag })
       inflight.delete(projectId)
+
+      if (!previous || fingerprint(previous.status) !== fingerprint(status)) {
+        for (const listener of listeners) listener(projectId, status)
+      }
+
       return status
     })
 
@@ -253,13 +277,17 @@ function refresh(projectId: string, rootPath: string): Promise<ForgeStatus> {
   return started
 }
 
-export async function pulls(projectId: string, rootPath: string): Promise<ForgeStatus> {
+export async function pulls(
+  projectId: string,
+  rootPath: string,
+  force = false,
+): Promise<ForgeStatus> {
+  if (force) return refresh(projectId, rootPath)
+
   const entry = cache.get(projectId)
   if (!entry) return refresh(projectId, rootPath)
 
-  if (Date.now() - entry.filled > FRESH_MS) {
-    refresh(projectId, rootPath).catch(() => undefined)
-  }
+  if (Date.now() - entry.filled > FRESH_MS) return refresh(projectId, rootPath)
 
   return entry.status
 }
