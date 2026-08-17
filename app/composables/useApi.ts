@@ -71,7 +71,8 @@ export function useApi() {
       }),
 
     getGit: (projectId: string) => call<GitReport>(`/projects/${projectId}/git`),
-    getPulls: (projectId: string) => call<ForgeStatus>(`/projects/${projectId}/pulls`),
+    getPulls: (projectId: string, force = false) =>
+      call<ForgeStatus>(`/projects/${projectId}/pulls${force ? '?force=1' : ''}`),
 
     getForgeSession: () => call<ForgeSession>('/forge/session'),
     signOutForge: () => call<ForgeSession>('/forge/session', { method: 'DELETE' }),

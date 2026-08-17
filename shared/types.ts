@@ -318,3 +318,4 @@ export type SocketMessage =
   | { type: 'log'; line: LogLine }
   | { type: 'service'; worktreeId: string; status: ServiceStatus }
   | { type: 'worktrees'; projectId: string }
+  | { type: 'pulls'; projectId: string; status: ForgeStatus }
