@@ -202,6 +202,7 @@ export function classify(
   adopted: boolean,
 ): WorktreeOrigin {
   if (resolve(worktreePath) === resolve(rootPath)) return 'manual'
+  if (isInside(worktreesDir, worktreePath) && adopted) return 'ccwt'
   if (isInside(resolve(rootPath, CLAUDE_WORKTREE_DIR), worktreePath)) return 'claude'
   if (isInside(worktreesDir, worktreePath)) return 'ccwt'
   return adopted ? 'ccwt' : 'manual'

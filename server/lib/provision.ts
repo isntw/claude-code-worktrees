@@ -1,11 +1,6 @@
 import { cp, link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import type {
-  CcwtConfig,
-  DependencyStrategy,
-  PackageManager,
-  WriteEntry,
-} from '../../shared/types'
+import type { CcwtConfig, WriteEntry } from '../../shared/types'
 import { argv, exec } from './exec'
 import { isDirectory, isSymlink, pathExists } from './fs'
 import { stub } from './stub'
@@ -19,8 +14,6 @@ export const ALWAYS_PER_WORKTREE = [
   '.next',
   'dist',
 ] as const
-
-export type Strategy = Exclude<DependencyStrategy, 'auto'>
 
 export interface ProvisionReport {
   copied: string[]
@@ -49,11 +42,6 @@ function fill(text: string, at: Placeholders): string {
     .replaceAll('{{slug}}', at.slug)
     .replaceAll('{{rootPath}}', at.rootPath)
     .replaceAll('{{worktreePath}}', at.worktreePath)
-}
-
-export function resolveStrategy(manager: PackageManager, requested: DependencyStrategy): Strategy {
-  if (requested !== 'auto') return requested
-  return manager === 'pnpm' || manager === 'bun' ? 'install' : 'hardlink'
 }
 
 export function readWorktreeInclude(_rootPath: string): Promise<string[]> {
@@ -254,35 +242,6 @@ export async function pruneCaches(
   }
 }
 
-export async function installDependencies(
-  rootPath: string,
-  worktreePath: string,
-  manager: PackageManager,
-  requested: DependencyStrategy,
-  report: ProvisionReport,
-): Promise<void> {
-  const strategy = resolveStrategy(manager, requested)
-  if (strategy === 'none') return
-
-  if (strategy === 'copy' || strategy === 'hardlink') {
-    const before = report.linked.length
-    await linkPaths(rootPath, worktreePath, ['node_modules'], report)
-    if (report.linked.length > before) await pruneCaches(worktreePath, ['node_modules'], report)
-    if (strategy === 'copy') return
-  }
-
-  if (!(await pathExists(join(worktreePath, 'package.json')))) return
-
-  const result = await exec(manager, ['install'], { cwd: worktreePath, timeoutMs: 600_000 })
-
-  if (result.code !== 0) {
-    throw new Error(
-      result.stderr.trim().split('\n').slice(-5).join('\n') ||
-        `${manager} install exited ${result.code}`,
-    )
-  }
-}
-
 export async function runPostCreate(
   worktreePath: string,
   commands: string[],
@@ -297,7 +256,12 @@ export async function runPostCreate(
     const result = await exec(head, parts.slice(1), { cwd: worktreePath, timeoutMs: 600_000 })
 
     if (result.code !== 0) {
-      throw new Error(`postCreate \`${rendered}\` exited ${result.code}`)
+      const tail = (result.stderr.trim() || result.stdout.trim()).split('\n').slice(-5).join('\n')
+      throw new Error(
+        tail
+          ? `\`${rendered}\` exited ${result.code}\n${tail}`
+          : `\`${rendered}\` exited ${result.code}`,
+      )
     }
   }
 }
@@ -314,10 +278,9 @@ export async function runPostRemove(
   await exec(head, parts.slice(1), { cwd: worktreePath, env, timeoutMs: 120_000 })
 }
 
-export async function provision(
+export async function placeFiles(
   rootPath: string,
   worktreePath: string,
-  manager: PackageManager,
   config: CcwtConfig,
   at: Placeholders,
 ): Promise<ProvisionReport> {
@@ -327,7 +290,17 @@ export async function provision(
   await linkPaths(rootPath, worktreePath, config.provision.link, report)
   await writeFiles(worktreePath, config.provision.write, at, report)
   await pruneCaches(worktreePath, report.linked, report)
-  await installDependencies(rootPath, worktreePath, manager, config.provision.dependencies, report)
+
+  return report
+}
+
+export async function provision(
+  rootPath: string,
+  worktreePath: string,
+  config: CcwtConfig,
+  at: Placeholders,
+): Promise<ProvisionReport> {
+  const report = await placeFiles(rootPath, worktreePath, config, at)
   await runPostCreate(worktreePath, config.provision.postCreate, at)
 
   return report

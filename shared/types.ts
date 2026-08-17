@@ -1,7 +1,5 @@
 export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
 
-export type DependencyStrategy = 'auto' | 'install' | 'hardlink' | 'copy' | 'none'
-
 export type WorktreeOrigin = 'manual' | 'ccwt' | 'claude'
 
 export type ServiceKind = 'command' | 'stack'
@@ -39,7 +37,6 @@ export interface WriteEntry {
 }
 
 export interface ProvisionConfig {
-  dependencies: DependencyStrategy
   copy: string[]
   link: string[]
   write: WriteEntry[]
@@ -53,7 +50,6 @@ export interface ClaudeConfig {
 
 export interface CcwtConfig {
   worktreesDir: string
-  packageManager: PackageManager | 'auto'
   provision: ProvisionConfig
   services: ServiceConfig[]
   claude: ClaudeConfig

@@ -21,13 +21,15 @@ import {
   readUnsaved,
   removeWorktree,
   unlockWorktree,
+  writeWorktreeConfig,
 } from './git'
-import { isDirectory, isSymlink, pathExists, readJsonSafe } from './fs'
+import { isDirectory, isSymlink, pathExists } from './fs'
 import { allocate, isListening, pruneSharedPorts, readAllocated, release } from './ports'
 import type { Placeholders } from './provision'
 import {
   missingBeneath,
   needsWriting,
+  placeFiles,
   provision,
   runPostRemove,
   worktreePathFor,
@@ -54,20 +56,30 @@ function lockStateOf(locked: boolean, reason: string | null): LockState | null {
   return stillRunning(pid) ? 'live' : 'gone'
 }
 
-async function isProvisioned(worktreePath: string): Promise<boolean> {
-  const manifest = await readJsonSafe<{
-    dependencies?: Record<string, string>
-    devDependencies?: Record<string, string>
-  }>(join(worktreePath, 'package.json'))
+async function needsProvisioning(project: Project, worktreePath: string): Promise<boolean> {
+  const config = project.config
+  if (!config) return false
 
-  if (!manifest) return true
+  const entries = [
+    ...config.provision.copy.map((path) => ({ path, linked: false })),
+    ...config.provision.link.map((path) => ({ path, linked: true })),
+  ]
 
-  const needed =
-    Object.keys(manifest.dependencies ?? {}).length +
-    Object.keys(manifest.devDependencies ?? {}).length
+  for (const { path, linked } of entries) {
+    const target = join(worktreePath, path)
+    const source = join(project.rootPath, path)
 
-  if (needed === 0) return true
-  return pathExists(join(worktreePath, 'node_modules'))
+    if (await isSymlink(target)) return true
+
+    if (!(await pathExists(target))) {
+      if (await pathExists(source)) return true
+      continue
+    }
+
+    if (linked && (await isDirectory(source)) && (await missingBeneath(source, target))) return true
+  }
+
+  return needsWriting(worktreePath, config.provision.write, placeholders(project, worktreePath))
 }
 
 export function slugify(name: string): string {
@@ -207,7 +219,7 @@ export async function list(project: Project): Promise<Worktree[]> {
           lockReason: entry.lockReason,
           lockState: lockStateOf(entry.locked, entry.lockReason),
           prunable: entry.prunable,
-          provisioned: await isProvisioned(entry.path),
+          provisioned: !(await needsProvisioning(project, entry.path)),
           services: await servicesFor(project, id, entry.path),
           issues: [],
         }
@@ -245,16 +257,11 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   supervisor.note(id, 'provision', `git worktree add ${path} (${branch})`)
   await addWorktree(project.rootPath, path, branch)
   await enableWorktreeConfig(project.rootPath)
+  await writeWorktreeConfig(path, 'ccwt.created', 'true').catch(() => undefined)
 
   supervisor.note(id, 'provision', 'provisioning…')
   try {
-    const report = await provision(
-      project.rootPath,
-      path,
-      project.packageManager ?? 'npm',
-      config,
-      placeholders(project, path),
-    )
+    const report = await provision(project.rootPath, path, config, placeholders(project, path))
 
     if (report.written.length) {
       supervisor.note(id, 'provision', `wrote ${report.written.join(', ')}`)
@@ -297,49 +304,19 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   return created
 }
 
-async function needsProvisioning(project: Project, worktreePath: string): Promise<boolean> {
-  const config = project.config
-  if (!config) return false
-
-  const entries = [
-    ...config.provision.copy.map((path) => ({ path, linked: false })),
-    ...config.provision.link.map((path) => ({ path, linked: true })),
-  ]
-
-  for (const { path, linked } of entries) {
-    const target = join(worktreePath, path)
-    const source = join(project.rootPath, path)
-
-    if (await isSymlink(target)) return true
-
-    if (!(await pathExists(target))) {
-      if (await pathExists(source)) return true
-      continue
-    }
-
-    if (linked && (await isDirectory(source)) && (await missingBeneath(source, target))) return true
-  }
-
-  if (await needsWriting(worktreePath, config.provision.write, placeholders(project, worktreePath)))
-    return true
-
-  return !(await isProvisioned(worktreePath))
-}
-
-export async function reprovision(project: Project, worktreeId: string): Promise<Worktree> {
+export async function repair(project: Project, worktreeId: string): Promise<Worktree> {
   const config = project.config
   if (!config) throw new Error('This project has no resolvable configuration.')
 
   const worktree = await find(project, worktreeId)
   if (!worktree) throw new Error('No such worktree.')
 
-  supervisor.note(worktreeId, 'provision', 'provisioning…')
+  supervisor.note(worktreeId, 'provision', 'putting back what the recipe declares…')
 
   try {
-    const report = await provision(
+    const report = await placeFiles(
       project.rootPath,
       worktree.path,
-      project.packageManager ?? 'npm',
       config,
       placeholders(project, worktree.path),
     )
@@ -388,7 +365,7 @@ export async function startService(
   if (!service) throw new Error(`No service named \`${serviceName}\` in this project.`)
 
   if (await needsProvisioning(project, worktreePath)) {
-    await reprovision(project, worktreeId).catch((cause: Error) => {
+    await repair(project, worktreeId).catch((cause: Error) => {
       supervisor.note(worktreeId, 'provision', cause.message, 'stderr')
     })
   }

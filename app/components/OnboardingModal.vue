@@ -24,7 +24,7 @@ const STEPS = [
   },
   {
     name: 'provision',
-    body: 'Gitignored files like .env are copied in, and node_modules is hardlinked from the root checkout or installed.',
+    body: 'The recipe says what a worktree gets — files copied, paths hardlinked from the root checkout, commands run once. Detection fills the first draft in; you edit it.',
   },
   {
     name: 'ports',

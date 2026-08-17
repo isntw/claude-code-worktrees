@@ -1,8 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PackageManager, ServiceConfig } from '../../shared/types'
-import { DEFAULT_PORT_RANGE, devCommand, isMultiProcess } from './detect'
-import { argv } from './exec'
+import { DEFAULT_PORT_RANGE, devCommand } from './detect'
 import { isDirectory, readJsonSafe } from './fs'
 
 export interface Manifest {
@@ -16,62 +15,6 @@ export interface Candidate {
   script: string
   body: string
   cwd: string
-}
-
-const RUNNERS = new Set(['concurrently', 'npm-run-all', 'run-p', 'run-s', 'npm-run-all2'])
-
-function stripFlagValues(parts: string[]): { names: string[]; rest: string[] } {
-  const names: string[] = []
-  const rest: string[] = []
-
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index]!
-
-    if (part === '-n' || part === '--names') {
-      names.push(...(parts[index + 1] ?? '').split(',').filter(Boolean))
-      index += 1
-      continue
-    }
-    if (part === '-c' || part === '--prefix-colors' || part === '--kill-others-on-fail') {
-      if (part !== '--kill-others-on-fail') index += 1
-      continue
-    }
-    if (part.startsWith('-')) continue
-
-    rest.push(part)
-  }
-
-  return { names, rest }
-}
-
-function expand(pattern: string, scripts: Record<string, string>): string[] {
-  if (!pattern.includes('*')) return scripts[pattern] ? [pattern] : []
-
-  const matcher = new RegExp(`^${pattern.split('*').map((piece) => piece.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`)
-  return Object.keys(scripts).filter((name) => matcher.test(name))
-}
-
-export function parseComposite(body: string, scripts: Record<string, string>): Candidate[] {
-  const parts = argv(body)
-  const head = parts[0]
-  if (!head || !RUNNERS.has(head)) return []
-
-  const { names, rest } = stripFlagValues(parts.slice(1))
-
-  const targets: string[] = []
-  for (const token of rest) {
-    const ref = token.replace(/^(?:npm|pnpm|yarn|bun):/, '')
-    for (const script of expand(ref, scripts)) {
-      if (!targets.includes(script)) targets.push(script)
-    }
-  }
-
-  return targets.map((script, index) => ({
-    name: names[index] ?? script.split(':').pop() ?? script,
-    script,
-    body: scripts[script] ?? '',
-    cwd: '.',
-  }))
 }
 
 async function workspaceGlobs(rootPath: string): Promise<string[]> {
@@ -175,12 +118,7 @@ export async function detectServices(
     const body = scripts[name]
     if (!body) continue
 
-    if (isMultiProcess(body)) {
-      const parsed = parseComposite(body, scripts)
-      if (parsed.length > 1) return toServices(parsed, manager)
-    }
-
-    return toServices([{ name: 'web', script: name, body, cwd: '.' }], manager)
+    return toServices([{ name, script: name, body, cwd: '.' }], manager)
   }
 
   const workspaces = await walkWorkspaces(rootPath)

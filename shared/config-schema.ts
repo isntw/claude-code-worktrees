@@ -4,9 +4,19 @@ import type { CcwtConfig } from './types'
 const NAME = /^[a-z0-9][a-z0-9_-]*$/i
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
-export const RECIPE_REVISION = 2
+export const RECIPE_REVISION = 3
 
+const RETIRED_KEYS = ['packageManager']
+const RETIRED_PROVISION_KEYS = ['dependencies']
 const RETIRED_CLAUDE_KEYS = ['trackSessions', 'launchCommand']
+
+function without(value: unknown, keys: string[]): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+
+  const rest: Record<string, unknown> = { ...(value as Record<string, unknown>) }
+  for (const key of keys) delete rest[key]
+  return rest
+}
 
 const port = z.number().int().min(1).max(65535)
 
@@ -32,26 +42,27 @@ export const serviceSchema = z
   })
   .describe('service')
 
-export const configSchema = z
+const configObject = z
   .strictObject({
     worktreesDir: z.string().min(1).default('../.worktrees'),
-    packageManager: z.enum(['auto', 'npm', 'pnpm', 'yarn', 'bun']).default('auto'),
     provision: z
-      .strictObject({
-        dependencies: z.enum(['auto', 'install', 'hardlink', 'copy', 'none']).default('auto'),
-        copy: z.array(z.string()).default([]),
-        link: z.array(z.string()).default([]),
-        write: z
-          .array(
-            z.strictObject({
-              path: z.string().min(1, 'A written file needs a path.'),
-              content: z.string(),
-            }),
-          )
-          .default([]),
-        postCreate: z.array(z.string()).default([]),
-        postRemove: z.array(z.string()).default([]),
-      })
+      .preprocess(
+        (value) => without(value, RETIRED_PROVISION_KEYS),
+        z.strictObject({
+          copy: z.array(z.string()).default([]),
+          link: z.array(z.string()).default([]),
+          write: z
+            .array(
+              z.strictObject({
+                path: z.string().min(1, 'A written file needs a path.'),
+                content: z.string(),
+              }),
+            )
+            .default([]),
+          postCreate: z.array(z.string()).default([]),
+          postRemove: z.array(z.string()).default([]),
+        }),
+      )
       .prefault({}),
     services: z
       .array(serviceSchema)
@@ -61,13 +72,10 @@ export const configSchema = z
         'Two services share a name.',
       ),
     claude: z
-      .preprocess((value) => {
-        if (!value || typeof value !== 'object' || Array.isArray(value)) return value
-
-        const rest: Record<string, unknown> = { ...(value as Record<string, unknown>) }
-        for (const key of RETIRED_CLAUDE_KEYS) delete rest[key]
-        return rest
-      }, z.strictObject({ ownWorktreeCreation: z.boolean().default(false) }))
+      .preprocess(
+        (value) => without(value, RETIRED_CLAUDE_KEYS),
+        z.strictObject({ ownWorktreeCreation: z.boolean().default(false) }),
+      )
       .prefault({}),
   })
   .superRefine((config, ctx) => {
@@ -148,6 +156,9 @@ export const configSchema = z
       })
     }
   })
+
+export const configSchema = z
+  .preprocess((value) => without(value, RETIRED_KEYS), configObject)
   .describe('ccwt.config.json')
 
 interface Dependant {
