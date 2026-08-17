@@ -157,7 +157,7 @@ const problems = (worktree: Worktree) =>
               <span class="shrink-0 font-mono text-[0.625rem] tabular-nums text-faint"
                 >#{{ row.pull.number }}</span
               >
-              <Badge :variation="PULL[row.pull.state].variation">{{
+              <Badge :variation="PULL[row.pull.state].variation" :outline="false">{{
                 PULL[row.pull.state].label
               }}</Badge>
             </a>

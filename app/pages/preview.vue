@@ -323,10 +323,21 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
         <li
           v-for="entry in GITS"
           :key="entry.label"
-          class="flex items-center gap-3 border-b border-line px-3 py-2 last:border-b-0"
+          class="flex min-h-7 items-center gap-3 border-b border-line px-3 py-1.5 last:border-b-0"
         >
           <span class="w-32 shrink-0 font-sans text-[0.625rem] text-faint">{{ entry.label }}</span>
           <GitRow class="min-w-0 flex-1" :status="entry.status" :pull="entry.pull" />
+          <Button
+            v-if="entry.pull?.state === 'open' || entry.pull?.state === 'draft'"
+            size="sm"
+            :disabled="entry.pull?.state === 'draft'"
+            :title="
+              entry.pull.state === 'draft'
+                ? 'Mark it ready for review on GitHub first'
+                : `Merge #${entry.pull.number} into ${entry.pull.baseRef}`
+            "
+            >merge</Button
+          >
         </li>
       </ul>
     </section>

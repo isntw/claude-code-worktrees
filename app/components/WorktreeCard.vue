@@ -156,7 +156,7 @@ const mergeable = computed(
       </span>
     </header>
 
-    <div v-if="git" class="flex min-h-10 items-center gap-2 border-b border-line px-3 py-2">
+    <div v-if="git" class="flex min-h-7 items-center gap-2 border-b border-line px-3 py-1.5">
       <GitRow class="min-w-0 flex-1" :status="git" :pull="pull" :since="since" />
       <Button
         v-if="mergeable"
