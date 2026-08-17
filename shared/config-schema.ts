@@ -155,6 +155,15 @@ const configObject = z
         message: 'Two written files share a path.',
       })
     }
+
+    for (const entry of config.provision.copy) {
+      if (!config.provision.link.includes(entry)) continue
+      ctx.addIssue({
+        code: 'custom',
+        path: ['provision', 'link'],
+        message: `\`${entry}\` is copied and hardlinked. Copying happens first, so the hardlink would be skipped — keep one.`,
+      })
+    }
   })
 
 export const configSchema = z

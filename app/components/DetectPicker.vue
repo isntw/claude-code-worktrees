@@ -29,12 +29,15 @@ const rows = computed<Row[]>(() => {
 
   for (const section of ['copy', 'link', 'postCreate'] as const) {
     for (const value of props.suggested.provision[section]) {
+      const other = section === 'copy' ? 'link' : section === 'link' ? 'copy' : null
+      const elsewhere = other ? props.current.provision[other].includes(value) : false
+
       out.push({
         key: `${section}:${value}`,
         section,
         value,
-        detail: null,
-        held: props.current.provision[section].includes(value),
+        detail: elsewhere ? `you have this ${other === 'link' ? 'hardlinked' : 'copied'}` : null,
+        held: elsewhere || props.current.provision[section].includes(value),
       })
     }
   }
@@ -134,7 +137,9 @@ const merged = computed<CcwtConfig>(() => {
               <span class="font-mono text-[0.6875rem]">{{ row.value }}</span>
             </Checkbox>
 
-            <Badge v-if="row.held" variation="neutral">already in your recipe</Badge>
+            <Badge v-if="row.held" variation="neutral">{{
+              row.detail ?? 'already in your recipe'
+            }}</Badge>
             <Badge v-else-if="replacing(row)" variation="warning">replaces</Badge>
           </div>
 

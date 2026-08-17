@@ -213,6 +213,7 @@ export interface ConfigView {
   config: CcwtConfig
   issues: { path: string; message: string }[]
   detected: boolean
+  stale: boolean
 }
 
 export interface DirEntry {

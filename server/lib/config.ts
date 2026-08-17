@@ -15,6 +15,7 @@ export async function readConfig(project: Project): Promise<ConfigView> {
 
   if (record?.config) {
     const stored = parseConfig(record.config)
+    const stale = (record.configRevision ?? 0) < RECIPE_REVISION
 
     if (stored.ok) {
       return {
@@ -24,6 +25,7 @@ export async function readConfig(project: Project): Promise<ConfigView> {
         config: stored.config,
         issues: [],
         detected: false,
+        stale,
       }
     }
 
@@ -34,6 +36,7 @@ export async function readConfig(project: Project): Promise<ConfigView> {
       config: await suggestConfig(project.rootPath),
       issues: stored.issues,
       detected: false,
+      stale,
     }
   }
 
@@ -47,6 +50,7 @@ export async function readConfig(project: Project): Promise<ConfigView> {
       config: file.config,
       issues: [],
       detected: false,
+      stale: false,
     }
   }
 
@@ -60,6 +64,7 @@ export async function readConfig(project: Project): Promise<ConfigView> {
       config: suggested,
       issues: file.issues,
       detected: false,
+      stale: false,
     }
   }
 
@@ -70,6 +75,7 @@ export async function readConfig(project: Project): Promise<ConfigView> {
     config: suggested,
     issues: [],
     detected: true,
+    stale: false,
   }
 }
 
