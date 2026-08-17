@@ -149,7 +149,7 @@ const mergeable = computed(
       </button>
 
       <span class="flex shrink-0 items-center gap-1.5 self-center">
-        <Badge v-if="finished" variation="success" :title="finishedHint">finished</Badge>
+        <Badge v-if="finished" variation="merged" :title="finishedHint">finished</Badge>
         <Badge v-if="live" variation="success" title="A service here is up and answering on its port"
           >running</Badge
         >
