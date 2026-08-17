@@ -237,3 +237,7 @@ renders every primitive in every state; its sample data must never leak into rea
   written for.
 - **New work goes in a worktree** — a feature, a bug fix, anything with a shape to it. Not for very
   small tasks: a one-line change, a typo, a version bump.
+- **Creating the worktree is the whole job.** Do not install dependencies, copy `.env` files or
+  otherwise provision one by hand — ccwt does that from the recipe, and `node_modules` is hardlinked.
+  An `npm install` in a fresh worktree duplicates hundreds of megabytes ccwt would have shared for
+  free, and it is a guess at what the worktree needs when the recipe already says.
