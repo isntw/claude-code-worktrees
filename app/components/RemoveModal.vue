@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { Worktree } from '#shared/types'
+import type { GitStatus, Worktree } from '#shared/types'
 
-const props = defineProps<{ projectId: string; worktree: Worktree }>()
+const props = withDefaults(
+  defineProps<{ projectId: string; worktree: Worktree; git?: GitStatus | null }>(),
+  { git: null },
+)
 
 const emit = defineEmits<{ close: []; removed: [kept: string | null] }>()
 
@@ -13,6 +16,12 @@ const busy = ref(false)
 const error = ref<string | null>(null)
 
 const owned = computed(() => props.worktree.origin !== 'manual')
+
+const uncommitted = computed(() => {
+  const git = props.git
+  if (!git) return 0
+  return git.staged + git.unstaged + git.conflicted
+})
 
 const confirm = async () => {
   busy.value = true
@@ -45,6 +54,23 @@ const confirm = async () => {
       ccwt did not create <code class="font-mono text-ink">{{ worktree.path }}</code
       >, so it removes the directory only if nothing would be lost — no uncommitted changes, and no
       files git ignores. If anything is there, the removal is refused and names it.
+    </p>
+
+    <p v-if="uncommitted && !worktree.prunable" class="mt-3 font-sans text-xs text-alarm">
+      <span class="font-mono tabular-nums">{{ uncommitted }}</span>
+      {{ uncommitted === 1 ? 'file has' : 'files have' }} changes that are not committed anywhere.
+      Deleting the directory deletes them, and keeping the branch does not bring them back.
+    </p>
+
+    <p v-if="worktree.locked" class="mt-3 font-sans text-xs text-caution">
+      <template v-if="worktree.lockState === 'live'"
+        >Something is still working here, so the lock is live. Removing now takes the files away
+        from it.</template
+      >
+      <template v-else>This worktree is locked. Removing it releases the lock first.</template>
+      <code v-if="worktree.lockReason" class="ml-1 font-mono text-[0.6875rem]">{{
+        worktree.lockReason
+      }}</code>
     </p>
 
     <p v-if="!worktree.branch" class="mt-3 font-sans text-xs text-dim">

@@ -65,7 +65,7 @@ const lock = computed(() => {
 const lockAction = computed(() => {
   if (props.worktree.root) return 'The repository root cannot be locked'
   if (!props.worktree.locked) return 'Lock this worktree so nothing removes or prunes it'
-  if (held.value) return lock.value
+  if (held.value) return `Release this lock — ${lock.value}. It deletes nothing.`
   if (props.worktree.prunable) {
     return 'Release this lock — the directory is already gone, so git drops the entry and this card disappears. The branch is kept.'
   }
@@ -85,6 +85,18 @@ const finished = computed(() => {
   return live.value
     ? 'This worktree is finished, and its services are still running.'
     : 'This worktree is finished.'
+})
+
+const holding = computed(() => {
+  if (!props.worktree.locked || props.worktree.root) return ''
+
+  const said = props.worktree.lockReason ? ` — ${props.worktree.lockReason}` : ''
+
+  if (held.value) {
+    return `Something is still working here${said}. It stops nothing being pruned by accident; you can still release the lock or remove this.`
+  }
+
+  return `Locked${said}. Nothing prunes it while that stands.`
 })
 
 const mergeable = computed(
@@ -174,6 +186,10 @@ const mergeable = computed(
 
     <div v-if="finished" class="flex min-h-9 items-center border-b border-line px-3 py-2">
       <span class="min-w-0 flex-1 font-sans text-[0.6875rem] text-dim">{{ finished }}</span>
+    </div>
+
+    <div v-if="holding" class="flex min-h-9 items-center border-b border-line px-3 py-2">
+      <span class="min-w-0 flex-1 font-sans text-[0.6875rem] text-dim">{{ holding }}</span>
     </div>
 
 
@@ -292,7 +308,7 @@ const mergeable = computed(
         size="sm"
         icon
         class="ml-auto"
-        :disabled="worktree.root || held"
+        :disabled="worktree.root"
         :title="lockAction"
         @click="worktree.locked ? emit('unlock') : emit('lock')"
       >
@@ -303,15 +319,13 @@ const mergeable = computed(
         size="sm"
         icon
         variation="error"
-        :disabled="worktree.locked || worktree.root"
+        :disabled="worktree.root"
         :title="
           worktree.root
             ? 'The repository root is not removable'
-            : worktree.locked
-              ? lock
-              : worktree.prunable
-                ? 'Drop the entry git still keeps — the directory is already gone'
-                : 'Remove this worktree'
+            : worktree.prunable
+              ? 'Drop the entry git still keeps — the directory is already gone'
+              : 'Remove this worktree'
         "
         @click="emit('remove')"
       >
