@@ -41,7 +41,7 @@ const emit = defineEmits<{
 const SERVICE: Record<ServiceStatus['state'], { variation: Variation; label: string }> = {
   stopped: { variation: 'neutral', label: 'stopped' },
   starting: { variation: 'info', label: 'starting' },
-  running: { variation: 'live', label: 'running' },
+  running: { variation: 'success', label: 'running' },
   crashed: { variation: 'error', label: 'crashed' },
 }
 
@@ -84,21 +84,25 @@ const allRunning = computed(() =>
 
 const live = computed(() => props.worktree.services.some((service) => service.state === 'running'))
 
-const finished = computed(() => {
-  if (props.worktree.root || props.pull?.state !== 'merged') return ''
-  return live.value
-    ? 'This worktree is finished, and its services are still running.'
-    : 'This worktree is finished.'
+const finished = computed(() => !props.worktree.root && props.pull?.state === 'merged')
+
+const finishedHint = computed(() =>
+  live.value
+    ? 'Its pull request is merged, and its services are still running'
+    : 'Its pull request is merged',
+)
+
+const working = computed(() => held.value && !props.worktree.root)
+
+const workingHint = computed(() => {
+  const said = props.worktree.lockReason ? `\n${props.worktree.lockReason}` : ''
+  return `An agent is working here.${said}\n\nThe lock only stops this being pruned by accident. Removing it here still works; releasing the lock is refused while that process is alive.`
 })
 
 const holding = computed(() => {
-  if (!props.worktree.locked || props.worktree.root) return ''
+  if (!props.worktree.locked || props.worktree.root || held.value) return ''
 
   const said = props.worktree.lockReason ? ` — ${props.worktree.lockReason}` : ''
-
-  if (held.value) {
-    return `Something is still working here${said}. It stops nothing being pruned by accident; you can still release the lock or remove this.`
-  }
 
   return `Locked${said}. Nothing prunes it while that stands.`
 })
@@ -129,11 +133,17 @@ const mergeable = computed(
           <Lock
             v-if="worktree.locked"
             :size="11"
-            class="shrink-0"
-            :class="held ? 'text-caution' : 'text-faint'"
+            class="shrink-0 text-faint"
             :aria-label="lock"
             :title="lock"
           />
+          <span
+            v-if="working"
+            class="shrink-0 font-sans text-[0.625rem] text-dim"
+            :title="workingHint"
+          >
+            <StateDot variation="agent" beating class="mr-1 align-middle" />agent
+          </span>
         </span>
         <span class="mt-1 flex items-center gap-1.5">
           <span class="truncate font-mono text-[0.625rem] text-faint">{{
@@ -143,7 +153,8 @@ const mergeable = computed(
       </button>
 
       <span class="flex shrink-0 items-center gap-1.5 self-center">
-        <Badge v-if="live" variation="live" title="A service here is up and answering on its port"
+        <Badge v-if="finished" variation="merged" :title="finishedHint">finished</Badge>
+        <Badge v-if="live" variation="success" title="A service here is up and answering on its port"
           >running</Badge
         >
         <Badge
@@ -157,6 +168,12 @@ const mergeable = computed(
           variation="warning"
           title="Dependencies are not in place yet — starting a service will put them there"
           >unprovisioned</Badge
+        >
+        <Badge
+          v-if="worktree.root"
+          variation="info"
+          title="The repository root — not a worktree ccwt can lock or remove"
+          >root</Badge
         >
         <Badge :title="ORIGIN[worktree.origin]">{{ worktree.origin }}</Badge>
         <span
@@ -186,10 +203,6 @@ const mergeable = computed(
         @click="emit('merge')"
         >merge</Button
       >
-    </div>
-
-    <div v-if="finished" class="flex min-h-9 items-center border-b border-line px-3 py-2">
-      <span class="min-w-0 flex-1 font-sans text-[0.6875rem] text-dim">{{ finished }}</span>
     </div>
 
     <div v-if="holding" class="flex min-h-9 items-center border-b border-line px-3 py-2">

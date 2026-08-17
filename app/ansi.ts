@@ -1,4 +1,4 @@
-export type Tone = 'ink' | 'dim' | 'faint' | 'alarm' | 'caution' | 'live'
+export type Tone = 'ink' | 'dim' | 'faint' | 'alarm' | 'caution' | 'success'
 
 export interface Segment {
   text: string
@@ -21,7 +21,7 @@ interface Style {
   inverse: boolean
 }
 
-const HUES: Tone[] = ['faint', 'alarm', 'live', 'caution', 'ink', 'ink', 'ink', 'ink']
+const HUES: Tone[] = ['faint', 'alarm', 'success', 'caution', 'ink', 'ink', 'ink', 'ink']
 
 const NONE =
   /(?:^|[^a-z])(?:0|no)\s+(?:errors?|warnings?|failures?|failed|problems?|issues?)(?![a-z])/gi
@@ -72,7 +72,7 @@ function fromRgb(red: number, green: number, blue: number): Tone {
 
   if (hue < 20 || hue >= 330) return 'alarm'
   if (hue < 70) return 'caution'
-  if (hue < 165) return 'live'
+  if (hue < 165) return 'success'
   return 'ink'
 }
 

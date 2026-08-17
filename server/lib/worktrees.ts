@@ -250,7 +250,7 @@ export async function list(project: Project): Promise<Worktree[]> {
         return {
           id,
           projectId: project.id,
-          name: root ? `${basename(entry.path)} (root)` : basename(entry.path),
+          name: basename(entry.path),
           path: entry.path,
           root,
           branch: entry.branch,

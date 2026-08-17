@@ -14,9 +14,10 @@ defineProps<{ stats: Stat[] }>()
 
 const TONE: Record<Variation, string> = {
   neutral: 'text-faint',
-  info: 'text-dim',
-  success: 'text-ink',
-  live: 'text-live',
+  info: 'text-info',
+  primary: 'text-ink',
+  success: 'text-success',
+  agent: 'text-agent',
   warning: 'text-caution',
   error: 'text-alarm',
 }
@@ -31,7 +32,7 @@ const TONE: Record<Variation, string> = {
       :title="stat.hint"
     >
       <dt class="t-eyebrow truncate">{{ stat.label }}</dt>
-      <dd class="t-numeral mt-1.5" :class="TONE[stat.variation ?? 'success']">
+      <dd class="t-numeral mt-1.5" :class="TONE[stat.variation ?? 'primary']">
         {{ stat.value.toLocaleString() }}
       </dd>
       <dd v-if="stat.note" class="mt-1 truncate font-sans text-[0.625rem] text-faint">

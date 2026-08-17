@@ -15,7 +15,7 @@ const TEXT: Record<Tone, string> = {
   faint: 'text-faint',
   alarm: 'text-alarm',
   caution: 'text-caution',
-  live: 'text-live',
+  success: 'text-success',
 }
 
 const FILL: Record<Tone, string> = {
@@ -24,7 +24,7 @@ const FILL: Record<Tone, string> = {
   faint: 'bg-faint text-canvas',
   alarm: 'bg-alarm text-canvas',
   caution: 'bg-caution text-canvas',
-  live: 'bg-live text-canvas',
+  success: 'bg-success text-canvas',
 }
 
 const parsed = new WeakMap<LogLine, Segment[]>()

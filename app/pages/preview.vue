@@ -21,7 +21,7 @@ import { NAV } from '../nav'
 
 const page = NAV.find((item) => item.name === 'preview')!
 
-const VARIATIONS: Variation[] = ['neutral', 'info', 'success', 'live', 'warning', 'error']
+const VARIATIONS: Variation[] = ['neutral', 'info', 'primary', 'success', 'agent', 'warning', 'error']
 const SIZES: BadgeSize[] = ['sm', 'md', 'lg']
 
 const text = ref('npm run dev -- --port 5200')
@@ -128,7 +128,7 @@ const STATS: Stat[] = [
     key: 'running',
     label: 'Services up',
     value: 5,
-    variation: 'live',
+    variation: 'success',
     note: '1 still starting · of 9',
   },
   { key: 'crashed', label: 'Crashed', value: 1, variation: 'error' },
@@ -248,7 +248,9 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
             'dim',
             'faint',
             'ink',
-            'live',
+            'success',
+            'info',
+            'agent',
             'caution',
             'alarm',
           ]"
@@ -276,9 +278,9 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
       </div>
       <div class="flex flex-wrap items-center gap-3 border-t border-line px-3 py-3">
         <Badge v-for="s in SIZES" :key="s" :size="s">{{ s }}</Badge>
-        <Badge v-for="s in SIZES" :key="`${s}-live`" :size="s" variation="live">{{ s }}</Badge>
+        <Badge v-for="s in SIZES" :key="`${s}-success`" :size="s" variation="success">{{ s }}</Badge>
         <Badge v-for="s in SIZES" :key="`${s}-mono`" :size="s" mono>{{ s }}</Badge>
-        <Badge v-for="s in SIZES" :key="`${s}-fill`" :size="s" variation="live" :outline="false">{{
+        <Badge v-for="s in SIZES" :key="`${s}-fill`" :size="s" variation="success" :outline="false">{{
           s
         }}</Badge>
       </div>
