@@ -16,6 +16,8 @@
 
   --color-live: var(--ccwt-live);
   --color-merged: var(--ccwt-merged);
+  --color-agent: var(--ccwt-agent);
+  --color-info: var(--ccwt-info);
 
   --color-alarm: var(--ccwt-alarm);
   --color-caution: var(--ccwt-caution);
@@ -41,6 +43,8 @@
 
   --ccwt-live: #3f8f6a;
   --ccwt-merged: #7350ad;
+  --ccwt-agent: #c2603f;
+  --ccwt-info: #2f6ea6;
 
   --ccwt-alarm: #d93a1e;
   --ccwt-caution: #a8761a;
@@ -63,6 +67,8 @@
 
   --ccwt-live: #5cb98d;
   --ccwt-merged: #a98cdb;
+  --ccwt-agent: #d97757;
+  --ccwt-info: #6fa8d6;
 
   --ccwt-alarm: #ff5c42;
   --ccwt-caution: #e2a33c;

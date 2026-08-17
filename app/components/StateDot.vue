@@ -13,18 +13,20 @@ const props = withDefaults(
 
 const FILL: Record<Variation, string> = {
   neutral: 'bg-faint',
-  info: 'bg-dim',
+  info: 'bg-info',
   success: 'bg-ink',
   live: 'bg-live',
+  agent: 'bg-agent',
   warning: 'bg-caution',
   error: 'bg-alarm',
 }
 
 const EDGE: Record<Variation, string> = {
   neutral: 'border-faint',
-  info: 'border-dim',
+  info: 'border-info',
   success: 'border-ink',
   live: 'border-live',
+  agent: 'border-agent',
   warning: 'border-caution',
   error: 'border-alarm',
 }

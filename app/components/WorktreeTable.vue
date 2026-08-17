@@ -107,10 +107,18 @@ const problems = (worktree: Worktree) =>
                 v-if="row.worktree.locked"
                 :size="10"
                 class="shrink-0"
-                :class="row.worktree.lockState === 'live' ? 'text-caution' : 'text-faint'"
+                :class="row.worktree.lockState === 'live' ? 'text-agent' : 'text-faint'"
                 :aria-label="lockHint(row.worktree)"
                 :title="lockHint(row.worktree)"
               />
+              <Badge
+                v-if="row.worktree.root"
+                size="sm"
+                variation="info"
+                class="shrink-0"
+                title="The repository root — not a worktree ccwt can lock or remove"
+                >root</Badge
+              >
               <Badge
                 v-if="row.worktree.prunable"
                 size="sm"

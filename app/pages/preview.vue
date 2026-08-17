@@ -20,7 +20,7 @@ import { NAV } from '../nav'
 
 const page = NAV.find((item) => item.name === 'preview')!
 
-const VARIATIONS: Variation[] = ['neutral', 'info', 'success', 'live', 'warning', 'error']
+const VARIATIONS: Variation[] = ['neutral', 'info', 'success', 'live', 'agent', 'warning', 'error']
 const SIZES: BadgeSize[] = ['sm', 'md', 'lg']
 
 const text = ref('npm run dev -- --port 5200')
@@ -228,6 +228,8 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
             'faint',
             'ink',
             'live',
+            'info',
+            'agent',
             'caution',
             'alarm',
           ]"

@@ -50,9 +50,10 @@ const ICON: Record<ToolState, Component> = {
 
 const TINT: Record<Variation, string> = {
   neutral: 'text-faint',
-  info: 'text-dim',
+  info: 'text-info',
   success: 'text-ink',
   live: 'text-live',
+  agent: 'text-agent',
   warning: 'text-caution',
   error: 'text-alarm',
 }

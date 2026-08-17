@@ -6,9 +6,10 @@ export type BadgeSize = 'sm' | 'md' | 'lg'
 
 const OUTLINE: Record<BadgeVariation, string> = {
   neutral: 'text-faint',
-  info: 'text-dim',
+  info: 'text-info',
   success: 'text-ink',
   live: 'text-live',
+  agent: 'text-agent',
   merged: 'text-merged',
   warning: 'text-caution',
   error: 'text-alarm',
@@ -17,9 +18,10 @@ const OUTLINE: Record<BadgeVariation, string> = {
 
 const FILLED: Record<BadgeVariation, string> = {
   neutral: 'border-line-strong! bg-line-strong text-ink',
-  info: 'border-dim! bg-dim text-canvas',
+  info: 'border-info! bg-info text-canvas',
   success: 'border-ink! bg-ink text-canvas',
   live: 'border-live! bg-live text-canvas',
+  agent: 'border-agent! bg-agent text-canvas',
   merged: 'border-merged! bg-merged text-canvas',
   warning: 'border-caution! bg-caution text-canvas',
   error: 'border-alarm! bg-alarm text-canvas',
