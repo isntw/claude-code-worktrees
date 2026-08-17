@@ -539,8 +539,9 @@ export async function remove(
   const worktree = await find(project, worktreeId)
   if (!worktree) throw new Error('No such worktree.')
   if (worktree.root) throw new Error('That is the repository root, not a worktree ccwt can remove.')
+
   if (worktree.locked) {
-    throw new Error(worktree.lockReason || 'An agent is working here.')
+    await unlockWorktree(project.rootPath, worktree.path).catch(() => undefined)
   }
 
   if (worktree.prunable) {

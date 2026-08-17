@@ -126,8 +126,14 @@ refuses. Two things keep `--force` honest and both must stay: the dashboard conf
 path and states the branch survives, and `remove()` refuses any worktree outside the project's
 `worktreesDir` unless it was classified `claude`.
 
-**Never remove a locked worktree** — Claude Code locks while an agent works. Say "an agent is working
-here", not an opaque failure.
+**A git lock is not permission.** `git worktree lock` exists to stop *automatic* pruning of a worktree
+on a device that is not always mounted; git itself removes a locked worktree when told twice. Claude
+Code takes one while an agent works, with a reason naming the session and its pid. ccwt shows that
+reason and unlocks before removing — it does not refuse. Deciding by the lock is deciding by
+occupancy, and a session parked in a finished worktree looks identical to one mid-edit. What the
+confirmation must state is what removal destroys: the path, the untracked files ccwt put there, and
+whether the branch survives. **Releasing a lock is never blocked** — it deletes nothing, and blocking
+it while removal is also blocked leaves the dashboard with no way out of a state it created.
 
 **A worktree may vanish underneath us.** Claude Code sweeps stale subagent worktrees on its own
 schedule; releasing a port and reaping a process must tolerate the directory being gone.

@@ -19,14 +19,14 @@ const emit = defineEmits<{
 const lockAction = (worktree: Worktree) => {
   if (worktree.root) return 'The repository root cannot be locked'
   if (!worktree.locked) return 'Lock this worktree so nothing removes or prunes it'
-  if (worktree.lockState === 'live') return lockHint(worktree)
+  if (worktree.lockState === 'live') return `Release this lock — ${lockHint(worktree)}. It deletes nothing.`
   return 'Release this lock'
 }
 
 const removeAction = (worktree: Worktree) => {
   if (worktree.root) return 'The repository root is not removable'
-  if (worktree.locked) return lockHint(worktree)
   if (worktree.prunable) return 'Drop the entry git still keeps — the directory is already gone'
+  if (worktree.locked) return `Remove this worktree — the lock is released first. ${lockHint(worktree)}`
   return 'Remove this worktree'
 }
 
@@ -214,7 +214,7 @@ const problems = (worktree: Worktree) =>
               <Button
                 size="sm"
                 icon
-                :disabled="row.worktree.root || row.worktree.lockState === 'live'"
+                :disabled="row.worktree.root"
                 :title="lockAction(row.worktree)"
                 @click.stop="row.worktree.locked ? emit('unlock', row) : emit('lock', row)"
               >
@@ -225,7 +225,7 @@ const problems = (worktree: Worktree) =>
                 size="sm"
                 icon
                 variation="error"
-                :disabled="row.worktree.locked || row.worktree.root"
+                :disabled="row.worktree.root"
                 :title="removeAction(row.worktree)"
                 @click.stop="emit('remove', row)"
               >

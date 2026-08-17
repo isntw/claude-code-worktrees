@@ -347,6 +347,7 @@ onBeforeUnmount(() => {
     v-if="doomed"
     :project-id="projectId"
     :worktree="doomed"
+    :git="git[doomed.id] ?? null"
     @close="doomed = null"
     @removed="removed"
   />
