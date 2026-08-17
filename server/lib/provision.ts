@@ -174,16 +174,36 @@ export async function missingBeneath(source: string, target: string): Promise<bo
   return here.some((name) => !have.has(name))
 }
 
+function cannotHardlink(detail: string): Error {
+  return new Error(
+    `could not hardlink — ${detail}\nMove it under \`copy\` in the recipe if this path cannot be shared with the root checkout.`,
+  )
+}
+
+function alreadyLinked(stderr: string): boolean {
+  const lines = stderr
+    .trim()
+    .split('\n')
+    .filter((line) => line.trim())
+
+  return lines.length > 0 && lines.every((line) => /are identical \(not copied\)\.$/.test(line.trim()))
+}
+
 async function hardlinkTree(source: string, target: string): Promise<void> {
+  if (process.platform === 'win32') throw cannotHardlink('this platform cannot hardlink a directory tree')
+
   const merging = await pathExists(target)
+  const args = merging ? ['-aln', `${source}/.`, target] : ['-al', source, target]
+  const result = await exec('cp', args, { timeoutMs: 300_000 }).catch(() => null)
 
-  if (process.platform !== 'win32') {
-    const args = merging ? ['-aln', `${source}/.`, target] : ['-al', source, target]
-    const result = await exec('cp', args, { timeoutMs: 300_000 }).catch(() => null)
-    if (result?.code === 0) return
-  }
+  if (result?.code === 0) return
+  if (result && merging && alreadyLinked(result.stderr)) return
 
-  await cp(source, target, { recursive: true, force: false, errorOnExist: false })
+  const detail = result
+    ? result.stderr.trim().split('\n').slice(-3).join('\n') || `\`cp\` exited ${result.code}`
+    : '`cp` could not be run'
+
+  throw cannotHardlink(detail)
 }
 
 export async function linkPaths(
@@ -216,7 +236,10 @@ export async function linkPaths(
       await mkdir(dirname(target), { recursive: true })
 
       if (directory) await hardlinkTree(source, target)
-      else await link(source, target).catch(() => cp(source, target))
+      else
+        await link(source, target).catch((cause: Error) => {
+          throw cannotHardlink(cause.message)
+        })
 
       report.linked.push(entry)
     } catch (cause) {
