@@ -7,6 +7,7 @@ import type {
   LogLine,
   OverviewRow,
   PortClaim,
+  PortHold,
   PortRow,
   PullRequest,
   PullState,
@@ -74,6 +75,26 @@ const sample = (index: number, service: ServiceState): Worktree => ({
 })
 
 const CARDS = SERVICES.map((service, index) => sample(index, service))
+
+const CONTESTED: { label: string; movable: boolean; heldBy: PortHold | null }[] = [
+  { label: 'port moves on start', movable: true, heldBy: null },
+  {
+    label: 'held by another worktree',
+    movable: false,
+    heldBy: { worktreeId: 'w9', worktree: 'root', service: 'web', same: true },
+  },
+  { label: 'held by something else', movable: false, heldBy: null },
+]
+
+const TAKEN = CONTESTED.map(({ label, ...state }, index) => {
+  const card = sample(0, 'stopped')
+  return {
+    ...card,
+    id: `t${index}`,
+    name: label,
+    services: [{ ...card.services[0]!, port: 3000, taken: true, ...state }],
+  }
+})
 
 const PROJECTS = ['app', 'app', 'kape-kb', 'legacy']
 
@@ -386,6 +407,13 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
           :git="GITS[index]?.status ?? null"
           :pull="GITS[index]?.pull ?? null"
         />
+      </div>
+    </section>
+
+    <section class="xl:col-span-2">
+      <p class="t-eyebrow mb-2">Worktree cards — a port already taken</p>
+      <div class="grid gap-2 lg:grid-cols-3">
+        <WorktreeCard v-for="card in TAKEN" :key="card.id" :worktree="card" />
       </div>
     </section>
 

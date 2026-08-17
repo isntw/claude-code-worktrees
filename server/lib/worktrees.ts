@@ -1,6 +1,7 @@
 import { basename, join, resolve } from 'node:path'
 import type {
   LockState,
+  PortHold,
   Project,
   RemoveOutcome,
   ServiceConfig,
@@ -137,19 +138,37 @@ interface Allocation {
   named: Record<string, Record<string, number>>
 }
 
-async function allocateAll(project: Project, worktreePath: string): Promise<Allocation> {
+async function allocateAll(
+  project: Project,
+  worktreeId: string,
+  worktreePath: string,
+): Promise<Allocation> {
   await enableWorktreeConfig(project.rootPath)
   await pruneSharedPorts(project.rootPath)
 
   const ports: Record<string, number> = {}
   const named: Record<string, Record<string, number>> = {}
+  const reserved = new Set<number>()
+
+  const moved = (service: string, what: string, from: number, to: number) => {
+    supervisor.note(worktreeId, service, `port ${from} is taken, so ${what} moved to ${to}`)
+  }
 
   for (const service of project.config?.services ?? []) {
-    ports[service.name] = await allocate(worktreePath, service.name, service.portRange)
+    const live = supervisor.status(worktreeId, service.name)
+    const keep = live !== null && (live.state === 'running' || live.state === 'starting')
+
+    const main = await allocate(worktreePath, service.name, service.portRange, { keep, reserved })
+    if (main.from !== null) moved(service.name, service.name, main.from, main.port)
+    reserved.add(main.port)
+    ports[service.name] = main.port
 
     const extra: Record<string, number> = {}
     for (const [variable, range] of Object.entries(service.ports ?? {})) {
-      extra[variable] = await allocate(worktreePath, portKey(service, variable), range)
+      const one = await allocate(worktreePath, portKey(service, variable), range, { keep, reserved })
+      if (one.from !== null) moved(service.name, variable, one.from, one.port)
+      reserved.add(one.port)
+      extra[variable] = one.port
     }
     named[service.name] = extra
   }
@@ -158,6 +177,28 @@ async function allocateAll(project: Project, worktreePath: string): Promise<Allo
 }
 
 const PROBE_MS = 250
+
+function holdOf(
+  project: Project,
+  worktreeId: string,
+  service: string,
+  port: number,
+): PortHold | null {
+  const held = supervisor
+    .holding(port)
+    .find((entry) => !(entry.worktreeId === worktreeId && entry.service === service))
+
+  if (!held) return null
+
+  const root = resolve(held.worktreePath) === resolve(held.rootPath)
+
+  return {
+    worktreeId: held.worktreeId,
+    worktree: root ? 'root' : basename(held.worktreePath),
+    service: held.service,
+    same: resolve(held.rootPath) === resolve(project.rootPath),
+  }
+}
 
 async function servicesFor(
   project: Project,
@@ -185,6 +226,8 @@ async function servicesFor(
         exitCode: null,
         reachable: null,
         taken: port === null ? false : await isListening(port, PROBE_MS),
+        movable: service.portRange[0] !== service.portRange[1],
+        heldBy: port === null ? null : holdOf(project, worktreeId, service.name, port),
         extra: Object.keys(extra).length ? extra : undefined,
       }
     }),
@@ -282,7 +325,7 @@ export async function create(project: Project, input: CreateInput): Promise<Work
     supervisor.note(id, 'provision', (cause as Error).message, 'stderr')
   }
 
-  const { ports, named } = await allocateAll(project, path)
+  const { ports, named } = await allocateAll(project, id, path)
   for (const [name, port] of Object.entries(ports)) {
     supervisor.note(id, 'provision', `${name} → port ${port}`)
     for (const [variable, extra] of Object.entries(named[name] ?? {})) {
@@ -344,7 +387,7 @@ export async function repair(project: Project, worktreeId: string): Promise<Work
     supervisor.note(worktreeId, 'provision', (cause as Error).message, 'stderr')
   }
 
-  await allocateAll(project, worktree.path)
+  await allocateAll(project, worktreeId, worktree.path)
   supervisor.note(worktreeId, 'provision', 'ready')
 
   const refreshed = await find(project, worktreeId)
@@ -370,7 +413,7 @@ export async function startService(
     })
   }
 
-  const { ports, named } = await allocateAll(project, worktreePath)
+  const { ports, named } = await allocateAll(project, worktreeId, worktreePath)
   const order = startOrder(config.services, service.name)
 
   let status: ServiceStatus | null = null

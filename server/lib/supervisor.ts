@@ -26,6 +26,8 @@ export type StatusListener = (worktreeId: string, status: ServiceStatus) => void
 
 interface Entry {
   worktreeId: string
+  worktreePath: string
+  rootPath: string
   service: string
   port: number
   cwd: string
@@ -154,6 +156,37 @@ export function status(worktreeId: string, service: string): ServiceStatus | nul
   return entry ? toStatus(entry) : null
 }
 
+export interface Holding {
+  worktreeId: string
+  worktreePath: string
+  rootPath: string
+  service: string
+  state: ServiceState
+  pid: number | null
+  startedAt: string | null
+}
+
+export function holding(port: number): Holding[] {
+  const out: Holding[] = []
+
+  for (const entry of entries.values()) {
+    if (entry.port !== port) continue
+    if (entry.state !== 'running' && entry.state !== 'starting') continue
+
+    out.push({
+      worktreeId: entry.worktreeId,
+      worktreePath: entry.worktreePath,
+      rootPath: entry.rootPath,
+      service: entry.service,
+      state: entry.state,
+      pid: entry.pid,
+      startedAt: entry.startedAt,
+    })
+  }
+
+  return out
+}
+
 export function waitReachable(
   worktreeId: string,
   service: string,
@@ -257,6 +290,8 @@ export async function start(
 
   const entry: Entry = {
     worktreeId,
+    worktreePath,
+    rootPath: vars.rootPath,
     service: service.name,
     port,
     cwd: resolve(worktreePath, service.cwd || '.'),
