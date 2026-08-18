@@ -70,6 +70,16 @@ async function startedWhenClaimed(pid: number, reason: string): Promise<boolean>
   return drift <= START_SLACK_MS || Math.abs(drift - zone) <= START_SLACK_MS
 }
 
+function lockedAtOf(locked: boolean, reason: string | null): string | null {
+  if (!locked || !reason) return null
+
+  const claimed = reason.match(LOCK_START)?.[1]
+  if (!claimed) return null
+
+  const at = Date.parse(`${claimed} GMT`)
+  return Number.isNaN(at) ? null : new Date(at).toISOString()
+}
+
 async function lockStateOf(locked: boolean, reason: string | null): Promise<LockState | null> {
   if (!locked) return null
 
@@ -284,6 +294,7 @@ export async function list(project: Project): Promise<Worktree[]> {
           locked: entry.locked,
           lockReason: entry.lockReason,
           lockState: await lockStateOf(entry.locked, entry.lockReason),
+          lockedAt: lockedAtOf(entry.locked, entry.lockReason),
           prunable: entry.prunable,
           provisioned: !(await needsProvisioning(project, entry.path)),
           services: await servicesFor(project, id, entry.path),

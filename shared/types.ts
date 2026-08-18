@@ -144,6 +144,7 @@ export interface Worktree {
   locked: boolean
   lockReason: string | null
   lockState: LockState | null
+  lockedAt: string | null
   prunable: boolean
   provisioned: boolean
   services: ServiceStatus[]

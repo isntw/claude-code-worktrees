@@ -94,6 +94,23 @@ const finishedHint = computed(() =>
 
 const working = computed(() => held.value && !props.worktree.root)
 
+const heldFor = computed(() => {
+  const at = props.worktree.lockedAt
+  if (!at) return null
+
+  const ms = Date.now() - Date.parse(at)
+  if (!Number.isFinite(ms) || ms < 0) return null
+
+  const minutes = Math.floor(ms / 60_000)
+  if (minutes < 1) return '<1m'
+  if (minutes < 60) return `${minutes}m`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ${minutes % 60}m`
+
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`
+})
+
 const workingHint = computed(() => {
   const said = props.worktree.lockReason ? `\n${props.worktree.lockReason}` : ''
   return `An agent is working here.${said}\n\nThe lock only stops this being pruned by accident. Removing it here still works; releasing the lock is refused while that process is alive.`
@@ -134,7 +151,12 @@ const mergeable = computed(
             class="shrink-0 font-sans text-[0.625rem] text-dim"
             :title="workingHint"
           >
-            <StateDot variation="agent" beating class="mr-1 align-middle" />agent
+            <StateDot variation="agent" beating class="mr-1 align-middle" />agent<span
+              v-if="heldFor"
+              class="text-faint"
+            >
+              · {{ heldFor }}</span
+            >
           </span>
         </span>
         <span class="mt-1 flex items-center gap-1.5">

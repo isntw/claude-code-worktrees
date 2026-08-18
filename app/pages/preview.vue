@@ -56,6 +56,7 @@ const sample = (index: number, service: ServiceState): Worktree => ({
         ? `claude agent sample-${index} (pid ${4820 + index})`
         : null,
   lockState: LOCKS[index] ?? null,
+  lockedAt: LOCKS[index] ? new Date(Date.now() - (index + 1) * 47 * 60_000).toISOString() : null,
   prunable: false,
   provisioned: true,
   services: [
