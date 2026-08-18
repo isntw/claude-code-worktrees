@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type {
@@ -117,6 +117,27 @@ async function parts(): Promise<PluginParts> {
   }
 }
 
+async function missingSource(): Promise<string[]> {
+  const root = packageRoot()
+  const wanted = [join(root, 'plugin'), join(root, '.claude-plugin', 'marketplace.json')]
+  const missing: string[] = []
+
+  for (const path of wanted) {
+    if (!(await stat(path).catch(() => null))) missing.push(path)
+  }
+
+  return missing
+}
+
+function absent(missing: string[]): Diagnostic {
+  return {
+    code: 'plugin.missing-source',
+    severity: 'error',
+    message: `This copy of ccwt does not carry the plugin it would install — ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} not there.`,
+    hint: 'A published package must list `plugin` and `.claude-plugin` in its `files`. Reinstall ccwt, or run it from a checkout.',
+  }
+}
+
 export function commands(): string[] {
   return [
     `claude plugin marketplace add ${sourceDir()}`,
@@ -213,6 +234,7 @@ export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
 
   const found = await installed()
   const state = stateOf(found, shipped)
+  const missing = state === 'absent' ? await missingSource() : []
 
   return {
     state,
@@ -224,7 +246,11 @@ export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
     commands: commands(),
     capabilities: CAPABILITIES,
     parts: await parts(),
-    issues: [...issuesFor(state, shipped, found), ...extra],
+    issues: [
+      ...(missing.length ? [absent(missing)] : []),
+      ...issuesFor(state, shipped, found),
+      ...extra,
+    ],
   }
 }
 
@@ -263,6 +289,9 @@ function failed(what: string, code: number, stderr: string): Diagnostic {
 
 export async function install(): Promise<PluginReport> {
   if (!(await present())) return report()
+
+  const missing = await missingSource()
+  if (missing.length) return report([absent(missing)])
 
   await materialise()
 
