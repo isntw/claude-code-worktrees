@@ -179,12 +179,14 @@ Terminal-native, dark-first, hand-rolled Tailwind 4. **There is no component lib
 be** — `Nuxt UI` is in `docs/SPEC.md` §3 and was rejected because its radii and control shapes read as a
 different product.
 
-- **Warm is broken.** `--ccwt-alarm` and `--ccwt-caution` are the only warm hues.
-- **`--ccwt-live` is alive** — one desaturated green for something the machine has confirmed is up
-  and usable: a running service, a working agent, a satisfied host requirement. **Do not extend it.**
-  A second cool hue means the palette needs rethinking.
-- **Interaction uses neither.** Selection inverts (`bg → ink`, `text → canvas`).
-- **`success` is achromatic**, never green — a finished agent is not a running one.
+- **Every hue means one thing, and nothing else may borrow it.** `--ccwt-success` is up and
+  answering, `--ccwt-agent` is an agent holding a worktree, `--ccwt-merged` is a pull request that
+  landed, `--ccwt-info` is a fact worth noticing, `--ccwt-alarm` is broken and `--ccwt-caution` is
+  about to be. A seventh hue means the palette needs rethinking, not extending.
+- **`--ccwt-live` is gone**; `--ccwt-success` took its meaning. It is green — the older rule that
+  `success` is achromatic and never green described a palette that no longer exists.
+- **Interaction is achromatic.** Selection inverts (`bg → ink`, `text → canvas`), and `primary` is
+  the emphatic control — `text-ink`, never a hue. A button is not a status.
 - **Mono is what the machine said** (names, branches, paths, ports); **sans is what we think about
   it** (descriptions, states, errors). `.t-eyebrow` / `.t-data` / `.t-numeral` / `.t-badge` are the
   only type primitives.
