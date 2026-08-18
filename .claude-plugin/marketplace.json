@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ccwt",
+  "description": "The ccwt worktree environment integration for Claude Code",
+  "owner": {
+    "name": "ccwt"
+  },
+  "plugins": [
+    {
+      "name": "ccwt",
+      "description": "Tells a Claude Code session which services ccwt already runs for the current repository, stops it starting a second copy of one, and names the session after its worktree.",
+      "source": "./plugin",
+      "category": "productivity"
+    }
+  ]
+}

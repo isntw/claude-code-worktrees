@@ -139,13 +139,15 @@ ccwt's checkout and moving or reinstalling ccwt breaks nothing.
 
 ### Where the marketplace lives
 
-**`~/.ccwt/plugin/`.** ccwt materialises the plugin into its own directory at startup and registers
-that path, because ccwt's install directory is only as stable as how ccwt was installed — an `npx`
-run has no durable path at all. `~/.ccwt/` already holds the token and `state.json`, so this adds no
-new place for ccwt to own.
+**`~/.ccwt/plugin/`.** ccwt writes the plugin into its own directory and registers that path,
+because ccwt's install directory is only as stable as how ccwt was installed — an `npx` run has no
+durable path at all. `~/.ccwt/` already holds the token and `state.json`, so this adds no new place
+for ccwt to own.
 
-ccwt rewrites those files when its own version changes, and never otherwise. The source path matters
-only while installing or updating; once installed, the plugin runs from Claude's cache.
+**It writes those files when you press install, not at startup.** Until then ccwt does nothing: no
+directory, no registered marketplace, no plugin. The same applies to updating — a newer ccwt marks
+the plugin *outdated* in the panel and waits. The source path matters only while installing or
+updating; once installed, the plugin runs from Claude's cache.
 
 `package.json` ships `files: ["bin", ".output"]`, so **`plugin/` must be added** or the plugin is
 missing from the published package while working perfectly from a checkout.
@@ -456,9 +458,10 @@ State comes from `claude plugin list --json`, so it is read rather than inferred
 `--ccwt-live` is right for *installed* on the existing rule: a satisfied host requirement is already
 what that hue is for. Everything else is achromatic or one of the two warm hues.
 
-What the panel must state before the first install: that it runs `claude plugin …` on your behalf,
-that a denied command is a command that will not run, that sessions get renamed, and that everything
-takes effect in the **next** session.
+**Nothing happens until you press install.** The panel shows the exact commands it will run, in
+mono, before running any of them — the same standard the removal confirmation is held to. It states
+that it runs `claude plugin …` on your behalf, that a denied command is a command that will not run,
+that sessions get renamed, and that everything takes effect in the **next** session.
 
 One row per capability — context, guard, naming, tools — each with a sentence saying what it does.
 
@@ -498,6 +501,9 @@ every discovery fallback that must exit silently.
 ## 14. What must never happen
 
 - **A write into a registered repository.** The whole feature is arranged around this (§3).
+- **Installing anything on its own.** Not on startup, not when a project is registered, not after an
+  update, not to repair a broken install. The plugin is installed when a person presses the button
+  and never otherwise, and the same holds for updating and removing it.
 - **A hook that throws outside ccwt's world.** It runs in every session on the machine, including
   repositories ccwt has never seen.
 - **A hook that lets a session control a service.** Read-only, permanently (§9).
@@ -527,20 +533,29 @@ echo '{"cwd":"'"$PWD"'","tool_name":"Bash","tool_input":{"command":"npm run dev"
   | node plugin/hooks/ccwt.mjs guard
 ```
 
-Confirmed already, against a working prototype — manifests validated, handlers driven by hand:
+Confirmed against the built plugin, driven by hand in this repository:
 
 | case | expected | result |
 |---|---|---|
-| `session-start` in a worktree | names the service, port and state | ✅ `dev — port 5270 — stopped` |
+| `session-start` in a worktree | every worktree's services and ports | ✅ |
+| `session-start` in the **root checkout** | still lists the linked worktree's ports | ✅ — the case that previously returned nothing |
+| `session-start` / `prompt` | sets `sessionTitle` | ✅ `ccwt · claude-code-worktrees/claude-hooks-install` |
+| `prompt`, nothing moved | complete silence | ✅ |
+| `prompt`, service came up | one delta line | ✅ `dev is now running at http://localhost:5270` |
 | `guard`, service listening | denies, naming the URL | ✅ |
+| `guard`, `cd <path> && npm run dev` from the root | denies against the **right** worktree | ✅ |
+| `guard`, `NODE_ENV=x npm run dev` | denies | ✅ |
+| `guard`, `npm run build` | silence | ✅ |
+| `guard`, `git commit -m "npm run dev"` | silence | ✅ quoting keeps it out |
 | `guard`, service stopped | silence | ✅ |
-| `guard`, unrelated command | silence | ✅ |
 | `guard`, outside ccwt | silence | ✅ |
 
-Still to prove: repository-scope output from the root checkout; the delta emitting once and then
-staying quiet; `cd <path> &&` resolving to the right worktree; a session renamed on open and renamed
-again on moving worktree; a hand-typed title left alone; both MCP tools over stdio; and an install
-landing beside the rtk hook in `~/.claude/settings.json` without disturbing it.
+The last two guard rows matter as much as the denials: a stopped service is not a reason to block,
+and a repository ccwt has never seen must be untouched.
+
+Still to prove: both MCP tools over stdio; a session renamed again on moving worktree; a hand-typed
+title left alone; and an install landing beside the rtk hook in `~/.claude/settings.json` without
+disturbing it.
 
 ---
 
