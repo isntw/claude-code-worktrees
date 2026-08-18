@@ -176,3 +176,16 @@ the whole reason this tool exists. Benchmarked against a real Vite + Vue repo (3
 The symlink result is the surprising one: a `pnpm install` inside the worktree pruned packages out
 of the *shared root* `node_modules` and broke the root checkout's build, while the root's own
 `package.json` and lockfile stayed unchanged — so nothing in git would explain it.
+
+## License
+
+AGPL-3.0-only. Copyright © 2026 Iustinian Monea. Full text in [LICENSE](LICENSE).
+
+Use it, study it, modify it, share it — freely, including at work and on projects you are paid for.
+Running `ccwt` places no obligation on you or on anything it provisions: your worktrees, your code
+and your recipes are yours, and nothing here reaches into them.
+
+The one condition is reciprocity, and it binds only redistribution. Ship `ccwt` to someone else —
+modified or not, sold or given away — or run a modified copy as a service other people reach over a
+network, and you owe them the complete corresponding source under this same license. A fork stays
+open; it cannot be closed.
