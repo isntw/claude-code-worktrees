@@ -77,17 +77,34 @@ test('a name already correct is not set again', () => {
   assert.equal(renameTo(repo([here], here), 'ccwt · demo/feature'), null)
 })
 
-test('a name the user typed is never overwritten', () => {
+test('a generated name is claimed the first time, having set none before', () => {
   const here = worktree('feature', [service('dev', 5270, true)])
 
-  assert.equal(renameTo(repo([here], here), 'debugging the merge'), null)
+  assert.equal(
+    renameTo(repo([here], here), 'Publishing repo with free-to-use license', undefined),
+    'ccwt · demo/feature',
+  )
 })
 
-test('an earlier ccwt name is replaced when the worktree changes', () => {
+test('a name changed after ours is never touched again', () => {
+  const here = worktree('feature', [service('dev', 5270, true)])
+
+  assert.equal(
+    renameTo(repo([here], here), 'debugging the merge', 'ccwt · demo/first'),
+    null,
+  )
+})
+
+test('a name still equal to ours moves with the worktree', () => {
   const here = worktree('second', [service('dev', 5270, true)])
 
-  assert.equal(renameTo(repo([here], here), 'ccwt · demo/first'), 'ccwt · demo/second')
+  assert.equal(
+    renameTo(repo([here], here), 'ccwt · demo/first', 'ccwt · demo/first'),
+    'ccwt · demo/second',
+  )
 })
+
+
 
 test('the root checkout and an unknown directory are never renamed', () => {
   const root = worktree('demo', [service('dev', null, false)], true)

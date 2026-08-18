@@ -18,12 +18,14 @@ async function readMarker(sessionId) {
   }
 }
 
-async function writeMarker(sessionId, rows) {
+async function writeMarker(sessionId, rows, title) {
   if (!sessionId) return
   await mkdir(join(ccwtDir(), 'sessions'), { recursive: true, mode: 0o700 }).catch(() => undefined)
-  await writeFile(markerPath(sessionId), JSON.stringify({ at: new Date().toISOString(), rows }), {
-    mode: 0o600,
-  }).catch(() => undefined)
+  await writeFile(
+    markerPath(sessionId),
+    JSON.stringify({ at: new Date().toISOString(), rows, title }),
+    { mode: 0o600 },
+  ).catch(() => undefined)
 }
 
 const emit = (payload) => {
@@ -49,7 +51,8 @@ const read = () =>
 
 async function sessionStart(input, found) {
   const context = overview(found)
-  const title = renameTo(found, input?.session_title)
+  const marker = await readMarker(input?.session_id)
+  const title = renameTo(found, input?.session_title, marker?.title)
   const payload = {}
 
   if (context) {
@@ -57,14 +60,14 @@ async function sessionStart(input, found) {
   }
   if (title) payload.sessionTitle = title
 
-  await writeMarker(input?.session_id, snapshot(found))
+  await writeMarker(input?.session_id, snapshot(found), title ?? marker?.title)
   emit(payload)
 }
 
 async function prompt(input, found) {
   const rows = snapshot(found)
   const marker = await readMarker(input?.session_id)
-  const title = renameTo(found, input?.session_title)
+  const title = renameTo(found, input?.session_title, marker?.title)
   const payload = {}
 
   if (!marker) {
@@ -84,7 +87,7 @@ async function prompt(input, found) {
 
   if (title) payload.sessionTitle = title
 
-  await writeMarker(input?.session_id, rows)
+  await writeMarker(input?.session_id, rows, title ?? marker?.title)
   emit(payload)
 }
 

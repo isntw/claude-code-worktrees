@@ -40,11 +40,15 @@ export function changes(before, after) {
   return lines
 }
 
-export function renameTo(found, current) {
+export function renameTo(found, current, ours) {
   if (!found.here || found.here.root) return null
+
   const wanted = `${TITLE_PREFIX}${found.projectName}/${found.here.name}`
   if (wanted === current) return null
-  return !current || current.startsWith(TITLE_PREFIX) ? wanted : null
+
+  if (!current) return wanted
+  if (!ours) return wanted
+  return current === ours ? wanted : null
 }
 
 export function overview(found) {
