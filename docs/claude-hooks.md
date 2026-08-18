@@ -1,19 +1,18 @@
 # Telling a Claude Code session what is already running
 
 Spec for an opt-in Claude Code integration, installed from the dashboard, that tells a session which
-services ccwt runs for the repository it is working in — and stops it starting a second copy of one.
-Not built.
+services ccwt runs for the repository it is working in, stops it starting a second copy of one, and
+names the session after its worktree. Not built.
 
-Amends `SPEC.md` §5, which reads as though this whole area was decided against. It was not: §3 below
-is the distinction, and §8 corrects §5.3, whose stdin contract does not match what Claude Code
-actually sends.
+Amends `SPEC.md` §5, which reads as though this whole area was decided against. It was not: §3 is the
+distinction, and §11 corrects §5.3, whose stdin contract does not match what Claude Code sends.
 
 Motivating case: you create a worktree, ccwt starts its dev server, you open a Claude Code session,
 and the session starts a second dev server to check its own work.
 
-> Facts below marked **(2.1.234)** were read out of the shipped Claude Code binary rather than the
-> documentation, which is thinner than the behaviour. They are version-specific and worth re-checking
-> when that version moves.
+> Facts marked **(2.1.234)** were read out of the shipped Claude Code binary rather than the
+> documentation, which is thinner than the behaviour. They are version-specific and worth
+> re-checking when that version moves.
 
 ---
 
@@ -51,21 +50,23 @@ the port.
 - Tell the session what the **repository** runs — worktrees, services, ports, liveness
 - Keep that picture fresh as services start, stop and move
 - **Deny** a command that would duplicate a service already listening
-- Route worktree creation through ccwt when asked, so a new worktree arrives provisioned and served
-- Record ccwt's own host and port, so a session can reach the API at all
+- **Name the session** after the worktree it is working in, and rename it when that changes
+- Let the session **ask** ccwt for status and logs — read-only, never lifecycle
+- Record ccwt's own host and port, so the API is reachable at all
+- **Tests** — the first in this repo
 
 ### Out of scope
 
-- **An MCP server.** Tools for status, logs and restart would be the richest integration. It needs
-  ccwt running, costs schema context in every session, and §9 gets most of the value for none of it.
-  The plugin is the right container for one later.
-- **A skill**, in the first pass. §5 injects the same facts deterministically; a skill fires when the
-  model decides it is relevant. It earns its place when it carries a *procedure* the injected context
-  cannot — how to verify a change here, what to do with a crashed service — not a second copy of the
-  port table.
-- **Reporting session state back to ccwt.** That is §5.2, and it stays dropped — see §3.
-- **Killing what a session left behind.** §10 argues that belongs to ccwt, not to a hook.
-- **Starting the session.** ccwt is not an agent runner (§5.2). Unchanged.
+Each of these was considered and rejected for a stated reason; §16 records them so they are not
+re-proposed by accident.
+
+- Worktree creation through ccwt (§11) — written up, but blocked behind §5.4 and off until then
+- Anything that lets a session start, stop or restart a service
+- A skill
+- Reclaiming orphaned ports
+- Reading session activity out of Claude Code's transcripts
+- Reporting session state back to ccwt — that is §5.2, and it stays dropped (§3)
+- Starting the session. ccwt is not an agent runner (§5.2). Unchanged
 
 ---
 
@@ -80,21 +81,25 @@ That plan wrote hooks into **the project's `.claude/settings.json`** — a file 
 repository. The rule in `CLAUDE.md` is absolute, and it stays absolute.
 
 This feature ships a **plugin**, installed through Claude Code's own CLI (§4). It writes into no
-repository, and — since the plugin carries its own hook scripts — it does not edit any configuration
+repository, and because the plugin carries its own hook scripts it does not edit any configuration
 file either. The rule needs no exception.
 
 Machine-wide is therefore not a convenience. It is what makes this legal where its predecessor was
 not, and it is also better: one install covers every project ccwt knows and every project it does
 not, because a hook resolves everything at run time and prints nothing where ccwt has no answer.
 
-The two features also point in opposite directions, which is easy to miss:
+### The direction that was dropped, and the one that was not
 
 | | direction | answered by |
 |---|---|---|
-| §5.2, dropped | Claude → ccwt: *an agent is working here* | the worktree lock, for free |
-| this | ccwt → Claude: *this is already running* | nothing at all |
+| §5.2, dropped | ccwt **depends on** Claude reporting state — a badge lit by a hook POSTing | the worktree lock, coarsely, for free |
+| §5–§8 | ccwt → Claude: *this is already running* | nothing at all |
+| §9 | Claude → ccwt: *what is running, and what did it print* | ccwt's existing API |
 
-The lock does not answer this one. Nothing does.
+§9 looks like the dropped direction and is not. §5.2 made ccwt's own display depend on sessions
+reporting in. §9 is a session asking ccwt for something it already publishes: ccwt depends on
+nothing, and if no session ever calls, nothing about the dashboard changes. The dashboard stays the
+truth; MCP hands a session the same read-only view of it.
 
 ---
 
@@ -104,7 +109,7 @@ Claude Code has a complete non-interactive plugin CLI, so the dashboard button s
 which is what ccwt does for a living — instead of performing surgery on a file it does not own:
 
 ```bash
-claude plugin marketplace add <source>
+claude plugin marketplace add ~/.ccwt/plugin
 claude plugin install ccwt@ccwt --scope user -y
 claude plugin list --json          # id, version, scope, enabled, installPath, installedAt
 claude plugin uninstall ccwt@ccwt
@@ -112,20 +117,19 @@ claude plugin enable|disable ccwt@ccwt
 ```
 
 `-y` is **required when stdout is not a TTY**, which is exactly ccwt spawning it. `list --json` is
-the panel's state, so nothing has to be inferred by parsing anyone's settings.
+the panel's state, so nothing is inferred by parsing anyone's settings.
 
 ### Layout
 
-The ccwt package is the marketplace; the plugin sits inside it. Both manifests validate with
-`claude plugin validate`:
+Both manifests validate with `claude plugin validate`:
 
 ```
-claude-code-worktrees/
-  .claude-plugin/marketplace.json    name "ccwt"; plugins:[{ name:"ccwt", source:"./plugin" }]
-  plugin/
-    .claude-plugin/plugin.json
-    hooks/hooks.json                 SessionStart · UserPromptSubmit · PreToolUse · WorktreeCreate …
-    hooks/ccwt.mjs                   one zero-dependency entry point, dispatched by argv
+plugin/
+  .claude-plugin/plugin.json     name, version, description, mcpServers
+  hooks/hooks.json               SessionStart · UserPromptSubmit · PreToolUse
+  hooks/ccwt.mjs                 one zero-dependency entry point, dispatched by argv
+  mcp/server.mjs                 zero-dependency JSON-RPC over stdio
+.claude-plugin/marketplace.json  name "ccwt"; plugins:[{ name:"ccwt", source:"./plugin" }]
 ```
 
 `hooks.json` refers to the script as `node "${CLAUDE_PLUGIN_ROOT}/hooks/ccwt.mjs" <mode>`.
@@ -133,14 +137,18 @@ claude-code-worktrees/
 `~/.claude/plugins/cache/ccwt/ccwt/<version>/` and the variable resolves there, so nothing points at
 ccwt's checkout and moving or reinstalling ccwt breaks nothing.
 
-### Two things this costs
+### Where the marketplace lives
 
-- **`package.json` ships `files: ["bin", ".output"]`.** `plugin/` and `.claude-plugin/` must be added
-  or the plugin is missing from the published package while working perfectly from a checkout.
-- **Where the marketplace source points.** ccwt's own install directory is simplest but only as
-  stable as how ccwt was installed — an `npx` run has no durable path. Preferred: ccwt materialises
-  the plugin into `~/.ccwt/plugin/` at startup and registers *that*, which is immune to install
-  method and stays in the directory ccwt already owns.
+**`~/.ccwt/plugin/`.** ccwt materialises the plugin into its own directory at startup and registers
+that path, because ccwt's install directory is only as stable as how ccwt was installed — an `npx`
+run has no durable path at all. `~/.ccwt/` already holds the token and `state.json`, so this adds no
+new place for ccwt to own.
+
+ccwt rewrites those files when its own version changes, and never otherwise. The source path matters
+only while installing or updating; once installed, the plugin runs from Claude's cache.
+
+`package.json` ships `files: ["bin", ".output"]`, so **`plugin/` must be added** or the plugin is
+missing from the published package while working perfectly from a checkout.
 
 An install applies **at the next session**, not the current one. The panel says so.
 
@@ -155,12 +163,12 @@ An install applies **at the next session**, not the current one. The panel says 
 watch paths and ccwt could touch a file on every status change, the resulting event can print a line
 to the user's terminal and cannot tell the model anything.
 
-**Three events carry context to the model**, and every one of them is Claude Code calling us:
+**Three events carry context to the model**, and every one is Claude Code calling us:
 
 | event | carries context | used for |
 |---|---|---|
-| `SessionStart` | yes | the opening picture |
-| `UserPromptSubmit` | yes | the delta, when something moved |
+| `SessionStart` | yes | the opening picture, and the session's name |
+| `UserPromptSubmit` | yes | the delta when something moved, and renaming |
 | `PreToolUse` | yes | the denial, at the moment of the command |
 | `CwdChanged` / `FileChanged` | **no** | nothing — cannot reach the model |
 
@@ -201,17 +209,58 @@ ccwt: `dev` moved to port 5312 (was 5270) and is running at http://localhost:531
 `session_id` arrives in every hook's input, so the marker costs nothing. When nothing moved the hook
 prints nothing and spends a few git reads and TCP probes.
 
-**This is the honest use of `SessionEnd`** — deleting that marker. Not killing processes (§10). It
-does not fire on a crash, so prune the directory by mtime as a backstop.
+`SessionEnd` deletes that marker. It does not fire on a crash, so prune the directory by mtime as a
+backstop. That is the only thing `SessionEnd` is used for — see §16.
 
 ### `PreToolUse` cannot go stale
 
 The guard reads live state at the moment of the command, so a delta missed or compacted away does not
-matter: the reason the model gets always names the current port. §7.
+matter: the reason the model gets always names the current port. §8.
 
 ---
 
-## 6. How a hook resolves the picture
+## 6. Naming the session after its worktree
+
+Three `claude` processes were running while this was written, and nothing distinguished them. The
+same hooks fix it, at the cost of one extra field.
+
+Hook output carries a top-level **`sessionTitle`**, in the same family as `watchPaths` and
+`systemMessage` (2.1.234):
+
+```js
+if (m.sessionTitle) d = m.sessionTitle
+…
+"Hook sessionTitle applied"    → applied with source "hook"
+```
+
+And both `SessionStart` and `UserPromptSubmit` receive **`session_title`** on stdin — the current
+name. So the hook always knows what the session is called before deciding to rename it.
+
+That covers all three cases:
+
+| when | how |
+|---|---|
+| session opens in a worktree | `SessionStart` returns `sessionTitle` beside `additionalContext` |
+| a worktree is created mid-session | `UserPromptSubmit` sets it on the next turn |
+| the same session moves to another worktree | `UserPromptSubmit` compares `cwd` and re-titles |
+
+The apply step already no-ops when the title is unchanged, so re-emitting the same name every turn
+costs nothing.
+
+**Rules:**
+
+- The name is project-qualified — `ccwt · claude-hooks-install` — because a machine with four
+  registered projects has worktrees whose bare names collide.
+- **Never clobber a name the user chose.** The hook receives `session_title`, so it can tell its own
+  format from something typed by hand. Set it only when the title is empty or is one of ours.
+- No rename in the root checkout, and none at all outside a ccwt worktree.
+
+The failure mode is benign in a way §11's is not: if the field is ignored or renamed in a future
+version, the session simply keeps its old name. Nothing breaks.
+
+---
+
+## 7. How a hook resolves the picture
 
 Entirely offline. No server, no token, no network — prototyped and confirmed against a real worktree
 while ccwt was **not running**:
@@ -233,8 +282,7 @@ Two rules from `CLAUDE.md` get re-implemented in the plugin, and both have been 
   may not contain an underscore**
 - the probe tries **both address families**, because Vite binds `localhost`, which on macOS is `::1`
 
-That duplication is the honest cost of a hook that answers with ccwt closed. §9 notes the shape that
-would later collapse it.
+That duplication is the honest cost of a hook that answers with ccwt closed.
 
 **Liveness comes from the probe, never from "is ccwt running".** §1 is why: every process there
 outlived its parent.
@@ -248,7 +296,7 @@ throw** applies here with more force than anywhere else in the codebase.
 
 ---
 
-## 7. The guard
+## 8. The guard
 
 `PreToolUse` on `Bash` returns:
 
@@ -287,10 +335,74 @@ then fall back to `cwd`.
 
 ---
 
-## 8. Creating a worktree
+## 9. What the session can ask ccwt for
 
-Optional, off by default, and the one part that needs ccwt running. It replaces §5.3, whose stdin
-contract is wrong.
+`plugin.json` declares `mcpServers` directly, so the hooks and the MCP server ship in one plugin,
+one install, one panel toggle.
+
+**Two tools, both read-only:**
+
+| tool | answers | needs ccwt running |
+|---|---|---|
+| `ccwt_status` | what runs for this repository, on which ports, and whether each answers | no — same discovery as §7 |
+| `ccwt_logs` | a service's scrollback, so a change can be checked without building anything | yes |
+
+`logs.get.ts:7` already returns `supervisor.scrollbackFor(worktreeId)` as plain JSON, `x-ccwt-token`
+is already a valid header (`security.ts:37`), and `worktreeId` is `sha256(path).slice(0,12)`
+(`git.ts:24`) — computable offline. So the server is a thin, typed front door onto endpoints ccwt
+already has.
+
+### No lifecycle, deliberately
+
+There is no `start`, `stop` or `restart`. The guard tells the session that ccwt owns lifecycle;
+handing it a restart button in the same breath would blur exactly the line being drawn, and invites a
+restart loop during debugging. When a restart is genuinely needed — this project's `shared/` does not
+hot-reload — the session says so and a human clicks.
+
+Reading logs is what actually answers *did my change compile*. That was the real need behind wanting
+a restart.
+
+### The token never enters the conversation
+
+The MCP server reads `~/.ccwt/token` itself. Nothing puts it in the model's context, and the surface
+the model can reach is two tools rather than every endpoint ccwt exposes — which matters, because
+`CLAUDE.md` is blunt that anything reaching that API can spawn processes.
+
+### Built hand-rolled
+
+MCP over stdio is JSON-RPC; two tools need roughly 150 lines and no dependencies. That matches how
+`bin/ccwt.mjs` is deliberately written, starts instantly, and needs no network — where
+`npx claude-code-worktrees mcp` would pay a download on first run in every session.
+
+Cost in context is near zero: Claude Code defers MCP tool schemas, listing tools by name and loading
+schemas on demand.
+
+---
+
+## 10. `~/.ccwt/server.json`
+
+`bin/ccwt.mjs:13` takes `--port`, defaults to 4600, and **writes it down nowhere**. Only the token is
+persisted, so nothing outside the process can find the API — including §9's MCP server.
+
+Fix it where the token is already written, same mode 600:
+
+```json
+{ "host": "127.0.0.1", "port": 4600, "pid": 12345, "startedAt": "2026-08-17T…" }
+```
+
+`ccwt_logs` degrades to "ccwt is not running" when nothing answers on the recorded port. A stale
+`server.json` must degrade to silence, never to a broken instruction.
+
+---
+
+## 11. Creating a worktree — written up, not built
+
+**Deferred.** Installing a `WorktreeCreate` hook replaces Claude Code's creation logic wholesale,
+which takes `.worktreeinclude` handling with it — and **§5.4 is still the only stub in the
+codebase**. Shipping this first would silently drop a documented behaviour with nothing replacing it.
+§5.4 lands first; until then the panel's row for it stays off.
+
+Recorded now because §5.3's contract is wrong and someone will otherwise write a hook against it.
 
 ### What `WorktreeCreate` actually sends and expects (2.1.234)
 
@@ -301,112 +413,31 @@ contract is wrong.
 
 **Failure is fatal and there is no fallback to git.** A non-zero exit, a success that prints no path,
 or a hook configured but not run — untrusted workspace, `disableAllHooks`, matcher mismatch — makes
-worktree creation *throw*.
+worktree creation *throw*. On a machine-wide plugin that means `claude --worktree` breaking in every
+repository, including ones ccwt has never heard of.
 
-This is a machine-wide plugin, so that is severe: with ccwt down, `claude --worktree` would break in
-every repository on the machine, including ones ccwt has never heard of.
+### Therefore, when it is built
 
-### Therefore
-
-- **The hook always exits 0 and always prints a path.** When ccwt is unreachable, or the repository
-  is not a registered project, it performs the plain `git worktree add` itself and prints that. ccwt
-  is the enhancement; plain git is the floor.
+- **Always exit 0 and always print a path.** With ccwt unreachable, or outside a registered project,
+  perform the plain `git worktree add` and print that. ccwt is the enhancement; git is the floor.
 - **A subagent worktree gets the floor, never provisioning.** The event fires for
   `isolation: "worktree"` and background sessions too, and `agent_id` is present only for a subagent,
   which makes it the discriminator. Unbounded, a ten-way fan-out becomes ten provisions and ten dev
   servers, each hardlinking `node_modules` and running `postCreate` — which `CLAUDE.md` notes
   "generates keys, seeds databases and builds".
 
-### What ccwt already does
+`create()` already takes `start: boolean` and, when true, provisions, allocates every port and starts
+every service (`server/lib/worktrees.ts:292`). `POST /api/projects/<id>/worktrees` with
+`{name, branch, start}` is the whole call — **nothing new is needed server-side**, the hook is only a
+trigger. Branch naming stays Claude Code's (`worktree-<name>`); the path becomes ccwt's
+`worktreesDir`, which is the point of §5.3.
 
-`create()` takes `start: boolean` and, when true, provisions, allocates every port and starts every
-service (`server/lib/worktrees.ts:292`). `POST /api/projects/<id>/worktrees` with
-`{name, branch, start}` is the whole call. **Nothing new is needed server-side** — this hook is only
-a trigger.
-
-Branch naming stays Claude Code's (`worktree-<name>`) so existing worktrees and new ones agree; the
-path becomes ccwt's `worktreesDir`, which is the point of §5.3.
-
-`WorktreeRemove` receives `worktree_path`, is **non-blocking** — failures are logged in debug only —
-and maps exactly onto the existing rule that **`postRemove` may never block a removal**.
-
-### Both creation paths converge
-
-| created by | ccwt running | outcome | how the session learns |
-|---|---|---|---|
-| ccwt dashboard | — | provisioned, ported, started if asked | §5 opening picture, or the delta |
-| Claude, hook installed | yes | ccwt's `create()` — provisioned, ported, started | the delta, next turn |
-| Claude, hook installed | **no** | plain `git worktree add` — creation never fails | the delta, saying *created without ccwt: no ports, no dependencies* |
-| Claude, no hook | — | bare worktree | nothing until it is adopted in ccwt; then the delta |
-
-Row three is the one that matters: the worktree is still made, and the session is told plainly that
-it is bare instead of discovering it by failing.
-
-### One ordering dependency
-
-Installing `WorktreeCreate` replaces Claude Code's creation logic wholesale, which takes
-`.worktreeinclude` handling with it. ccwt is meant to cover that — except **§5.4 is still the only
-stub left in the codebase**. Shipping this before §5.4 silently drops `.worktreeinclude` with nothing
-replacing it. §5.4 lands first, or this stays off.
+`WorktreeRemove` receives `worktree_path`, is **non-blocking** — failures logged in debug only — and
+maps onto the existing rule that **`postRemove` may never block a removal**.
 
 ---
 
-## 9. `~/.ccwt/server.json`
-
-`bin/ccwt.mjs:13` takes `--port`, defaults to 4600, and **writes it down nowhere**. Only the token is
-persisted, so nothing outside the process can find the API.
-
-Fix it where the token is already written, same mode 600:
-
-```json
-{ "host": "127.0.0.1", "port": 4600, "pid": 12345, "startedAt": "2026-08-17T…" }
-```
-
-Small, and it buys three things:
-
-- **§8 can call `create()` at all.**
-- **The session can read the running server's output** instead of starting one to get some.
-  `logs.get.ts:7` already returns `supervisor.scrollbackFor(worktreeId)` as plain JSON,
-  `x-ccwt-token` is already a valid header (`security.ts:37`), and `worktreeId` is
-  `sha256(path).slice(0,12)` (`git.ts:24`) — computable offline.
-- **The escape hatch for everything §5 cannot reach** — a worktree in another project the session has
-  never been near — is `GET /api/overview`.
-
-```bash
-curl -s -H "x-ccwt-token: $(cat ~/.ccwt/token)" \
-  http://127.0.0.1:4600/api/projects/<id>/worktrees/<worktreeId>/logs
-```
-
-Offered only when something answers on the recorded port: a stale `server.json` degrades to silence,
-never to a broken instruction.
-
-It also opens the better long-term shape — the supervisor writing live service state to disk on each
-status change, collapsing §6's git walk and its two duplicated rules into one file read. Later, not
-here.
-
----
-
-## 10. Reclaiming a port ccwt did not start
-
-`SessionEnd` is the obvious place to clean up the processes in §1, and it is the wrong one. It fires
-only on a clean exit, and every orphan there had a dead parent — one had outlived its worktree by two
-days. It also could not tell which processes to kill without the guard recording what it let through,
-and ccwt's own services are *supposed* to outlive a session.
-
-The machinery for the real answer already exists and is one step from useful.
-`ServiceStatus.taken` (`shared/types.ts:80`) already means *stopped service, port occupied*, and
-`WorktreeCard.vue:237` already renders `port 5266 taken`. Today it is a dead end — you can see the
-orphan and do nothing about it.
-
-Make it actionable: name what holds the port, offer to reclaim it. That covers every orphan whatever
-its origin — session crash, ccwt restart, a hand-run `npm run dev` — which no hook can match.
-
-Strictly, this is a separate change from the plugin. It is here because it is the other half of the
-same problem, and because shipping the guard without it fixes the future and leaves the past running.
-
----
-
-## 11. The panel
+## 12. The panel
 
 `/settings` — the machine-wide page, beside GitHub, for the same reason `ForgePanel` lives there.
 The nav blurb reads *"The accounts and hosts ccwt talks to on your behalf."* which no longer covers
@@ -426,45 +457,51 @@ State comes from `claude plugin list --json`, so it is read rather than inferred
 what that hue is for. Everything else is achromatic or one of the two warm hues.
 
 What the panel must state before the first install: that it runs `claude plugin …` on your behalf,
-that a denied command is a command that will not run, that worktree creation is **off by default**
-and what it changes when on (§8), and that everything takes effect in the **next** session.
+that a denied command is a command that will not run, that sessions get renamed, and that everything
+takes effect in the **next** session.
 
-Per-hook `Toggle`, one row each, with one sentence saying what that hook does. Worktree creation is
-its own row and stays off until §5.4 lands.
+One row per capability — context, guard, naming, tools — each with a sentence saying what it does.
 
 ---
 
-## 12. Inventory
+## 13. Inventory
 
 | file | change |
 |---|---|
-| `plugin/.claude-plugin/plugin.json` | new |
-| `plugin/hooks/hooks.json` | new — four events |
-| `plugin/hooks/ccwt.mjs` | new — discovery, four handlers, zero dependencies |
+| `plugin/.claude-plugin/plugin.json` | new — manifest and `mcpServers` |
+| `plugin/hooks/hooks.json` | new — three events |
+| `plugin/hooks/ccwt.mjs` | new — discovery, three handlers, session naming, zero dependencies |
+| `plugin/mcp/server.mjs` | new — JSON-RPC over stdio, two read-only tools, zero dependencies |
 | `.claude-plugin/marketplace.json` | new |
 | `package.json` | `files` must include `plugin` and `.claude-plugin` |
 | `bin/ccwt.mjs` | write `~/.ccwt/server.json`; materialise the plugin into `~/.ccwt/plugin/` |
-| `shared/types.ts` | `PluginState`, `PluginHook`, `PluginReport` |
+| `shared/types.ts` | `PluginState`, `PluginCapability`, `PluginReport` |
 | `server/lib/plugin.ts` | drive the `claude plugin` CLI; no Nuxt, no H3 |
 | `server/api/plugin.get.ts` · `.post.ts` · `.delete.ts` | report, install, remove |
 | `app/composables/useApi.ts` | `getPlugin` / `installPlugin` / `removePlugin` |
 | `app/components/PluginPanel.vue` | new |
 | `app/pages/settings.vue` · `app/nav.ts` | mount it; widen the blurb |
+| `test/` | first tests — `node --test`, no new dependency |
 | `docs/SPEC.md` | §5.3 contract corrected; §5.6 added |
 | `docs/MILESTONES.md` | entry |
 
 Diagnostic codes, namespaced `thing.problem` and stable: `plugin.no-claude`, `plugin.disabled`,
 `plugin.outdated`, `plugin.install-failed`.
 
+Tests use `node --test`, which adds no dependency — consistent with `bin/` being deliberately
+dependency-free. They cover the parts with real branching: the guard's shape match against a recipe
+command, the port-key normalisation, the delta fingerprint, the session-title don't-clobber rule, and
+every discovery fallback that must exit silently.
+
 ---
 
-## 13. What must never happen
+## 14. What must never happen
 
 - **A write into a registered repository.** The whole feature is arranged around this (§3).
 - **A hook that throws outside ccwt's world.** It runs in every session on the machine, including
-  repositories ccwt has never heard of.
-- **A `WorktreeCreate` that can fail.** Non-zero breaks worktree creation everywhere (§8).
-- **Provisioning a subagent worktree.** Ten agents, ten installs, ten servers (§8).
+  repositories ccwt has never seen.
+- **A hook that lets a session control a service.** Read-only, permanently (§9).
+- **Clobbering a session name the user chose** (§6).
 - **A slow hook.** `PreToolUse` fires on every `Bash` call and `UserPromptSubmit` on every turn.
   Cheapest checks first; no work once the target fails to resolve.
 - **A guard that grows.** Duplicates of declared services, and nothing else, forever.
@@ -472,10 +509,10 @@ Diagnostic codes, namespaced `thing.problem` and stable: `plugin.no-claude`, `pl
 
 ---
 
-## 14. Verifying it
+## 15. Verifying it
 
 ```bash
-npm run typecheck && npm run build
+npm run typecheck && npm run build && npm test
 claude plugin validate .            # marketplace
 claude plugin validate ./plugin     # plugin
 ```
@@ -501,6 +538,41 @@ Confirmed already, against a working prototype — manifests validated, handlers
 | `guard`, outside ccwt | silence | ✅ |
 
 Still to prove: repository-scope output from the root checkout; the delta emitting once and then
-staying quiet; `cd <path> &&` resolving to the right worktree; `WorktreeCreate` returning the plain
-git path with ccwt stopped; a subagent worktree getting the floor; and an install landing beside the
-rtk hook in `~/.claude/settings.json` without disturbing it.
+staying quiet; `cd <path> &&` resolving to the right worktree; a session renamed on open and renamed
+again on moving worktree; a hand-typed title left alone; both MCP tools over stdio; and an install
+landing beside the rtk hook in `~/.claude/settings.json` without disturbing it.
+
+---
+
+## 16. Considered and left out
+
+**A skill.** Claude Code's built-in `run` skill looks for a project skill covering how to launch the
+app, so there is a slot. But §5 injects the same facts deterministically while a skill fires only
+when the model decides it is relevant, and §9's tools describe themselves. Its only marginal value is
+*ordering* — what to do first, what to do when a service crashed. That is a gap to discover by using
+the thing, not to guess at now.
+
+**Reclaiming orphaned ports.** `ServiceStatus.taken` (`shared/types.ts:80`) already means *stopped
+service, port occupied*, and `WorktreeCard.vue:237` already renders `port 5266 taken` — a dead label
+you cannot act on. Making it actionable would clear the strays in §1, which the guard never touches;
+it shares no code with this feature and belongs to its own pass. Note that ccwt's own kill path is
+being hardened separately: `process.kill(-pid, …)` group-kills without verifying the pid still
+belongs to the process ccwt spawned, which has already killed an unrelated application.
+
+**Killing a session's processes on `SessionEnd`.** It fires only on a clean exit, could not tell
+which processes to kill, and ccwt's services are *meant* to outlive a session. `SessionEnd` is used
+for exactly one thing: deleting this session's fingerprint marker (§5).
+
+**Reading session activity from transcripts.** Claude Code writes one per session at
+`~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`, encoding `/`, `.` and `_` all as `-`. ccwt
+could compute that name and take the newest mtime, giving *last active 2 minutes ago* versus *3 hours
+ago* — with no hook, no write and no cooperation.
+
+Left out for now, but two findings are worth keeping. The encoding is **lossy** — `kp_xv_portal` and
+`kp-xv-portal` collide — so it may only ever be computed forwards, never inverted. And **the lock is
+not the reliable signal §5.2 assumed**. `lockStateOf` (`worktrees.ts:49`) reads the pid out of the
+lock reason and checks it, but of three worktrees here only one was locked: the one being actively
+worked in through `EnterWorktree` had no lock at all, while a finished-but-open session keeps one
+indefinitely. It under-reports real agents and over-reports finished ones. `CLAUDE.md` already
+predicted half of that — *"a session parked in a finished worktree looks identical to one
+mid-edit"* — and the other half is new.
