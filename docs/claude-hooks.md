@@ -2,7 +2,8 @@
 
 Spec for an opt-in Claude Code integration, installed from the dashboard, that tells a session which
 services ccwt runs for the repository it is working in, stops it starting a second copy of one, and
-names the session after its worktree. Not built.
+names the session after its worktree. **Built**, installed, and exercised in live sessions — §15
+records what was watched happening rather than only driven by hand.
 
 Amends `SPEC.md` §5, which reads as though this whole area was decided against. It was not: §3 is the
 distinction, and §11 corrects §5.3, whose stdin contract does not match what Claude Code sends.
@@ -57,7 +58,7 @@ the port.
 
 ### Out of scope
 
-Each of these was considered and rejected for a stated reason; §16 records them so they are not
+Each of these was considered and rejected for a stated reason; §17 records them so they are not
 re-proposed by accident.
 
 - Worktree creation through ccwt (§11) — written up, but blocked behind §5.4 and off until then
@@ -110,11 +111,17 @@ which is what ccwt does for a living — instead of performing surgery on a file
 
 ```bash
 claude plugin marketplace add ~/.ccwt/plugin
-claude plugin install ccwt@ccwt --scope user -y
+claude plugin marketplace update ccwt
+claude plugin install ccwt@ccwt --scope user -y   # only when not installed
+claude plugin update  ccwt@ccwt --scope user -y   # when it already is
 claude plugin list --json          # id, version, scope, enabled, installPath, installedAt
 claude plugin uninstall ccwt@ccwt
 claude plugin enable|disable ccwt@ccwt
 ```
+
+**`install` is not an upgrade.** Run against a plugin already present it prints *"already installed"*
+and **exits 0**, changing nothing — so ccwt checks first and runs `update` instead. Reading that exit
+code as success is how an update button can appear to work for weeks while doing nothing.
 
 `-y` is **required when stdout is not a TTY**, which is exactly ccwt spawning it. `list --json` is
 the panel's state, so nothing is inferred by parsing anyone's settings.
@@ -126,8 +133,10 @@ Both manifests validate with `claude plugin validate`:
 ```
 plugin/
   .claude-plugin/plugin.json     name, version, description, mcpServers
-  hooks/hooks.json               SessionStart · UserPromptSubmit · PreToolUse
+  hooks/hooks.json               SessionStart · UserPromptSubmit · PreToolUse · SessionEnd
   hooks/ccwt.mjs                 one zero-dependency entry point, dispatched by argv
+  lib/discover.mjs               the picture — worktrees, ports, liveness, command matching
+  lib/report.mjs                 the words — overview, delta, session name
   mcp/server.mjs                 zero-dependency JSON-RPC over stdio
 .claude-plugin/marketplace.json  name "ccwt"; plugins:[{ name:"ccwt", source:"./plugin" }]
 ```
@@ -149,8 +158,10 @@ directory, no registered marketplace, no plugin. The same applies to updating �
 the plugin *outdated* in the panel and waits. The source path matters only while installing or
 updating; once installed, the plugin runs from Claude's cache.
 
-`package.json` ships `files: ["bin", ".output"]`, so **`plugin/` must be added** or the plugin is
-missing from the published package while working perfectly from a checkout.
+`package.json`'s `files` must list `plugin` and `.claude-plugin`, or the plugin is missing from the
+published package while working perfectly from a checkout. The plugin's own version is **stamped from
+ccwt's `package.json` at materialise time**, so the two cannot drift and *outdated* is accurate by
+construction — with one blind spot named in §16.
 
 An install does not need a restart. Claude Code may switch the plugin on during the install and says
 so in its summary; otherwise **`/reload-plugins --force`** applies it to a session already open. The
@@ -215,7 +226,7 @@ ccwt: `dev` moved to port 5312 (was 5270) and is running at http://localhost:531
 prints nothing and spends a few git reads and TCP probes.
 
 `SessionEnd` deletes that marker. It does not fire on a crash, so prune the directory by mtime as a
-backstop. That is the only thing `SessionEnd` is used for — see §16.
+backstop. That is the only thing `SessionEnd` is used for — see §17.
 
 ### `PreToolUse` cannot go stale
 
@@ -513,13 +524,15 @@ One row per capability — context, guard, naming, tools — each with a sentenc
 | file | change |
 |---|---|
 | `plugin/.claude-plugin/plugin.json` | new — manifest and `mcpServers` |
-| `plugin/hooks/hooks.json` | new — three events |
-| `plugin/hooks/ccwt.mjs` | new — discovery, three handlers, session naming, zero dependencies |
+| `plugin/hooks/hooks.json` | new — four events |
+| `plugin/hooks/ccwt.mjs` | new — four handlers, the session marker, zero dependencies |
+| `plugin/lib/discover.mjs` | new — the picture: worktrees, ports, liveness, and the guard's matching |
+| `plugin/lib/report.mjs` | new — the words: overview, delta, session name |
 | `plugin/mcp/server.mjs` | new — JSON-RPC over stdio, two read-only tools, zero dependencies |
 | `.claude-plugin/marketplace.json` | new |
 | `package.json` | `files` must include `plugin` and `.claude-plugin` |
 | `bin/ccwt.mjs` | write `~/.ccwt/server.json`; materialise the plugin into `~/.ccwt/plugin/` |
-| `shared/types.ts` | `PluginState`, `PluginCapability`, `PluginReport` |
+| `shared/types.ts` | `PluginState`, `PluginCapability`, `PluginHook`, `PluginParts`, `PluginReport` |
 | `server/lib/plugin.ts` | drive the `claude plugin` CLI; no Nuxt, no H3 |
 | `server/api/plugin.get.ts` · `.post.ts` · `.delete.ts` | report, install, remove |
 | `app/composables/useApi.ts` | `getPlugin` / `installPlugin` / `removePlugin` |
@@ -530,7 +543,8 @@ One row per capability — context, guard, naming, tools — each with a sentenc
 | `docs/MILESTONES.md` | entry |
 
 Diagnostic codes, namespaced `thing.problem` and stable: `plugin.no-claude`, `plugin.disabled`,
-`plugin.outdated`, `plugin.install-failed`.
+`plugin.outdated`, `plugin.install-failed`, `plugin.missing-source`, and `plugin.installed`, which
+carries back what Claude Code said at the end of an install.
 
 Tests use `node --test`, which adds no dependency — consistent with `bin/` being deliberately
 dependency-free. They cover the parts with real branching: the guard's shape match against a recipe
@@ -594,13 +608,44 @@ Confirmed against the built plugin, driven by hand in this repository:
 The last two guard rows matter as much as the denials: a stopped service is not a reason to block,
 and a repository ccwt has never seen must be untouched.
 
-Still to prove: both MCP tools over stdio; a session renamed again on moving worktree; a hand-typed
-title left alone; and an install landing beside the rtk hook in `~/.claude/settings.json` without
-disturbing it.
+Since proven in live sessions, not only by hand: both MCP tools called by a session; the guard
+denying a real duplicate and no longer refusing a commit message that merely mentions one; the delta
+reporting a port move from one session into another; and a name claimed over an auto-generated title
+and then left alone once renamed by hand.
+
+Still to prove: a session renamed **again** when it moves from one worktree to another, which is
+unit-tested but never watched happen.
 
 ---
 
-## 16. Considered and left out
+## 16. Signals that look authoritative and are not
+
+Every bug this feature produced was the same mistake: trusting a value that reads like the truth.
+They are listed together because the next one will look like these.
+
+- **`cwd` says where a session was born, not where it is.** A session entered with `EnterWorktree`
+  reports the worktree while its transcript stays at the launch directory; one launched into a
+  worktree has the opposite. Neither is right alone, so §7 takes whichever names a worktree that is
+  not the root, `cwd` first.
+- **`install` exiting 0 does not mean it installed.** It prints *"already installed"* and succeeds
+  (§4).
+- **`taken` is ccwt admitting ignorance, not reporting a service.** A port answering while ccwt says
+  `stopped` means something it does not own holds it — which is exactly how an orphan looks.
+- **`session_title` cannot tell your words from generated ones.** Claude Code auto-titles a session,
+  so a rule that declines to overwrite "someone else's" name loses that race permanently. §6 records
+  the name it set and yields only once the title stops matching it.
+- **A lock's start time is UTC while `ps` prints local.** Comparing them naively marks every live
+  agent lock stale, which is worse than the bug it was meant to fix.
+- **A version matching does not mean the content does.** Staleness by version is right for releases
+  and blind while developing, which is when reinstalling happens most.
+
+The pattern: each of these is a *derived* value presented as a *reported* one. Where the truth can be
+observed instead — a TCP probe, a `ps` identity, the resume picker — observing it settled in seconds
+what reasoning had got wrong.
+
+---
+
+## 17. Considered and left out
 
 **A skill.** Claude Code's built-in `run` skill looks for a project skill covering how to launch the
 app, so there is a slot. But §5 injects the same facts deterministically while a skill fires only

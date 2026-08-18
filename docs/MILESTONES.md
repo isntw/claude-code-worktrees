@@ -189,12 +189,23 @@ checkout** still learns the linked worktrees' ports, which is the case that retu
 The delta speaks once and then goes quiet. Both manifests pass `claude plugin validate`, including
 from the copied `~/.ccwt/plugin` layout.
 
-**Traps found on the way.** The guard first matched the recipe's command shape only at the start of a
-command, so a `cd` prefix or a leading environment variable walked straight past it; it now looks for
-the shape anywhere. `PreToolUse`'s `cwd` is the **session's**, not the Bash tool's, so a `cd` prefix
-has to be parsed out to find the right worktree. `CwdChanged` and `FileChanged` cannot reach the
-model at all — their dispatcher harvests only `watchPaths` and `systemMessage` — so there is no push
-channel and freshness has to ride on `UserPromptSubmit`.
+**Traps found on the way**, all one mistake wearing different clothes — trusting a value that reads
+like the truth. `docs/claude-hooks.md` §16 lists them together, because the next one will look like
+these.
+
+The guard first matched the recipe's command shape only at the start of a command, so a `cd` prefix
+or a leading environment variable walked past it, while a commit message merely mentioning the
+command was refused — it now drops quoted spans, splits on shell separators, and matches only at a
+segment head. `PreToolUse`'s `cwd` is the **session's**, not the Bash tool's. `CwdChanged` and
+`FileChanged` cannot reach the model at all, their dispatcher harvesting only `watchPaths` and
+`systemMessage`, so freshness rides on `UserPromptSubmit`.
+
+Three more surfaced only by using it. **`cwd` says where a session was born**: entered with
+`EnterWorktree` it follows the move while the transcript does not, and launched into a worktree the
+opposite, so neither is right alone. **`claude plugin install` exits 0 without installing** when the
+plugin is already there, so an update button appeared to work while doing nothing. And **Claude Code
+auto-titles a session**, so declining to overwrite a name ccwt had not written lost that race every
+time — the marker now records what ccwt set and yields only once the title stops matching it.
 
 ### The first tests ✅
 
