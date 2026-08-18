@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm } from 'node:fs/promises'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type {
@@ -125,7 +125,8 @@ export function commands(): string[] {
 }
 
 async function shippedVersion(): Promise<string> {
-  return (await readJson<Manifest>(manifestPath()))?.version ?? '0.0.0'
+  const own = await readJson<Manifest>(join(packageRoot(), 'package.json'))
+  return own?.version ?? '0.0.0'
 }
 
 async function claude(args: string[], timeoutMs = PROBE_MS) {
@@ -238,6 +239,15 @@ async function materialise(): Promise<void> {
   await cp(
     join(root, '.claude-plugin', 'marketplace.json'),
     join(target, '.claude-plugin', 'marketplace.json'),
+  )
+
+  const written = join(target, 'plugin', '.claude-plugin', 'plugin.json')
+  const manifest = (await readJson<Manifest>(written)) ?? {}
+
+  await writeFile(
+    written,
+    JSON.stringify({ ...manifest, version: await shippedVersion() }, null, 2) + '\n',
+    { mode: 0o600 },
   )
 }
 
