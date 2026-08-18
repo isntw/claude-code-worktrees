@@ -454,6 +454,30 @@ trigger. Branch naming stays Claude Code's (`worktree-<name>`); the path becomes
 `WorktreeRemove` receives `worktree_path`, is **non-blocking** — failures logged in debug only — and
 maps onto the existing rule that **`postRemove` may never block a removal**.
 
+### Provision on create; do not start
+
+The two halves of `start: true` have opposite cost profiles, so they get opposite defaults.
+
+**Provisioning is automated.** It is slow, identical every time, and the thing a worktree is useless
+without — hardlink `node_modules`, place the declared files, allocate the port. A worktree that
+arrives ready is the whole point of routing creation through ccwt, and §5 tells the session
+`dev → 5241, stopped` the moment it opens, so nothing is hidden.
+
+**Starting stays off, behind a recipe flag beside `claude.ownWorktreeCreation`.** Three reasons:
+
+- The event fires for **subagent worktrees** as well. A ten-way fan-out would become ten dev servers.
+  `agent_id` bounds that, but auto-start makes the damage severe if the bound ever slips.
+- Ports and memory are finite. Five worktrees a day, none cleaned up, is five servers nobody asked
+  for, out of a range a hundred wide.
+- The asymmetry settles it: a provisioned-but-stopped worktree costs one click. A server started
+  without asking costs a port, memory, and possibly a process that outlives the worktree — which is
+  exactly what §1 is a list of.
+
+**There is no per-creation prompt, and there cannot be one.** `WorktreeCreate` is a subprocess:
+payload on stdin, a path on stdout, exit 0. It has no channel to ask a question mid-flight — only
+`PreToolUse` can escalate to the user, and that is for tool calls. So the choice is made once, in the
+recipe, or not at all.
+
 ---
 
 ## 12. The panel
