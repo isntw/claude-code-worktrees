@@ -8,7 +8,7 @@ const api = useApi()
 const report = ref<PluginReport | null>(null)
 const busy = ref(false)
 const error = ref<string | null>(null)
-const showing = ref(false)
+const asking = ref<'install' | 'update' | 'about' | null>(null)
 
 const state = computed<PluginState | null>(() => report.value?.state ?? null)
 const installed = computed(() => state.value === 'installed' || state.value === 'outdated')
@@ -29,6 +29,12 @@ const SAYS: Record<PluginState, string> = {
   outdated: 'update available',
 }
 
+const events = computed(() =>
+  (report.value?.parts.hooks ?? [])
+    .map((hook) => `${hook.event}${hook.matcher ? `:${hook.matcher}` : ''}`)
+    .join(' · '),
+)
+
 const load = async () => {
   report.value = await api.getPlugin().catch(() => null)
 }
@@ -38,7 +44,7 @@ const act = async (run: () => Promise<PluginReport>) => {
   error.value = null
   try {
     report.value = await run()
-    showing.value = false
+    asking.value = null
   } catch (cause) {
     error.value = (cause as Error).message
   } finally {
@@ -57,61 +63,39 @@ onMounted(load)
 
     <div class="px-3 py-3">
       <p class="max-w-prose font-sans text-xs text-dim">
-        A Claude Code session working in one of these worktrees has no idea ccwt is already running
-        its dev server, so it starts a second one. This installs a plugin that tells it — machine
-        wide, for every project, and nothing is written into any repository.
+        A session working in one of these worktrees does not know ccwt already runs its dev server,
+        so it starts a second one. This plugin tells it — machine wide, for every project, and
+        nothing is written into any repository.
       </p>
 
-      <dl class="mt-3 grid gap-2 border-t border-line pt-3">
-        <div v-for="capability in report?.capabilities ?? []" :key="capability.name">
-          <dt class="t-eyebrow">{{ capability.title }}</dt>
-          <dd class="mt-0.5 max-w-prose font-sans text-[0.6875rem] text-faint">
-            {{ capability.blurb }}
-          </dd>
-        </div>
-      </dl>
+      <div v-if="report" class="mt-3 border border-line px-3 py-2">
+        <p class="t-eyebrow">{{ installed ? 'Installed' : 'What gets installed' }}</p>
 
-      <div v-if="report" class="mt-3 border-t border-line pt-3">
-        <p class="t-eyebrow">{{ installed ? 'What is installed' : 'What gets installed' }}</p>
-
-        <dl class="mt-2 grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1 font-mono text-[0.6875rem]">
-          <dt class="text-faint">marketplace</dt>
-          <dd class="min-w-0 truncate text-ink">
-            {{ report.parts.marketplace }}
-            <span class="text-faint">{{ report.source }}</span>
-          </dd>
-
+        <dl
+          class="mt-1.5 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1 font-mono text-[0.6875rem] leading-snug"
+        >
           <dt class="text-faint">plugin</dt>
-          <dd class="text-ink">
+          <dd class="min-w-0 text-ink">
             {{ report.parts.id }}
             <span class="text-dim">{{ installed ? report.installed : report.shipped }}</span>
-            <span v-if="report.scope" class="text-faint">{{ report.scope }} scope</span>
+            <span v-if="report.scope" class="text-faint">· {{ report.scope }}</span>
             <span v-if="report.state === 'outdated'" class="text-caution"
-              >ccwt ships {{ report.shipped }}</span
+              >· ccwt ships {{ report.shipped }}</span
             >
           </dd>
-        </dl>
 
-        <p class="t-eyebrow mt-3">Hooks</p>
-        <dl class="mt-1 grid grid-cols-[10rem_1fr] gap-x-3 gap-y-1">
-          <template v-for="hook in report.parts.hooks" :key="`${hook.event}${hook.matcher}`">
-            <dt class="font-mono text-[0.6875rem] text-ink">
-              {{ hook.event
-              }}<span v-if="hook.matcher" class="text-faint">:{{ hook.matcher }}</span>
-            </dt>
-            <dd class="font-sans text-[0.6875rem] text-faint">{{ hook.blurb }}</dd>
-          </template>
-        </dl>
+          <dt class="text-faint">from</dt>
+          <dd class="min-w-0 truncate text-dim">{{ report.source }}</dd>
 
-        <template v-if="report.parts.servers.length">
-          <p class="t-eyebrow mt-3">
-            MCP server<span class="text-faint"> · {{ report.parts.servers.join(', ') }}</span>
-          </p>
-          <p class="mt-1 font-mono text-[0.6875rem] text-ink">
-            {{ report.parts.tools.join('  ') }}
-            <span class="font-sans text-faint">— read only; nothing can start or stop a service</span>
-          </p>
-        </template>
+          <dt class="text-faint">hooks</dt>
+          <dd class="min-w-0 text-ink">{{ events }}</dd>
+
+          <dt v-if="report.parts.tools.length" class="text-faint">tools</dt>
+          <dd v-if="report.parts.tools.length" class="min-w-0 text-ink">
+            {{ report.parts.tools.join(' · ') }}
+            <span class="font-sans text-faint">read only</span>
+          </dd>
+        </dl>
       </div>
 
       <div
@@ -131,40 +115,33 @@ onMounted(load)
         </p>
       </div>
 
-      <div v-if="showing && report" class="mt-3 border border-line-strong px-3 py-3">
-        <p class="t-eyebrow">ccwt will run these, and nothing else</p>
-        <pre
-          class="mt-2 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-ink"
-        >{{ report.commands.join('\n') }}</pre>
-        <p class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
-          The plugin is copied into <code class="font-mono">{{ report.source }}</code> first. A
-          command that would start a second copy of a running service will be refused, and sessions
-          working in a worktree get renamed after it. It takes effect in your
-          <span class="text-dim">next</span> session, not the one you have open.
-        </p>
-      </div>
-
       <p v-if="error" class="mt-2 max-w-prose font-sans text-[0.6875rem] text-alarm">{{ error }}</p>
 
       <div class="mt-3 flex items-center gap-2">
-        <template v-if="state === 'absent' || state === 'outdated'">
-          <Button v-if="!showing" size="sm" :disabled="busy" @click="showing = true">{{
-            state === 'outdated' ? 'update…' : 'install…'
-          }}</Button>
-          <template v-else>
-            <Button size="sm" variation="success" :disabled="busy" @click="act(api.installPlugin)">{{
-              busy ? 'working…' : 'run them'
-            }}</Button>
-            <Button size="sm" :disabled="busy" @click="showing = false">cancel</Button>
-          </template>
-        </template>
-
+        <Button
+          v-if="state === 'absent'"
+          size="sm"
+          :disabled="busy"
+          @click="asking = 'install'"
+          >install…</Button
+        >
+        <Button
+          v-if="state === 'outdated'"
+          size="sm"
+          :disabled="busy"
+          @click="asking = 'update'"
+          >update…</Button
+        >
         <Button
           v-if="state === 'disabled'"
           size="sm"
           :disabled="busy"
           @click="act(api.enablePlugin)"
           >{{ busy ? 'working…' : 'switch it on' }}</Button
+        >
+
+        <Button v-if="report" size="sm" :disabled="busy" @click="asking = 'about'"
+          >what it does</Button
         >
 
         <Button
@@ -178,4 +155,12 @@ onMounted(load)
       </div>
     </div>
   </Panel>
+
+  <PluginModal
+    v-if="asking && report"
+    :report="report"
+    :action="asking === 'about' ? null : asking"
+    @close="asking = null"
+    @confirm="act(api.installPlugin)"
+  />
 </template>
