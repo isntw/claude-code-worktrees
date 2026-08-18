@@ -120,7 +120,9 @@ if (mode === 'end') {
   process.exit(0)
 }
 
-const found = await describe(input?.cwd ?? process.cwd()).catch(() => null)
+const found = await describe(input?.cwd ?? process.cwd(), input?.transcript_path).catch(
+  () => null,
+)
 
 if (found) {
   if (mode === 'session-start') await sessionStart(input, found)

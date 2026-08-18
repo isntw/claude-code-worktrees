@@ -65,10 +65,7 @@ async function status(args) {
       if (service.port === null) return `    ${service.name}: no port allocated`
       return `    ${service.name}: port ${service.port} — ${service.up ? `running at http://localhost:${service.port}` : 'stopped'}`
     })
-    lines.push(
-      `  ${worktree.name}${worktree.root ? ' (root)' : ''}${worktree.id === found.here?.id ? '  ← this session' : ''}`,
-      ...services,
-    )
+    lines.push(`  ${worktree.name}${worktree.root ? ' (root)' : ''}`, ...services)
   }
 
   lines.push(
@@ -126,7 +123,14 @@ async function logs(args) {
   const tail = wanted.slice(-(args?.tail ?? TAIL))
   const body = tail.map((line) => `${line.service} ${line.stream === 'stderr' ? '!' : '|'} ${line.text}`)
 
-  return text([`${worktree.name} — last ${tail.length} of ${wanted.length} lines`, '', ...body].join('\n'))
+  return text(
+    [
+      `${worktree.name} — last ${tail.length} of ${wanted.length} lines`,
+      'Pass `path` if you meant a different worktree.',
+      '',
+      ...body,
+    ].join('\n'),
+  )
 }
 
 async function call(name, args) {

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { duplicates, parseWorktrees, portKey, shapeOf, targetOf } from '../plugin/lib/discover.mjs'
+import {
+  duplicates,
+  encodedName,
+  parseWorktrees,
+  portKey,
+  shapeOf,
+  targetOf,
+  underTranscript,
+} from '../plugin/lib/discover.mjs'
 
 test('a port key never contains an underscore', () => {
   assert.equal(portKey('dev'), 'ccwt.port.dev')
@@ -105,4 +113,34 @@ test('a bare worktree is not reported', () => {
 
 test('nothing at all parses to nothing', () => {
   assert.deepEqual(parseWorktrees(''), [])
+})
+
+test('a transcript directory encodes the worktree it belongs to', () => {
+  assert.equal(
+    encodedName('/Users/someone/work/repo/.claude/worktrees/a-feature'),
+    '-Users-someone-work-repo--claude-worktrees-a-feature',
+  )
+  assert.equal(encodedName('/Users/some.one/kp_xv_portal'), '-Users-some-one-kp-xv-portal')
+})
+
+test('the session is found from its transcript, not from where it was launched', () => {
+  const paths = ['/repo', '/repo/.claude/worktrees/first', '/repo/.claude/worktrees/second']
+  const transcript =
+    '/home/me/.claude/projects/-repo--claude-worktrees-second/abc-123.jsonl'
+
+  assert.equal(underTranscript(paths, transcript), '/repo/.claude/worktrees/second')
+})
+
+test('the root is recognised as much as a worktree is', () => {
+  const paths = ['/repo', '/repo/.claude/worktrees/first']
+
+  assert.equal(underTranscript(paths, '/home/me/.claude/projects/-repo/abc.jsonl'), '/repo')
+})
+
+test('a transcript ccwt cannot place resolves to nothing, never to a guess', () => {
+  const paths = ['/repo', '/repo/.claude/worktrees/first']
+
+  assert.equal(underTranscript(paths, '/home/me/.claude/projects/-somewhere-else/abc.jsonl'), null)
+  assert.equal(underTranscript(paths, ''), null)
+  assert.equal(underTranscript(paths, undefined), null)
 })

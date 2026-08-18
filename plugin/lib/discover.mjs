@@ -22,6 +22,18 @@ export const portKey = (service) =>
 
 export const idFor = (path) => createHash('sha256').update(path).digest('hex').slice(0, 12)
 
+export const encodedName = (path) => path.replace(/[/._]/g, '-')
+
+export function underTranscript(paths, transcriptPath) {
+  if (typeof transcriptPath !== 'string' || !transcriptPath) return null
+
+  const parts = transcriptPath.split('/')
+  const named = parts[parts.length - 2]
+  if (!named) return null
+
+  return paths.find((path) => encodedName(path) === named) ?? null
+}
+
 function reaches(port, host) {
   return new Promise((done) => {
     const socket = connect({ port, host })
@@ -97,7 +109,7 @@ async function allocatedPorts(worktreePath) {
   return found
 }
 
-export async function describe(cwd) {
+export async function describe(cwd, transcriptPath) {
   const toplevel = await git(cwd, ['rev-parse', '--show-toplevel'])
   if (!toplevel) return null
 
@@ -138,7 +150,13 @@ export async function describe(cwd) {
     }),
   )
 
-  const here = worktrees.find((worktree) => resolve(worktree.path) === resolve(toplevel)) ?? null
+  const sitting = underTranscript(
+    worktrees.map((worktree) => worktree.path),
+    transcriptPath,
+  )
+
+  const here =
+    worktrees.find((worktree) => resolve(worktree.path) === resolve(sitting ?? toplevel)) ?? null
 
   return {
     projectId: project.id,
