@@ -19,6 +19,7 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
+    "test": "node --test",
     "prepare": "nuxt prepare",
     "preview": "node .output/server/index.mjs",
     "typecheck": "nuxt typecheck",
