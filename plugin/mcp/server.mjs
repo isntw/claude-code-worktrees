@@ -79,8 +79,18 @@ async function logs(args) {
   const found = await describe(args?.path ?? process.cwd()).catch(() => null)
   if (!found) return text('This directory is not inside a repository ccwt manages.')
 
-  const worktree = found.here ?? found.worktrees.find((entry) => !entry.root)
-  if (!worktree) return text('No worktree here to read logs for.')
+  const worktree = found.here
+  if (!worktree) {
+    const named = found.worktrees
+      .filter((entry) => entry.services.some((service) => service.port !== null))
+      .map((entry) => entry.path)
+
+    return text(
+      named.length
+        ? `This directory is not one of ccwt's worktrees. Name the one you mean with \`path\`:\n${named.join('\n')}`
+        : 'This directory is not one of ccwt’s worktrees, and none of this repository’s worktrees has a service.',
+    )
+  }
 
   const server = await reachServer()
   if (!server) {
