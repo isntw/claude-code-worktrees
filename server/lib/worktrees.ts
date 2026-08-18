@@ -38,6 +38,10 @@ import {
 } from './provision'
 import * as supervisor from './supervisor'
 
+const LOCK_PID = /\bpid\s+(\d+)/i
+const LOCK_START = /\bstart\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{1,2}:\d{2}:\d{2}\s+\d{4})/i
+const START_SLACK_MS = 2000
+
 function stillRunning(pid: number): boolean {
   try {
     process.kill(pid, 0)
@@ -47,14 +51,33 @@ function stillRunning(pid: number): boolean {
   }
 }
 
-function lockStateOf(locked: boolean, reason: string | null): LockState | null {
+async function startedWhenClaimed(pid: number, reason: string): Promise<boolean> {
+  const claimed = reason.match(LOCK_START)?.[1]
+  if (!claimed) return true
+
+  const wanted = Date.parse(`${claimed} GMT`)
+  if (Number.isNaN(wanted)) return true
+
+  const reported = await supervisor.startTimeOf(pid)
+  if (reported === null) return true
+
+  const actual = Date.parse(`${reported} GMT`)
+  if (Number.isNaN(actual)) return true
+
+  const drift = Math.abs(actual - wanted)
+  const zone = Math.abs(new Date(actual).getTimezoneOffset() * 60_000)
+
+  return drift <= START_SLACK_MS || Math.abs(drift - zone) <= START_SLACK_MS
+}
+
+async function lockStateOf(locked: boolean, reason: string | null): Promise<LockState | null> {
   if (!locked) return null
 
-  const found = reason?.match(/\bpid\s+(\d+)/i)
-  const pid = found ? Number(found[1]) : 0
-  if (pid <= 0) return 'unknown'
+  const pid = Number(reason?.match(LOCK_PID)?.[1] ?? 0)
+  if (!reason || pid <= 0) return 'unknown'
+  if (!stillRunning(pid)) return 'gone'
 
-  return stillRunning(pid) ? 'live' : 'gone'
+  return (await startedWhenClaimed(pid, reason)) ? 'live' : 'gone'
 }
 
 async function needsProvisioning(project: Project, worktreePath: string): Promise<boolean> {
@@ -260,7 +283,7 @@ export async function list(project: Project): Promise<Worktree[]> {
           bare: entry.bare,
           locked: entry.locked,
           lockReason: entry.lockReason,
-          lockState: lockStateOf(entry.locked, entry.lockReason),
+          lockState: await lockStateOf(entry.locked, entry.lockReason),
           prunable: entry.prunable,
           provisioned: !(await needsProvisioning(project, entry.path)),
           services: await servicesFor(project, id, entry.path),
