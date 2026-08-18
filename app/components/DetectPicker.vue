@@ -154,7 +154,7 @@ const merged = computed<CcwtConfig>(() => {
       <Button size="sm" @click="emit('close')">cancel</Button>
       <Button
         size="sm"
-        variation="success"
+        variation="primary"
         :outline="false"
         :disabled="!picked.size"
         @click="emit('apply', merged)"

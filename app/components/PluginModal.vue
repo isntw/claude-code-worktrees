@@ -78,7 +78,7 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       <Button
         v-if="action"
         size="sm"
-        variation="success"
+        variation="primary"
         :outline="false"
         @click="emit('confirm')"
         >{{ action === 'update' ? 'update it' : 'install it' }}</Button

@@ -8,6 +8,7 @@ import type {
   LogLine,
   Project,
   PullRequest,
+  ServiceStatus,
   Severity,
   Worktree,
 } from '#shared/types'
@@ -20,6 +21,7 @@ const page = DETAIL_PAGES['project-id']!
 const api = useApi()
 const route = useRoute()
 const router = useRouter()
+const { asksHandoff } = useConfirm()
 const projectId = computed(() => String(route.params.id))
 
 const project = ref<Project | null>(null)
@@ -84,6 +86,7 @@ const createError = ref<string | null>(null)
 const doomed = ref<Worktree | null>(null)
 
 const merging = ref<PullRequest | null>(null)
+const taking = ref<{ worktree: Worktree; service: ServiceStatus } | null>(null)
 
 const filter = ref<'all' | 'running'>('all')
 
@@ -192,6 +195,33 @@ const removed = async (kept: string | null) => {
   await load()
 }
 
+const take = async (worktree: Worktree, name: string) => {
+  const service = worktree.services.find((candidate) => candidate.name === name)
+  if (!service || service.port === null) return
+
+  const held = service.heldBy
+  if (held && !asksHandoff(projectId.value)) {
+    await watching(worktree, async () => {
+      const outcome = await api.freePort(service.port!, {
+        pids: [],
+        services: [{ worktreeId: held.worktreeId, service: held.service }],
+      })
+      if (!outcome.freed) throw new Error(outcome.why ?? `Port ${service.port} is still held.`)
+      await api.startService(projectId.value, worktree.id, name)
+    })
+    return
+  }
+
+  taking.value = { worktree, service }
+}
+
+const took = async () => {
+  const target = taking.value
+  taking.value = null
+  if (target && selected.value !== target.worktree.id) await show(target.worktree.id)
+  await load()
+}
+
 const openMerge = (worktree: Worktree) => {
   merging.value = pullFor(worktree)
 }
@@ -250,7 +280,7 @@ onBeforeUnmount(() => {
     <Tabs v-model="filter" :options="tabs" label="Filter worktrees" />
     <Button :disabled="loading" @click="reload">{{ loading ? 'reading…' : 'refresh' }}</Button>
     <Button
-      variation="success"
+      variation="primary"
       :outline="false"
       :disabled="!project?.config?.services.length"
       :title="
@@ -317,6 +347,7 @@ onBeforeUnmount(() => {
           (service) => watching(worktree, () => api.startService(projectId, worktree.id, service))
         "
         @stop="(service) => act(() => api.stopService(projectId, worktree.id, service))"
+        @take="(service) => take(worktree, service)"
         @lock="act(() => api.lockWorktree(projectId, worktree.id))"
         @unlock="act(() => api.unlockWorktree(projectId, worktree.id))"
         @remove="doomed = worktree"
@@ -349,6 +380,15 @@ onBeforeUnmount(() => {
     :pull="merging"
     @close="merging = null"
     @merged="merged"
+  />
+
+  <PortModal
+    v-if="taking"
+    :project-id="projectId"
+    :worktree="taking.worktree"
+    :service="taking.service"
+    @close="taking = null"
+    @done="took"
   />
 
   <RemoveModal

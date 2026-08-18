@@ -22,12 +22,16 @@ const portOf = (service: ServiceStatus, part: StackPart): number | null => {
   return part.variable ? (service.extra?.[part.variable] ?? null) : null
 }
 
+const contested = (service: ServiceStatus): boolean =>
+  Boolean(service.taken && service.port && !service.movable)
+
 const emit = defineEmits<{
   select: []
   startAll: []
   stopAll: []
   start: [service: string]
   stop: [service: string]
+  take: [service: string]
   lock: []
   unlock: []
   remove: []
@@ -37,7 +41,7 @@ const emit = defineEmits<{
 const SERVICE: Record<ServiceStatus['state'], { variation: Variation; label: string }> = {
   stopped: { variation: 'neutral', label: 'stopped' },
   starting: { variation: 'info', label: 'starting' },
-  running: { variation: 'live', label: 'running' },
+  running: { variation: 'success', label: 'running' },
   crashed: { variation: 'error', label: 'crashed' },
 }
 
@@ -80,23 +84,19 @@ const allRunning = computed(() =>
 
 const live = computed(() => props.worktree.services.some((service) => service.state === 'running'))
 
-const finished = computed(() => {
-  if (props.worktree.root || props.pull?.state !== 'merged') return ''
-  return live.value
-    ? 'This worktree is finished, and its services are still running.'
-    : 'This worktree is finished.'
-})
+const finished = computed(() => !props.worktree.root && props.pull?.state === 'merged')
 
-const holding = computed(() => {
-  if (!props.worktree.locked || props.worktree.root) return ''
+const finishedHint = computed(() =>
+  live.value
+    ? 'Its pull request is merged, and its services are still running'
+    : 'Its pull request is merged',
+)
 
-  const said = props.worktree.lockReason ? ` — ${props.worktree.lockReason}` : ''
+const working = computed(() => held.value && !props.worktree.root)
 
-  if (held.value) {
-    return `Something is still working here${said}. It stops nothing being pruned by accident; you can still release the lock or remove this.`
-  }
-
-  return `Locked${said}. Nothing prunes it while that stands.`
+const workingHint = computed(() => {
+  const said = props.worktree.lockReason ? `\n${props.worktree.lockReason}` : ''
+  return `An agent is working here.${said}\n\nThe lock only stops this being pruned by accident. Removing it here still works; releasing the lock is refused while that process is alive.`
 })
 
 const mergeable = computed(
@@ -125,11 +125,17 @@ const mergeable = computed(
           <Lock
             v-if="worktree.locked"
             :size="11"
-            class="shrink-0"
-            :class="held ? 'text-caution' : 'text-faint'"
+            class="shrink-0 text-faint"
             :aria-label="lock"
             :title="lock"
           />
+          <span
+            v-if="working"
+            class="shrink-0 font-sans text-[0.625rem] text-dim"
+            :title="workingHint"
+          >
+            <StateDot variation="agent" beating class="mr-1 align-middle" />agent
+          </span>
         </span>
         <span class="mt-1 flex items-center gap-1.5">
           <span class="truncate font-mono text-[0.625rem] text-faint">{{
@@ -139,7 +145,8 @@ const mergeable = computed(
       </button>
 
       <span class="flex shrink-0 items-center gap-1.5 self-center">
-        <Badge v-if="live" variation="live" title="A service here is up and answering on its port"
+        <Badge v-if="finished" variation="merged" :title="finishedHint">finished</Badge>
+        <Badge v-if="live" variation="success" title="A service here is up and answering on its port"
           >running</Badge
         >
         <Badge
@@ -153,6 +160,12 @@ const mergeable = computed(
           variation="warning"
           title="Dependencies are not in place yet — starting a service will put them there"
           >unprovisioned</Badge
+        >
+        <Badge
+          v-if="worktree.root"
+          variation="info"
+          title="The repository root — not a worktree ccwt can lock or remove"
+          >root</Badge
         >
         <Badge :title="ORIGIN[worktree.origin]">{{ worktree.origin }}</Badge>
         <span
@@ -183,15 +196,6 @@ const mergeable = computed(
         >merge</Button
       >
     </div>
-
-    <div v-if="finished" class="flex min-h-9 items-center border-b border-line px-3 py-2">
-      <span class="min-w-0 flex-1 font-sans text-[0.6875rem] text-dim">{{ finished }}</span>
-    </div>
-
-    <div v-if="holding" class="flex min-h-9 items-center border-b border-line px-3 py-2">
-      <span class="min-w-0 flex-1 font-sans text-[0.6875rem] text-dim">{{ holding }}</span>
-    </div>
-
 
     <div
       v-if="worktree.services.length > 1"
@@ -234,10 +238,27 @@ const mergeable = computed(
           >not on port {{ service.port }}</span
         >
         <span
+          v-else-if="service.taken && service.port && service.movable"
+          class="truncate font-sans text-[0.6875rem] text-dim"
+          :title="`Something is answering on ${service.port}, so starting this service takes the next free port in its range and remembers it.`"
+          >{{ service.port }} taken · moves on start</span
+        >
+        <span
+          v-else-if="service.taken && service.port && service.heldBy"
+          class="truncate font-sans text-[0.6875rem] text-dim"
+          :title="`${service.heldBy.service} is running on ${service.port} in ${service.heldBy.same ? service.heldBy.worktree : 'another project'}, and this service is pinned to that port. Only one can hold it at a time.`"
+          >{{ service.port }} held by
+          <span class="font-mono">{{
+            service.heldBy.same ? service.heldBy.worktree : 'another project'
+          }}</span></span
+        >
+        <button
           v-else-if="service.taken && service.port"
-          class="truncate font-sans text-[0.6875rem] text-caution"
-          :title="`Port ${service.port} is answering, but this ccwt is not supervising what is on it — another ccwt, or a process started outside one, is holding it. Starting this service will collide; stop whatever holds the port first, or give the service a wider range.`"
-          >port {{ service.port }} taken</span
+          type="button"
+          class="cursor-pointer truncate font-sans text-[0.6875rem] text-caution underline decoration-dotted underline-offset-[3px] transition-colors hover:text-ink"
+          :title="`Port ${service.port} is answering and this service is pinned to it, so it cannot move. See what is holding it.`"
+          @click="emit('take', service.name)"
+          >port {{ service.port }} taken</button
         >
         <span v-else class="truncate font-mono text-[0.6875rem] text-faint">{{
           service.state === 'starting' && service.port
@@ -253,6 +274,18 @@ const mergeable = computed(
             size="sm"
             @click="emit('stop', service.name)"
             >stop</Button
+          >
+          <Button
+            v-else-if="contested(service)"
+            size="sm"
+            :variation="service.heldBy ? 'info' : 'neutral'"
+            :title="
+              service.heldBy
+                ? `Stop ${service.heldBy.service} where it is running and start ${service.name} here on ${service.port}`
+                : `Port ${service.port} is taken and this service is pinned to it — see what is holding it`
+            "
+            @click="emit('take', service.name)"
+            >{{ service.heldBy ? 'run here' : 'start' }}</Button
           >
           <Button
             v-else

@@ -13,6 +13,8 @@ import { isListening } from './ports'
 
 const MAX_LINES = 1000
 const KILL_AFTER_MS = 4000
+const GIVE_UP_AFTER_MS = 8000
+const INSPECT_FOR_MS = 5000
 const PROBE_EVERY_MS = 300
 const PROBE_FOR_MS = 25_000
 const STEP_FOR_MS = 600_000
@@ -24,8 +26,21 @@ const TAIL_LINES = 12
 export type LogListener = (line: LogLine) => void
 export type StatusListener = (worktreeId: string, status: ServiceStatus) => void
 
+interface Identity {
+  pgid: number
+  lstart: string
+  comm: string
+}
+
+type Sighting =
+  | { seen: 'yes'; identity: Identity }
+  | { seen: 'no' }
+  | { seen: 'unknown' }
+
 interface Entry {
   worktreeId: string
+  worktreePath: string
+  rootPath: string
   service: string
   port: number
   cwd: string
@@ -39,6 +54,7 @@ interface Entry {
   exitCode: number | null
   reachable: boolean | null
   child: ChildProcess | null
+  identity: Promise<Identity | null>
   stopping: boolean
   probing: boolean
   settling: boolean
@@ -154,6 +170,37 @@ export function status(worktreeId: string, service: string): ServiceStatus | nul
   return entry ? toStatus(entry) : null
 }
 
+export interface Holding {
+  worktreeId: string
+  worktreePath: string
+  rootPath: string
+  service: string
+  state: ServiceState
+  pid: number | null
+  startedAt: string | null
+}
+
+export function holding(port: number): Holding[] {
+  const out: Holding[] = []
+
+  for (const entry of entries.values()) {
+    if (entry.port !== port) continue
+    if (entry.state !== 'running' && entry.state !== 'starting') continue
+
+    out.push({
+      worktreeId: entry.worktreeId,
+      worktreePath: entry.worktreePath,
+      rootPath: entry.rootPath,
+      service: entry.service,
+      state: entry.state,
+      pid: entry.pid,
+      startedAt: entry.startedAt,
+    })
+  }
+
+  return out
+}
+
 export function waitReachable(
   worktreeId: string,
   service: string,
@@ -257,6 +304,8 @@ export async function start(
 
   const entry: Entry = {
     worktreeId,
+    worktreePath,
+    rootPath: vars.rootPath,
     service: service.name,
     port,
     cwd: resolve(worktreePath, service.cwd || '.'),
@@ -270,6 +319,7 @@ export async function start(
     exitCode: null,
     reachable: null,
     child: null,
+    identity: Promise.resolve(null),
     stopping: false,
     probing: false,
     settling: false,
@@ -287,6 +337,7 @@ export async function start(
 
   entry.child = child
   entry.pid = child.pid ?? null
+  entry.identity = identityOf(child.pid)
 
   pipe(entry, child.stdout, 'stdout')
   pipe(entry, child.stderr, 'stderr')
@@ -481,24 +532,109 @@ async function probe(entry: Entry): Promise<void> {
   emitStatus(entry)
 }
 
-function signal(entry: Entry, sig: NodeJS.Signals): void {
+async function inspect(pid: number): Promise<Sighting> {
+  if (process.platform === 'win32') return { seen: 'unknown' }
+
+  const result = await exec('ps', ['-o', 'pid=,pgid=,lstart=,comm=', '-p', String(pid)], {
+    env: { ...process.env, TZ: 'UTC' },
+    timeoutMs: INSPECT_FOR_MS,
+  }).catch(() => null)
+
+  if (!result) return { seen: 'unknown' }
+
+  const line = result.stdout.trim().split('\n')[0]?.trim()
+  if (!line) return result.code === 1 ? { seen: 'no' } : { seen: 'unknown' }
+  if (result.code !== 0) return { seen: 'unknown' }
+
+  const fields = line.split(/\s+/)
+  if (fields.length < 7) return { seen: 'unknown' }
+
+  const pgid = Number(fields[1])
+  if (Number(fields[0]) !== pid || !Number.isInteger(pgid)) return { seen: 'unknown' }
+
+  return {
+    seen: 'yes',
+    identity: {
+      pgid,
+      lstart: fields.slice(2, 7).join(' '),
+      comm: fields.slice(7).join(' '),
+    },
+  }
+}
+
+async function identityOf(pid: number | undefined): Promise<Identity | null> {
+  if (pid === undefined) return null
+  const sighting = await inspect(pid)
+  return sighting.seen === 'yes' ? sighting.identity : null
+}
+
+export async function startTimeOf(pid: number): Promise<string | null> {
+  const sighting = await inspect(pid)
+  return sighting.seen === 'yes' ? sighting.identity.lstart : null
+}
+
+function lone(child: ChildProcess, sig: NodeJS.Signals): void {
+  try {
+    child.kill(sig)
+  } catch {
+    return
+  }
+}
+
+async function signal(entry: Entry, sig: NodeJS.Signals): Promise<void> {
   const child = entry.child
-  if (!child?.pid) return
+  const pid = child?.pid
+  if (!child || !pid) return
 
   if (process.platform === 'win32') {
-    child.kill(sig)
+    lone(child, sig)
     return
   }
 
-  try {
-    process.kill(-child.pid, sig)
-  } catch {
-    try {
-      child.kill(sig)
-    } catch {
+  const spawned = await entry.identity
+  const now = await inspect(pid)
+  if (entry.child !== child) return
+
+  if (now.seen === 'no') {
+    push(entry, 'stderr', `pid ${pid} has already exited — nothing was signalled`)
+    return
+  }
+
+  if (now.seen === 'yes' && spawned) {
+    if (now.identity.lstart !== spawned.lstart) {
+      push(
+        entry,
+        'stderr',
+        `pid ${pid} is no longer the process ccwt started — it now belongs to ${now.identity.comm || 'another program'}, running since ${now.identity.lstart}. Nothing was signalled, so port ${entry.port} may still be held.`,
+      )
       return
     }
+
+    if (now.identity.pgid === pid) {
+      try {
+        process.kill(-pid, sig)
+        return
+      } catch {
+        lone(child, sig)
+        return
+      }
+    }
+
+    push(
+      entry,
+      'stderr',
+      `pid ${pid} no longer leads its own process group — only that one process was signalled, so port ${entry.port} may still be held`,
+    )
+    lone(child, sig)
+    return
   }
+
+  push(
+    entry,
+    'stderr',
+    `ps could not confirm that pid ${pid} is still the process ccwt started — only that one process was signalled, not its process group, so port ${entry.port} may still be held`,
+  )
+  lone(child, sig)
 }
 
 export async function stop(worktreeId: string, service: string): Promise<ServiceStatus> {
@@ -527,19 +663,44 @@ export async function stop(worktreeId: string, service: string): Promise<Service
   entry.stopping = true
   entry.probing = false
   const child = entry.child
+  const pid = entry.pid
 
   await new Promise<void>((done) => {
-    const timer = setTimeout(() => {
-      signal(entry, 'SIGKILL')
+    let settled = false
+
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(harder)
+      clearTimeout(waited)
+      done()
+    }
+
+    const harder = setTimeout(() => {
+      void signal(entry, 'SIGKILL')
     }, KILL_AFTER_MS)
 
-    child.once('exit', () => {
-      clearTimeout(timer)
-      done()
-    })
+    const waited = setTimeout(() => {
+      push(
+        entry,
+        'stderr',
+        `pid ${pid} has not exited ${GIVE_UP_AFTER_MS / 1000}s after being asked to — ccwt is no longer waiting for it, and port ${entry.port} may still be held`,
+      )
+      finish()
+    }, GIVE_UP_AFTER_MS)
 
-    signal(entry, 'SIGTERM')
+    child.once('exit', finish)
+
+    void signal(entry, 'SIGTERM')
   })
+
+  if (entry.child === child) {
+    entry.child = null
+    entry.pid = null
+    entry.reachable = null
+    entry.state = 'stopped'
+    emitStatus(entry)
+  }
 
   await runStopCommand(entry)
   return toStatus(entry)

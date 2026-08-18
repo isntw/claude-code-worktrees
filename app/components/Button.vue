@@ -15,9 +15,10 @@ withDefaults(
 
 const OUTLINE: Record<Variation, string> = {
   neutral: 'border-line text-dim hover:border-line-strong hover:text-ink',
-  info: 'border-line-strong text-dim hover:border-ink hover:text-ink',
-  success: 'border-ink text-ink hover:bg-ink hover:text-canvas',
-  live: 'border-live text-live hover:bg-live hover:text-canvas',
+  info: 'border-info text-info hover:bg-info hover:text-canvas',
+  primary: 'border-ink text-ink hover:bg-ink hover:text-canvas',
+  success: 'border-success text-success hover:bg-success hover:text-canvas',
+  agent: 'border-agent text-agent hover:bg-agent hover:text-canvas',
   warning: 'border-caution text-caution hover:bg-caution hover:text-canvas',
   error: 'border-alarm text-alarm hover:bg-alarm hover:text-canvas',
 }
@@ -25,9 +26,10 @@ const OUTLINE: Record<Variation, string> = {
 const FILLED: Record<Variation, string> = {
   neutral:
     'border-line-strong bg-line-strong text-ink hover:border-dim hover:bg-dim hover:text-canvas',
-  info: 'border-dim bg-dim text-canvas hover:border-ink hover:bg-ink',
-  success: 'border-ink bg-ink text-canvas hover:border-dim hover:bg-dim',
-  live: 'border-live bg-live text-canvas hover:border-ink hover:bg-ink',
+  info: 'border-info bg-info text-canvas hover:border-ink hover:bg-ink',
+  primary: 'border-ink bg-ink text-canvas hover:border-dim hover:bg-dim',
+  success: 'border-success bg-success text-canvas hover:border-ink hover:bg-ink',
+  agent: 'border-agent bg-agent text-canvas hover:border-ink hover:bg-ink',
   warning:
     'border-caution bg-caution text-canvas hover:border-caution-strong hover:bg-caution-strong',
   error: 'border-alarm bg-alarm text-canvas hover:border-alarm-strong hover:bg-alarm-strong',

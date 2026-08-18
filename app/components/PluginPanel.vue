@@ -16,7 +16,7 @@ const installed = computed(() => state.value === 'installed' || state.value === 
 const LOOK: Record<PluginState, BadgeVariation> = {
   unavailable: 'neutral',
   absent: 'neutral',
-  installed: 'live',
+  installed: 'success',
   disabled: 'warning',
   outdated: 'warning',
 }

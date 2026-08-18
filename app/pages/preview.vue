@@ -7,6 +7,7 @@ import type {
   LogLine,
   OverviewRow,
   PortClaim,
+  PortHold,
   PortRow,
   PullRequest,
   PullState,
@@ -20,7 +21,7 @@ import { NAV } from '../nav'
 
 const page = NAV.find((item) => item.name === 'preview')!
 
-const VARIATIONS: Variation[] = ['neutral', 'info', 'success', 'live', 'warning', 'error']
+const VARIATIONS: Variation[] = ['neutral', 'info', 'primary', 'success', 'agent', 'warning', 'error']
 const SIZES: BadgeSize[] = ['sm', 'md', 'lg']
 
 const text = ref('npm run dev -- --port 5200')
@@ -75,6 +76,26 @@ const sample = (index: number, service: ServiceState): Worktree => ({
 
 const CARDS = SERVICES.map((service, index) => sample(index, service))
 
+const CONTESTED: { label: string; movable: boolean; heldBy: PortHold | null }[] = [
+  { label: 'port moves on start', movable: true, heldBy: null },
+  {
+    label: 'held by another worktree',
+    movable: false,
+    heldBy: { worktreeId: 'w9', worktree: 'root', service: 'web', same: true },
+  },
+  { label: 'held by something else', movable: false, heldBy: null },
+]
+
+const TAKEN = CONTESTED.map(({ label, ...state }, index) => {
+  const card = sample(0, 'stopped')
+  return {
+    ...card,
+    id: `t${index}`,
+    name: label,
+    services: [{ ...card.services[0]!, port: 3000, taken: true, ...state }],
+  }
+})
+
 const PROJECTS = ['app', 'app', 'kape-kb', 'legacy']
 
 const pullOf = (number: number, state: PullState): PullRequest => ({
@@ -107,7 +128,7 @@ const STATS: Stat[] = [
     key: 'running',
     label: 'Services up',
     value: 5,
-    variation: 'live',
+    variation: 'success',
     note: '1 still starting · of 9',
   },
   { key: 'crashed', label: 'Crashed', value: 1, variation: 'error' },
@@ -227,7 +248,9 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
             'dim',
             'faint',
             'ink',
-            'live',
+            'success',
+            'info',
+            'agent',
             'caution',
             'alarm',
           ]"
@@ -255,9 +278,9 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
       </div>
       <div class="flex flex-wrap items-center gap-3 border-t border-line px-3 py-3">
         <Badge v-for="s in SIZES" :key="s" :size="s">{{ s }}</Badge>
-        <Badge v-for="s in SIZES" :key="`${s}-live`" :size="s" variation="live">{{ s }}</Badge>
+        <Badge v-for="s in SIZES" :key="`${s}-success`" :size="s" variation="success">{{ s }}</Badge>
         <Badge v-for="s in SIZES" :key="`${s}-mono`" :size="s" mono>{{ s }}</Badge>
-        <Badge v-for="s in SIZES" :key="`${s}-fill`" :size="s" variation="live" :outline="false">{{
+        <Badge v-for="s in SIZES" :key="`${s}-fill`" :size="s" variation="success" :outline="false">{{
           s
         }}</Badge>
       </div>
@@ -386,6 +409,13 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
           :git="GITS[index]?.status ?? null"
           :pull="GITS[index]?.pull ?? null"
         />
+      </div>
+    </section>
+
+    <section class="xl:col-span-2">
+      <p class="t-eyebrow mb-2">Worktree cards — a port already taken</p>
+      <div class="grid gap-2 lg:grid-cols-3">
+        <WorktreeCard v-for="card in TAKEN" :key="card.id" :worktree="card" />
       </div>
     </section>
 

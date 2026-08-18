@@ -6,6 +6,8 @@ import type {
   DirListing,
   ForgeSession,
   ForgeStatus,
+  FreeOutcome,
+  FreeRequest,
   GitReport,
   LogLine,
   MergeMethod,
@@ -13,6 +15,7 @@ import type {
   Mergeability,
   Overview,
   PluginReport,
+  PortHolders,
   ProbeResult,
   Project,
   RemoveOutcome,
@@ -121,6 +124,10 @@ export function useApi() {
       call<ServiceStatus>(`${worktree(projectId, worktreeId)}/services/${service}/stop`, {
         method: 'POST',
       }),
+    portHolders: (port: number) => call<PortHolders>(`/ports/${port}`),
+    freePort: (port: number, request: FreeRequest) =>
+      call<FreeOutcome>(`/ports/${port}/free`, { method: 'POST', body: request }),
+
     logs: (projectId: string, worktreeId: string) =>
       call<LogLine[]>(`${worktree(projectId, worktreeId)}/logs`),
     clearLogs: (projectId: string, worktreeId: string) =>

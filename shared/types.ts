@@ -68,6 +68,13 @@ export interface Project {
   issues: Diagnostic[]
 }
 
+export interface PortHold {
+  worktreeId: string
+  worktree: string
+  service: string
+  same: boolean
+}
+
 export interface ServiceStatus {
   name: string
   state: ServiceState
@@ -78,7 +85,49 @@ export interface ServiceStatus {
   exitCode: number | null
   reachable: boolean | null
   taken?: boolean
+  movable?: boolean
+  heldBy?: PortHold | null
   extra?: Record<string, number>
+}
+
+export interface ServiceHolder {
+  worktreeId: string
+  worktree: string
+  project: string
+  service: string
+  state: ServiceState
+  pid: number | null
+  startedAt: string | null
+}
+
+export interface ForeignHolder {
+  pid: number
+  name: string
+  command: string
+  cwd: string | null
+  user: string | null
+}
+
+export interface PortHolders {
+  port: number
+  free: boolean
+  ours: ServiceHolder[]
+  foreign: ForeignHolder[]
+  why: string | null
+}
+
+export interface FreeRequest {
+  pids: number[]
+  services: { worktreeId: string; service: string }[]
+}
+
+export interface FreeOutcome {
+  port: number
+  freed: boolean
+  stopped: string[]
+  signalled: number[]
+  refused: { pid: number; why: string }[]
+  why: string | null
 }
 
 export interface Worktree {

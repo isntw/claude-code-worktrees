@@ -225,7 +225,7 @@ const summary = computed(() => {
   }
 })
 
-const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as const
+const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } as const
 </script>
 
 <template>
@@ -244,7 +244,7 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
     />
     <Button :disabled="loading" @click="detect">detect</Button>
     <Button
-      variation="success"
+      variation="primary"
       :outline="false"
       :disabled="!savable || saving"
       @click="confirming = true"
@@ -497,7 +497,7 @@ const TONE = { same: 'text-faint', add: 'text-live', remove: 'text-alarm' } as c
 
     <template #footer>
       <Button size="sm" @click="confirming = false">cancel</Button>
-      <Button size="sm" variation="success" :outline="false" :disabled="saving" @click="save">{{
+      <Button size="sm" variation="primary" :outline="false" :disabled="saving" @click="save">{{
         saving ? 'saving…' : 'save recipe'
       }}</Button>
     </template>
