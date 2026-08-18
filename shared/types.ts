@@ -314,6 +314,26 @@ export interface ToolCheck {
   install: string
 }
 
+export type PluginState = 'unavailable' | 'absent' | 'installed' | 'disabled' | 'outdated'
+
+export interface PluginCapability {
+  name: string
+  title: string
+  blurb: string
+}
+
+export interface PluginReport {
+  state: PluginState
+  installed: string | null
+  shipped: string
+  scope: string | null
+  installedAt: string | null
+  source: string
+  commands: string[]
+  capabilities: PluginCapability[]
+  issues: Diagnostic[]
+}
+
 export type SocketMessage =
   | { type: 'log'; line: LogLine }
   | { type: 'service'; worktreeId: string; status: ServiceStatus }

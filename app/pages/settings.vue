@@ -8,6 +8,9 @@ const page = NAV.find((entry) => entry.name === 'settings')!
   <ConsoleHeader :title="page.title" :blurb="page.blurb" />
 
   <main class="min-h-0 flex-1 overflow-y-auto p-4">
-    <ForgePanel />
+    <div class="grid gap-4">
+      <ForgePanel />
+      <PluginPanel />
+    </div>
   </main>
 </template>
