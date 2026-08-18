@@ -138,10 +138,15 @@ function absent(missing: string[]): Diagnostic {
   }
 }
 
-export function commands(): string[] {
+export async function commands(): Promise<string[]> {
+  const already = (await present()) && (await installed()) !== null
+
   return [
     `claude plugin marketplace add ${sourceDir()}`,
-    `claude plugin install ${ID} --scope user -y`,
+    `claude plugin marketplace update ${NAME}`,
+    already
+      ? `claude plugin update ${ID} --scope user -y`
+      : `claude plugin install ${ID} --scope user -y`,
   ]
 }
 
@@ -225,7 +230,7 @@ export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
       scope: null,
       installedAt: null,
       source: sourceDir(),
-      commands: commands(),
+      commands: await commands(),
       capabilities: CAPABILITIES,
       parts: await parts(),
       issues: [...issuesFor('unavailable', shipped, null), ...extra],
@@ -243,7 +248,7 @@ export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
     scope: found?.scope ?? null,
     installedAt: found?.installedAt ?? null,
     source: sourceDir(),
-    commands: commands(),
+    commands: await commands(),
     capabilities: CAPABILITIES,
     parts: await parts(),
     issues: [
@@ -300,14 +305,20 @@ export async function install(): Promise<PluginReport> {
     return report([failed('claude plugin marketplace add', added.code, added.stderr)])
   }
 
-  await claude(['plugin', 'marketplace', 'update', 'ccwt'], INSTALL_MS)
+  await claude(['plugin', 'marketplace', 'update', NAME], INSTALL_MS)
 
-  const put = await claude(['plugin', 'install', ID, '--scope', 'user', '-y'], INSTALL_MS)
+  const already = (await installed()) !== null
+  const verb = already ? 'update' : 'install'
+  const args = already
+    ? ['plugin', 'update', ID, '--scope', 'user', '-y']
+    : ['plugin', 'install', ID, '--scope', 'user', '-y']
+
+  const put = await claude(args, INSTALL_MS)
   if (!put) {
-    return report([failed('claude plugin install', -1, 'the command did not finish')])
+    return report([failed(`claude plugin ${verb}`, -1, 'the command did not finish')])
   }
   if (put.code !== 0) {
-    return report([failed('claude plugin install', put.code, put.stderr)])
+    return report([failed(`claude plugin ${verb}`, put.code, put.stderr)])
   }
 
   const said = put.stdout.trim().split('\n').slice(-4).join('\n')

@@ -1,6 +1,6 @@
 {
   "name": "claude-code-worktrees",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Manage git worktrees as running environments \u2014 provisioned, ported, served.",
   "type": "module",
   "bin": {
