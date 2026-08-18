@@ -150,13 +150,13 @@ export async function describe(cwd, transcriptPath) {
     }),
   )
 
-  const sitting = underTranscript(
-    worktrees.map((worktree) => worktree.path),
-    transcriptPath,
-  )
+  const at = (path) =>
+    path ? (worktrees.find((worktree) => resolve(worktree.path) === resolve(path)) ?? null) : null
 
-  const here =
-    worktrees.find((worktree) => resolve(worktree.path) === resolve(sitting ?? toplevel)) ?? null
+  const walked = at(toplevel)
+  const launched = at(underTranscript(worktrees.map((worktree) => worktree.path), transcriptPath))
+
+  const here = (walked && !walked.root ? walked : null) ?? launched ?? walked ?? null
 
   return {
     projectId: project.id,

@@ -144,3 +144,12 @@ test('a transcript ccwt cannot place resolves to nothing, never to a guess', () 
   assert.equal(underTranscript(paths, ''), null)
   assert.equal(underTranscript(paths, undefined), null)
 })
+
+test('neither cwd nor the transcript is trusted alone — a worktree wins over the root', () => {
+  const paths = ['/repo', '/repo/.claude/worktrees/feature']
+  const inWorktree = '/home/me/.claude/projects/-repo--claude-worktrees-feature/s.jsonl'
+  const inRoot = '/home/me/.claude/projects/-repo/s.jsonl'
+
+  assert.equal(underTranscript(paths, inWorktree), '/repo/.claude/worktrees/feature')
+  assert.equal(underTranscript(paths, inRoot), '/repo')
+})
