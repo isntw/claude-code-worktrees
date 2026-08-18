@@ -398,6 +398,20 @@ Fix it where the token is already written, same mode 600:
 `ccwt_logs` degrades to "ccwt is not running" when nothing answers on the recorded port. A stale
 `server.json` must degrade to silence, never to a broken instruction.
 
+**It is never deleted on exit, deliberately.** Cleanup would run on a clean shutdown — the case that
+needs it least, since the port is released too and the probe already answers correctly — and would
+miss every case that actually strands the file: `SIGKILL`, a crash, a power cut. Worse, the file is
+keyed to nothing, so a late exit handler from a restarted ccwt could delete the **live** instance's
+record. The file is a hint about where to look, never a claim that something is listening there, and
+the probe is the only authority that can be right about the difference.
+
+**Nor is it written per instance.** Two ccwt instances at once happens while developing ccwt itself
+and not otherwise, and `CLAUDE.md` is explicit that the projects on this machine are not the test.
+The consequence is worth stating so it is not mistaken for a bug: a dashboard run through
+`npm run dev` never goes through `bin/ccwt.mjs`, so it writes no `server.json` and `ccwt_logs` will
+say ccwt is not running. Everything else works in dev; only the logs tool needs the shipped entry
+point.
+
 ---
 
 ## 11. Creating a worktree — written up, not built

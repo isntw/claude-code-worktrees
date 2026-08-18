@@ -32,6 +32,22 @@ test('the guard matches a declared command wherever it sits', () => {
   assert.ok(duplicates('nohup npm run dev &', declared))
 })
 
+test('a mention inside a quoted argument is text, not a command', () => {
+  const declared = 'npm run dev -- --port {{port}}'
+  const deep = 'a dashboard run through npm run dev writes no file'
+
+  assert.equal(duplicates(`git commit -m "${deep}"`, declared), false)
+  assert.equal(duplicates(`git commit -m '${deep}'`, declared), false)
+  assert.equal(duplicates('gh pr create --body "start it with npm run dev"', declared), false)
+})
+
+test('a match must sit where a command would, not anywhere in the line', () => {
+  const declared = 'npm run dev -- --port {{port}}'
+
+  assert.equal(duplicates('echo hello npm run dev world', declared), false)
+  assert.equal(duplicates('grep -r npm run dev src', declared), false)
+})
+
 test('the guard leaves everything else alone', () => {
   const declared = 'npm run dev -- --port {{port}}'
 

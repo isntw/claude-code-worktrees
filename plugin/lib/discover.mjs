@@ -155,16 +155,36 @@ export const shapeOf = (command) =>
     .split(/\s+/)
     .filter((part) => part && part !== '--' && !part.startsWith('-'))
 
+const WRAPPERS = new Set(['nohup', 'env', 'exec', 'time', 'command', 'sudo'])
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
+
+function heads(command) {
+  return command
+    .replace(/"[^"]*"/g, ' ')
+    .replace(/'[^']*'/g, ' ')
+    .split(/&&|\|\||;|\|/)
+    .map((segment) => {
+      const parts = shapeOf(segment)
+      let start = 0
+      while (start < parts.length) {
+        const part = parts[start]
+        if (part !== undefined && (ASSIGNMENT.test(part) || WRAPPERS.has(part))) {
+          start += 1
+          continue
+        }
+        break
+      }
+      return parts.slice(start)
+    })
+}
+
 export function duplicates(proposed, declared) {
   const want = shapeOf(declared)
-  const got = shapeOf(proposed)
-  if (want.length < 2 || got.length < want.length) return false
+  if (want.length < 2) return false
 
-  for (let start = 0; start <= got.length - want.length; start += 1) {
-    if (want.every((part, index) => got[start + index] === part)) return true
-  }
-
-  return false
+  return heads(proposed).some(
+    (got) => got.length >= want.length && want.every((part, index) => got[index] === part),
+  )
 }
 
 export function targetOf(command, fallback) {
