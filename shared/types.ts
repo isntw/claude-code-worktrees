@@ -363,6 +363,41 @@ export interface ToolCheck {
   install: string
 }
 
+export type PluginState = 'unavailable' | 'absent' | 'installed' | 'disabled' | 'outdated'
+
+export interface PluginCapability {
+  name: string
+  title: string
+  blurb: string
+}
+
+export interface PluginHook {
+  event: string
+  matcher: string | null
+  blurb: string
+}
+
+export interface PluginParts {
+  marketplace: string
+  id: string
+  hooks: PluginHook[]
+  servers: string[]
+  tools: string[]
+}
+
+export interface PluginReport {
+  state: PluginState
+  installed: string | null
+  shipped: string
+  scope: string | null
+  installedAt: string | null
+  source: string
+  commands: string[]
+  capabilities: PluginCapability[]
+  parts: PluginParts
+  issues: Diagnostic[]
+}
+
 export type SocketMessage =
   | { type: 'log'; line: LogLine }
   | { type: 'service'; worktreeId: string; status: ServiceStatus }

@@ -14,6 +14,7 @@ import type {
   MergeOutcome,
   Mergeability,
   Overview,
+  PluginReport,
   PortHolders,
   ProbeResult,
   Project,
@@ -76,6 +77,12 @@ export function useApi() {
     getGit: (projectId: string) => call<GitReport>(`/projects/${projectId}/git`),
     getPulls: (projectId: string, force = false) =>
       call<ForgeStatus>(`/projects/${projectId}/pulls${force ? '?force=1' : ''}`),
+
+    getPlugin: () => call<PluginReport>('/plugin'),
+    installPlugin: () => call<PluginReport>('/plugin', { method: 'POST', body: {} }),
+    enablePlugin: () =>
+      call<PluginReport>('/plugin', { method: 'POST', body: { action: 'enable' } }),
+    removePlugin: () => call<PluginReport>('/plugin', { method: 'DELETE' }),
 
     getForgeSession: () => call<ForgeSession>('/forge/session'),
     signOutForge: () => call<ForgeSession>('/forge/session', { method: 'DELETE' }),

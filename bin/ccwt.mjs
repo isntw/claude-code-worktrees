@@ -64,17 +64,24 @@ if (!free) {
 
 const token = randomBytes(32).toString('hex')
 const dir = join(homedir(), '.ccwt')
+const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 await mkdir(dir, { recursive: true, mode: 0o700 })
 await writeFile(join(dir, 'token'), token, { mode: 0o600 })
+await writeFile(
+  join(dir, 'server.json'),
+  JSON.stringify({ host, port, pid: process.pid, startedAt: new Date().toISOString() }),
+  { mode: 0o600 },
+)
 
 process.env.NITRO_PORT = String(port)
 process.env.NITRO_HOST = host
 process.env.PORT = String(port)
 process.env.HOST = host
 process.env.NUXT_TOKEN = token
+process.env.CCWT_ROOT = root
 
-const server = join(dirname(dirname(fileURLToPath(import.meta.url))), '.output/server/index.mjs')
+const server = join(root, '.output/server/index.mjs')
 
 await import(server).catch((cause) => {
   process.stderr.write(`\n  Could not start the server from ${server}\n  ${cause.message}\n\n  Run \`npm run build\` first.\n\n`)

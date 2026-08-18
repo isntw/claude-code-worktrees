@@ -27,7 +27,7 @@ and running services, read the logs, open the URL, remove it cleanly. What is no
 | 5 | `WorktreeCreate` ownership | not started |
 | + | File browser, zero-touch setup, after-start commands | **done** — outside the plan |
 
-`MILESTONES.md` has the detail, including how each claim was verified.
+`docs/MILESTONES.md` has the detail, including how each claim was verified.
 
 **The honest gaps:** the *launch a session* button and the agent badge on every card are inert until
 Milestone 4's hooks land, detection understands Node but not Python, Ruby or PHP, and there
@@ -125,7 +125,7 @@ change that makes the address configurable — your call, not a requirement:
 
 Most projects never hit this. Of the eight repositories this was tested against, one did.
 
-`MILESTONES.md` records what is built, what is stubbed, and how each claim was verified.
+`docs/MILESTONES.md` records what is built, what is stubbed, and how each claim was verified.
 
 ## How it is put together
 
@@ -143,7 +143,7 @@ bin/ccwt.mjs  CLI entry: boot the server, open a browser
 ```
 
 Read `CLAUDE.md` before changing anything — it holds the rules that are not visible from the code,
-because the repo does not use code comments. `SPEC.md` is the product spec; `MILESTONES.md` is what is built against it.
+because the repo does not use code comments. `docs/SPEC.md` is the product spec; `docs/MILESTONES.md` is what is built against it.
 
 ## Security
 

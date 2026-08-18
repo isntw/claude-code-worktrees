@@ -4,7 +4,7 @@ Where `ccwt` is against `SPEC.md` §10, and what was added along the way that th
 anticipate. Everything marked **done** was verified by running it, not by reading the code — the
 verification is named in each case.
 
-Last updated 2026-08-15.
+Last updated 2026-08-18.
 
 | Milestone | State |
 |---|---|
@@ -13,7 +13,8 @@ Last updated 2026-08-15.
 | 3 — configurable | ✅ **done**, and beyond the spec |
 | 4 — polish | 🟡 **part** — port map done, session status **dropped**, the rest untouched |
 | 5 — `WorktreeCreate` ownership | ⬜ **not started** (spec marks it optional) |
-| — | File browser, zero-touch setup and after-start commands were added outside the plan |
+| 5.6 — the session knows what runs | ✅ **done** — a Claude Code plugin, installed from Settings |
+| — | File browser, zero-touch setup, after-start commands and the first tests were added outside the plan |
 
 ---
 
@@ -165,12 +166,49 @@ outside §9's containment rule. `POST /api/projects/probe` validates a typed pat
 `project.recipe-stale` telling you to press detect. It is **not** migrated — the stored recipe is
 the user's, and guessing at intent is worse than saying so.
 
+### A Claude Code session knows what ccwt runs ✅
+
+ccwt ships a plugin (`plugin/`, published through `.claude-plugin/marketplace.json`) that a session
+installs from **Settings**, by pressing a button. `SessionStart` and `UserPromptSubmit` describe the
+whole repository — every worktree, its services, ports, and which are answering — and emit the
+difference when one moves. `PreToolUse` denies a command that would duplicate a service already
+listening, matching the shape of the recipe's own command so ccwt learns nothing about any
+framework. Both name the session after its worktree, and never overwrite a title typed by hand. Two
+read-only MCP tools answer *what is running* and *what did it print*; nothing can start, stop or
+restart a service.
+
+It writes into no repository — the install goes through `claude plugin` into Claude Code's own
+storage, which is the difference between this and the session tracking §5.2 dropped. ccwt copies the
+plugin into `~/.ccwt/plugin` only when the button is pressed. `bin/ccwt.mjs` now records its host and
+port in `~/.ccwt/server.json`, without which nothing outside the process could find the API.
+
+**Verified**: the guard denies `npm run dev`, `cd <worktree> && npm run dev` and
+`NODE_ENV=x npm run dev`, and stays silent for `npm run build`, a stopped service, a quoted mention
+in a commit message, and any repository ccwt does not manage. A session launched in the **root
+checkout** still learns the linked worktrees' ports, which is the case that returned nothing before.
+The delta speaks once and then goes quiet. Both manifests pass `claude plugin validate`, including
+from the copied `~/.ccwt/plugin` layout.
+
+**Traps found on the way.** The guard first matched the recipe's command shape only at the start of a
+command, so a `cd` prefix or a leading environment variable walked straight past it; it now looks for
+the shape anywhere. `PreToolUse`'s `cwd` is the **session's**, not the Bash tool's, so a `cd` prefix
+has to be parsed out to find the right worktree. `CwdChanged` and `FileChanged` cannot reach the
+model at all — their dispatcher harvests only `watchPaths` and `systemMessage` — so there is no push
+channel and freshness has to ride on `UserPromptSubmit`.
+
+### The first tests ✅
+
+`node --test`, no new dependency. Twenty-four cases over the parts that branch: the port key that may
+not contain an underscore, the guard's shape match and everything it must leave alone, the `cd`
+prefix, worktree parsing, the delta, and the rule that a session name you typed is never overwritten.
+`node --test <dir>` is not valid on Node 26 — the bare form is what discovers them.
+
 ---
 
 ## Known gaps, ranked
 
-1. **No tests.** Zero. Every bug found so far was found by running the thing. For an open-source
-   project this is the gap most likely to bite.
+1. **Barely any tests.** The plugin's pure helpers are covered; `server/lib` is not. Every bug
+   outside `plugin/` is still found by running the thing.
 2. **Detection is Node-shaped.** A Django, Rails or Laravel project registers, provisions and
    removes fine, but detects no service. Agreed and unbuilt: replace the filename list in
    `inspect.ts` with a search over git-tracked files, infer a container's role from its port rather

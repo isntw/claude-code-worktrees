@@ -31,7 +31,7 @@ export const NAV: NavPage[] = [
     name: 'settings',
     path: '/settings',
     title: 'Settings',
-    blurb: 'The accounts and hosts ccwt talks to on your behalf.',
+    blurb: 'The accounts, hosts and tools ccwt talks to on your behalf.',
     nav: 'pinned',
     icon: Settings,
   },
