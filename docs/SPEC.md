@@ -158,9 +158,27 @@ is your terminal's.
 
 ### 5.3 Own worktree creation — *opt-in, advanced*
 
-A `WorktreeCreate` hook replaces Claude Code's git logic entirely, so `claude --worktree` routes through ccwt: our path convention, our provisioning, our port allocation. The hook receives `worktree_path`, `worktree_reason` and `how_triggered` on stdin, and **prints the final path on stdout**; exit 0 means success. A paired `WorktreeRemove` hook tears down ports and processes (its exit code is ignored — removal proceeds regardless, so cleanup must be best-effort and never block).
+A `WorktreeCreate` hook replaces Claude Code's git logic entirely, so `claude --worktree` routes through ccwt: our path convention, our provisioning, our port allocation. A paired `WorktreeRemove` hook tears down ports and processes (its exit code is ignored — removal proceeds regardless, so cleanup must be best-effort and never block).
+
+> **Corrected against Claude Code 2.1.234.** This section described a stdin payload that does not
+> exist. `WorktreeCreate` receives **`name`** plus the common fields (`session_id`,
+> `transcript_path`, `cwd`, `prompt_id`, `permission_mode`, `agent_id`, `agent_type`, `effort`) —
+> not `worktree_path`, `worktree_reason` or `how_triggered`. `worktree_path` is the *`WorktreeRemove`*
+> field. It does print the final path on stdout, where the **last non-empty line** is taken and a
+> relative path resolves against `cwd`.
+>
+> Two things this section did not say and needed to. **Failure is fatal with no fallback to git**: a
+> non-zero exit, a success printing no path, or a hook configured but not run makes worktree creation
+> throw — so on a machine-wide install the hook must always exit 0 and always print a path, doing the
+> plain `git worktree add` itself when ccwt is unreachable. And it **fires for subagent worktrees**
+> (`isolation: "worktree"`) and background sessions, where `agent_id` is the discriminator: without
+> that bound, a ten-way fan-out becomes ten provisions and ten dev servers.
 
 **Important caveat:** installing a `WorktreeCreate` hook **disables `.worktreeinclude` processing**. ccwt must then do that copying itself — which it does anyway, so this is a merge of two mechanisms rather than a loss. Off by default; the UI must state this trade-off when enabling it.
+
+**As built:** not built, and gated on §5.4, which is still a stub. Installing this hook takes
+`.worktreeinclude` handling away with nothing replacing it, so §5.4 lands first. `docs/claude-hooks.md`
+§11 carries the design.
 
 ### 5.4 `.worktreeinclude` compatibility — *always*
 
@@ -174,6 +192,40 @@ A `WorktreeCreate` hook replaces Claude Code's git logic entirely, so `claude --
 - **Never symlink into `.claude/`.** Claude Code refuses to create a worktree when `.claude`, `.claude/worktrees`, or the worktree directory itself is a symlink. This reinforces the no-symlink rule in §7.
 - **Windows:** removing a worktree containing a directory symlink or NTFS junction deletes only the link. Another reason to copy or hardlink, never link.
 - Claude Code's own sweep (`cleanupPeriodDays`) removes stale subagent worktrees. ccwt must tolerate a worktree disappearing underneath it and clean up its port and process without erroring.
+
+### 5.6 Tell the session what is already running — *opt-in, one click to install*
+
+A session working in a worktree does not know ccwt started its dev server, so it starts a second one
+— on the wrong port, outliving the session, holding a port the allocator will not hand out again.
+Nothing in §5.1–§5.5 answers that: the lock reports an agent to *us*, and says nothing back.
+
+**ccwt ships a Claude Code plugin**, installed from `/settings` by pressing a button. It carries
+three hooks and a read-only MCP server:
+
+- `SessionStart` describes **the repository** — every worktree, its services, the port each holds,
+  and whether that port answers. Not the current directory: ports live in each linked worktree's git
+  config, so a session launched in the root checkout would otherwise learn nothing.
+- `UserPromptSubmit` emits the difference when a service starts, stops or moves, against a
+  per-session fingerprint that `SessionEnd` deletes.
+- `PreToolUse` **denies** a command that would duplicate a service already listening, with a reason
+  naming the URL to open. What counts as that command is derived from the recipe, never from a list
+  of frameworks.
+- Both hooks also **name the session after its worktree**, and rename it when that changes. A title
+  typed by hand is never overwritten.
+- `ccwt_status` and `ccwt_logs` let a session ask what is running and read what it printed. There is
+  deliberately no start, stop or restart: the guard says ccwt owns lifecycle, and handing back a
+  restart button would blur the same line.
+
+**This is the direction §5.2 does not cover, and it does not reopen it.** §5.2 made ccwt's display
+depend on sessions reporting in; this tells sessions what ccwt already knows, and a session asking
+for status changes nothing about the dashboard.
+
+**It writes into no repository.** The plugin installs through `claude plugin`, into Claude Code's own
+storage — which is what makes it legal where §5.2 was not. ccwt copies the plugin into `~/.ccwt/plugin`
+**when the button is pressed and never before**: no directory, no marketplace, no install until a
+person asks, and a newer ccwt marks an installed plugin outdated and waits.
+
+`docs/claude-hooks.md` is the full spec.
 
 ---
 
