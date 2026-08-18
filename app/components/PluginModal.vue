@@ -65,8 +65,11 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       >{{ report.commands.join('\n') }}</pre>
       <p class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
         The plugin is copied into <code class="font-mono">{{ report.source }}</code> first — ccwt has
-        written nothing there until you press this. It takes effect in your
-        <span class="text-dim">next</span> session, not the one you have open.
+        written nothing there until you press this. Claude Code says at the end of the install
+        whether it switched the plugin on; if it did not, run
+        <code class="font-mono text-dim">/reload-plugins --force</code> in a session you already have
+        open. The <code class="font-mono">--force</code> is needed because this adds tools, which
+        drops the prompt cache. A new session picks it up either way.
       </p>
     </section>
 

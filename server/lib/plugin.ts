@@ -271,7 +271,16 @@ export async function install(): Promise<PluginReport> {
     return report([failed('claude plugin install', put.code, put.stderr)])
   }
 
-  return report()
+  const said = put.stdout.trim().split('\n').slice(-4).join('\n')
+
+  return report([
+    {
+      code: 'plugin.installed',
+      severity: 'info',
+      message: said || 'Claude Code installed the plugin without saying anything.',
+      hint: 'If it did not switch the plugin on, run `/reload-plugins --force` in a session you already have open. A new session picks it up either way.',
+    },
+  ])
 }
 
 export async function enable(): Promise<PluginReport> {

@@ -152,7 +152,10 @@ updating; once installed, the plugin runs from Claude's cache.
 `package.json` ships `files: ["bin", ".output"]`, so **`plugin/` must be added** or the plugin is
 missing from the published package while working perfectly from a checkout.
 
-An install applies **at the next session**, not the current one. The panel says so.
+An install does not need a restart. Claude Code may switch the plugin on during the install and says
+so in its summary; otherwise **`/reload-plugins --force`** applies it to a session already open. The
+`--force` is not optional here — the reload changes which MCP tools are loaded, which invalidates the
+prompt cache, and the command skips rather than do that silently. The panel says all of this.
 
 ---
 
