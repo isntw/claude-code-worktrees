@@ -2,6 +2,7 @@
   "name": "claude-code-worktrees",
   "version": "0.1.0",
   "description": "Manage git worktrees as running environments \u2014 provisioned, ported, served.",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "bin": {
     "ccwt": "./bin/ccwt.mjs",
