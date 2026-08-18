@@ -71,16 +71,48 @@ onMounted(load)
         </div>
       </dl>
 
-      <p
-        v-if="installed && report"
-        class="mt-3 flex items-center gap-2 border-t border-line pt-3 font-mono text-[0.6875rem] text-dim"
-      >
-        <span class="text-ink">{{ report.installed }}</span>
-        <span v-if="report.scope" class="text-faint">{{ report.scope }} scope</span>
-        <span v-if="report.state === 'outdated'" class="text-caution"
-          >ccwt ships {{ report.shipped }}</span
-        >
-      </p>
+      <div v-if="report" class="mt-3 border-t border-line pt-3">
+        <p class="t-eyebrow">{{ installed ? 'What is installed' : 'What gets installed' }}</p>
+
+        <dl class="mt-2 grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1 font-mono text-[0.6875rem]">
+          <dt class="text-faint">marketplace</dt>
+          <dd class="min-w-0 truncate text-ink">
+            {{ report.parts.marketplace }}
+            <span class="text-faint">{{ report.source }}</span>
+          </dd>
+
+          <dt class="text-faint">plugin</dt>
+          <dd class="text-ink">
+            {{ report.parts.id }}
+            <span class="text-dim">{{ installed ? report.installed : report.shipped }}</span>
+            <span v-if="report.scope" class="text-faint">{{ report.scope }} scope</span>
+            <span v-if="report.state === 'outdated'" class="text-caution"
+              >ccwt ships {{ report.shipped }}</span
+            >
+          </dd>
+        </dl>
+
+        <p class="t-eyebrow mt-3">Hooks</p>
+        <dl class="mt-1 grid grid-cols-[10rem_1fr] gap-x-3 gap-y-1">
+          <template v-for="hook in report.parts.hooks" :key="`${hook.event}${hook.matcher}`">
+            <dt class="font-mono text-[0.6875rem] text-ink">
+              {{ hook.event
+              }}<span v-if="hook.matcher" class="text-faint">:{{ hook.matcher }}</span>
+            </dt>
+            <dd class="font-sans text-[0.6875rem] text-faint">{{ hook.blurb }}</dd>
+          </template>
+        </dl>
+
+        <template v-if="report.parts.servers.length">
+          <p class="t-eyebrow mt-3">
+            MCP server<span class="text-faint"> · {{ report.parts.servers.join(', ') }}</span>
+          </p>
+          <p class="mt-1 font-mono text-[0.6875rem] text-ink">
+            {{ report.parts.tools.join('  ') }}
+            <span class="font-sans text-faint">— read only; nothing can start or stop a service</span>
+          </p>
+        </template>
+      </div>
 
       <div
         v-for="issue in report?.issues ?? []"

@@ -47,6 +47,11 @@ const TOOLS = [
   },
 ]
 
+if (process.argv[2] === '--tools') {
+  process.stdout.write(JSON.stringify(TOOLS.map((tool) => tool.name)))
+  process.exit(0)
+}
+
 const text = (body) => ({ content: [{ type: 'text', text: body }] })
 
 async function status(args) {

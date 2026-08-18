@@ -1,10 +1,18 @@
 import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { Diagnostic, PluginCapability, PluginReport, PluginState } from '../../shared/types'
+import type {
+  Diagnostic,
+  PluginCapability,
+  PluginHook,
+  PluginParts,
+  PluginReport,
+  PluginState,
+} from '../../shared/types'
 import { exec } from './exec'
 
-const ID = 'ccwt@ccwt'
+const NAME = 'ccwt'
+const ID = `${NAME}@${NAME}`
 const PROBE_MS = 20_000
 const INSTALL_MS = 120_000
 
@@ -47,6 +55,68 @@ export const CAPABILITIES: PluginCapability[] = [
   },
 ]
 
+const SAYS: Record<string, string> = {
+  SessionStart: 'names every worktree, its services and their ports as a session opens',
+  UserPromptSubmit: 'says what changed when a service starts, stops or moves',
+  PreToolUse: 'refuses a command that would duplicate a service already listening',
+  SessionEnd: 'forgets what this session was told',
+}
+
+interface HooksFile {
+  hooks?: Record<string, { matcher?: string }[]>
+}
+
+interface Manifest {
+  version?: string
+  mcpServers?: Record<string, unknown>
+}
+
+async function readJson<T>(path: string): Promise<T | null> {
+  const raw = await readFile(path, 'utf8').catch(() => null)
+  if (raw === null) return null
+
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+const manifestPath = () => join(packageRoot(), 'plugin', '.claude-plugin', 'plugin.json')
+
+async function parts(): Promise<PluginParts> {
+  const declared = await readJson<HooksFile>(join(packageRoot(), 'plugin', 'hooks', 'hooks.json'))
+  const manifest = await readJson<Manifest>(manifestPath())
+
+  const hooks: PluginHook[] = []
+  for (const [event, matchers] of Object.entries(declared?.hooks ?? {})) {
+    for (const entry of matchers) {
+      hooks.push({ event, matcher: entry.matcher ?? null, blurb: SAYS[event] ?? '' })
+    }
+  }
+
+  const listed = await exec('node', [join(packageRoot(), 'plugin', 'mcp', 'server.mjs'), '--tools'], {
+    timeoutMs: PROBE_MS,
+  }).catch(() => null)
+
+  let tools: string[] = []
+  if (listed && listed.code === 0) {
+    try {
+      tools = JSON.parse(listed.stdout) as string[]
+    } catch {
+      tools = []
+    }
+  }
+
+  return {
+    marketplace: NAME,
+    id: ID,
+    hooks,
+    servers: Object.keys(manifest?.mcpServers ?? {}),
+    tools,
+  }
+}
+
 export function commands(): string[] {
   return [
     `claude plugin marketplace add ${sourceDir()}`,
@@ -55,17 +125,7 @@ export function commands(): string[] {
 }
 
 async function shippedVersion(): Promise<string> {
-  const raw = await readFile(
-    join(packageRoot(), 'plugin', '.claude-plugin', 'plugin.json'),
-    'utf8',
-  ).catch(() => null)
-  if (raw === null) return '0.0.0'
-
-  try {
-    return (JSON.parse(raw) as { version?: string }).version ?? '0.0.0'
-  } catch {
-    return '0.0.0'
-  }
+  return (await readJson<Manifest>(manifestPath()))?.version ?? '0.0.0'
 }
 
 async function claude(args: string[], timeoutMs = PROBE_MS) {
@@ -145,6 +205,7 @@ export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
       source: sourceDir(),
       commands: commands(),
       capabilities: CAPABILITIES,
+      parts: await parts(),
       issues: [...issuesFor('unavailable', shipped, null), ...extra],
     }
   }
@@ -161,6 +222,7 @@ export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
     source: sourceDir(),
     commands: commands(),
     capabilities: CAPABILITIES,
+    parts: await parts(),
     issues: [...issuesFor(state, shipped, found), ...extra],
   }
 }

@@ -322,6 +322,20 @@ export interface PluginCapability {
   blurb: string
 }
 
+export interface PluginHook {
+  event: string
+  matcher: string | null
+  blurb: string
+}
+
+export interface PluginParts {
+  marketplace: string
+  id: string
+  hooks: PluginHook[]
+  servers: string[]
+  tools: string[]
+}
+
 export interface PluginReport {
   state: PluginState
   installed: string | null
@@ -331,6 +345,7 @@ export interface PluginReport {
   source: string
   commands: string[]
   capabilities: PluginCapability[]
+  parts: PluginParts
   issues: Diagnostic[]
 }
 
