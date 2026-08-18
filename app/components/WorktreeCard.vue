@@ -99,14 +99,6 @@ const workingHint = computed(() => {
   return `An agent is working here.${said}\n\nThe lock only stops this being pruned by accident. Removing it here still works; releasing the lock is refused while that process is alive.`
 })
 
-const holding = computed(() => {
-  if (!props.worktree.locked || props.worktree.root || held.value) return ''
-
-  const said = props.worktree.lockReason ? ` — ${props.worktree.lockReason}` : ''
-
-  return `Locked${said}. Nothing prunes it while that stands.`
-})
-
 const mergeable = computed(
   () => props.pull?.state === 'open' || props.pull?.state === 'draft',
 )
@@ -204,11 +196,6 @@ const mergeable = computed(
         >merge</Button
       >
     </div>
-
-    <div v-if="holding" class="flex min-h-9 items-center border-b border-line px-3 py-2">
-      <span class="min-w-0 flex-1 font-sans text-[0.6875rem] text-dim">{{ holding }}</span>
-    </div>
-
 
     <div
       v-if="worktree.services.length > 1"
