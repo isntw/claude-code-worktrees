@@ -450,8 +450,8 @@ its own row and stays off until §5.4 lands.
 | `app/composables/useApi.ts` | `getPlugin` / `installPlugin` / `removePlugin` |
 | `app/components/PluginPanel.vue` | new |
 | `app/pages/settings.vue` · `app/nav.ts` | mount it; widen the blurb |
-| `SPEC.md` | §5.3 contract corrected; §5.6 added |
-| `MILESTONES.md` | entry |
+| `docs/SPEC.md` | §5.3 contract corrected; §5.6 added |
+| `docs/MILESTONES.md` | entry |
 
 Diagnostic codes, namespaced `thing.problem` and stable: `plugin.no-claude`, `plugin.disabled`,
 `plugin.outdated`, `plugin.install-failed`.

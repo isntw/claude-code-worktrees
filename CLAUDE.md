@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 `ccwt` manages git worktrees as **running environments** — provisioned files, installed dependencies,
-a dev server on its own port, live logs. `SPEC.md` is the product spec. This file is the set of rules
-that are not visible from the code; `MILESTONES.md` records what is built and the traps found on the
+a dev server on its own port, live logs. `docs/SPEC.md` is the product spec. This file is the set of rules
+that are not visible from the code; `docs/MILESTONES.md` records what is built and the traps found on the
 way.
 
 ## Commands
@@ -85,7 +85,7 @@ ccwt's *own* server still binds `127.0.0.1` explicitly. The rule is: bind narrow
   running.
 - **`waitReachable` waits for `settling` too**, so `dependsOn` means reachable *and* prepared. Its
   probe deadline applies only before the port answers.
-- **`postRemove` may never block a removal** (`SPEC.md` §5.3). Every command's result is discarded.
+- **`postRemove` may never block a removal** (`docs/SPEC.md` §5.3). Every command's result is discarded.
 - `argv()` strips top-level quotes as a shell would, so hook commands must be plain argv, not shell
   one-liners.
 
@@ -176,7 +176,7 @@ dependencies** on purpose (it lives outside `.output/`), and refuses any non-loo
 ## Web layer
 
 Terminal-native, dark-first, hand-rolled Tailwind 4. **There is no component library and must not
-be** — `Nuxt UI` is in `SPEC.md` §3 and was rejected because its radii and control shapes read as a
+be** — `Nuxt UI` is in `docs/SPEC.md` §3 and was rejected because its radii and control shapes read as a
 different product.
 
 - **Warm is broken.** `--ccwt-alarm` and `--ccwt-caution` are the only warm hues.
@@ -224,7 +224,7 @@ renders every primitive in every state; its sample data must never leak into rea
   carrying a `Diagnostic`; the broken thing is what the dashboard exists to show.
 - **`Diagnostic.code` is machine-readable**, namespaced `thing.problem` (`worktree.drift`,
   `project.no-config`). Keep them stable.
-- **`.worktreeinclude` is a config source, not a competitor** (`SPEC.md` §5.4, still stubbed). A file
+- **`.worktreeinclude` is a config source, not a competitor** (`docs/SPEC.md` §5.4, still stubbed). A file
   is copied only if it matches a pattern *and* is gitignored. `provision.copy` merges with it.
 - **ccwt is command-agnostic.** It allocates a port, renders a template, spawns a process, probes the
   port, kills the process group. It does not know what any command does, and nothing may teach it
