@@ -1,7 +1,7 @@
 {
   "name": "claude-code-worktrees",
   "version": "0.1.1",
-  "description": "Manage git worktrees as running environments \u2014 provisioned, ported, served.",
+  "description": "Manage git worktrees as running environments — provisioned, ported, served.",
   "license": "AGPL-3.0-only",
   "type": "module",
   "bin": {
@@ -36,9 +36,9 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",
-    "@types/node": "^24.7.0",
+    "@types/node": "^26.2.0",
     "tailwindcss": "^4.1.14",
-    "typescript": "^5.9.3",
-    "vue-tsc": "^3.1.1"
+    "typescript": "^7.0.2",
+    "vue-tsc": "^3.3.10"
   }
 }
