@@ -6,7 +6,7 @@ export interface NavPage {
   path: string
   title: string
   blurb: string
-  nav: 'page' | 'pinned'
+  nav: 'page' | 'pinned' | 'hidden'
   icon: Component
 }
 
@@ -40,7 +40,7 @@ export const NAV: NavPage[] = [
     path: '/preview',
     title: 'Console preview',
     blurb: 'Every primitive in every state, so the shell cannot drift unseen.',
-    nav: 'pinned',
+    nav: 'hidden',
     icon: SwatchBook,
   },
 ]

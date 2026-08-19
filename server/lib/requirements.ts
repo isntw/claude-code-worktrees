@@ -17,8 +17,7 @@ const TOOLS: Probe[] = [
     name: 'git',
     required: true,
     minimum: '2.20',
-    purpose:
-      'Creates, lists and removes every worktree, and remembers each service port in worktree-scoped config. Version 2.20 is where that config landed.',
+    purpose: 'Makes every worktree, and remembers each service port in its config.',
     install: 'https://git-scm.com/downloads',
   },
   {
@@ -26,7 +25,7 @@ const TOOLS: Probe[] = [
     required: true,
     minimum: '24',
     purpose:
-      'Runs ccwt itself, and reads the store through the built-in node:sqlite, which needs 24. This is the version ccwt is executing on, not whichever one is first on PATH.',
+      'Runs ccwt itself and its node:sqlite store — the version it is executing on, not the one on PATH.',
     install: 'https://nodejs.org',
     running: process.versions.node,
   },

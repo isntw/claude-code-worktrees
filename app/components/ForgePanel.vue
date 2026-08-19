@@ -1,85 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ExternalLink } from 'lucide-vue-next'
-import type { DeviceCode, ForgeSession } from '#shared/types'
 
-const api = useApi()
-
-const session = ref<ForgeSession | null>(null)
-const device = ref<DeviceCode | null>(null)
-const busy = ref(false)
-const error = ref<string | null>(null)
-
-let timer: ReturnType<typeof setTimeout> | null = null
-
-const signedIn = computed(() => session.value?.login !== null && session.value?.login !== undefined)
-
-const ready = computed(() => session.value?.configured !== false)
-
-const load = async () => {
-  session.value = await api.getForgeSession().catch(() => null)
-}
-
-const stopPolling = () => {
-  if (timer) clearTimeout(timer)
-  timer = null
-}
-
-const poll = async (handle: string, seconds: number) => {
-  timer = setTimeout(async () => {
-    const outcome = await api.pollForgeLogin(handle).catch((cause: Error) => ({
-      state: 'failed' as const,
-      message: cause.message,
-    }))
-
-    if (outcome.state === 'pending') {
-      await poll(handle, outcome.interval)
-      return
-    }
-
-    if (outcome.state === 'failed') {
-      error.value = outcome.message
-      device.value = null
-      return
-    }
-
-    session.value = outcome.session
-    device.value = null
-  }, seconds * 1000)
-}
-
-const start = async () => {
-  busy.value = true
-  error.value = null
-  try {
-    const started = await api.startForgeLogin()
-    device.value = started
-    await poll(started.handle, started.interval)
-  } catch (cause) {
-    error.value = (cause as Error).message
-  } finally {
-    busy.value = false
-  }
-}
-
-const cancel = () => {
-  stopPolling()
-  device.value = null
-}
-
-const signOut = async () => {
-  busy.value = true
-  try {
-    session.value = await api.signOutForge()
-  } catch (cause) {
-    error.value = (cause as Error).message
-  } finally {
-    busy.value = false
-  }
-}
-
-onMounted(load)
-onBeforeUnmount(stopPolling)
+const { session, device, busy, error, signedIn, configured, start, cancel, signOut } =
+  useForgeAuth()
 </script>
 
 <template>
@@ -103,7 +26,7 @@ onBeforeUnmount(stopPolling)
         This sign-in can read pull requests but not merge them. Sign in again to grant write access.
       </p>
 
-      <div v-if="!ready" class="mt-3 border border-caution px-3 py-2">
+      <div v-if="!configured" class="mt-3 border border-caution px-3 py-2">
         <p class="max-w-prose font-sans text-[0.6875rem] text-caution">
           This copy of ccwt has no GitHub client id, so it cannot offer a sign-in.
         </p>
@@ -137,8 +60,8 @@ onBeforeUnmount(stopPolling)
         <template v-else>
           <Button
             size="sm"
-            :disabled="busy || !ready"
-            :title="ready ? '' : 'ccwt was started without a GitHub client id'"
+            :disabled="busy || !configured"
+            :title="configured ? '' : 'ccwt was started without a GitHub client id'"
             @click="start"
             >{{
               busy ? 'working…' : signedIn ? 'use a different account' : 'connect GitHub'
