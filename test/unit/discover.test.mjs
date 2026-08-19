@@ -8,7 +8,7 @@ import {
   shapeOf,
   targetOf,
   underTranscript,
-} from '../plugin/lib/discover.mjs'
+} from '../../plugin/lib/discover.mjs'
 
 test('a port key never contains an underscore', () => {
   assert.equal(portKey('dev'), 'ccwt.port.dev')

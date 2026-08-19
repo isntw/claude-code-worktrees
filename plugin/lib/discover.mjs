@@ -10,7 +10,9 @@ const run = promisify(execFile)
 
 const PROBE_MS = 400
 
-export const ccwtDir = () => join(homedir(), '.ccwt')
+export const ccwtDir = () => process.env.CCWT_HOME || join(homedir(), '.ccwt')
+
+const CALL_MS = 3_000
 
 export const git = async (cwd, args) => {
   const { stdout } = await run('git', args, { cwd }).catch(() => ({ stdout: '' }))
@@ -61,20 +63,44 @@ async function readJson(path) {
   }
 }
 
-export const readState = () => readJson(join(ccwtDir(), 'state.json'))
-
 export async function reachServer() {
-  const server = await readJson(join(ccwtDir(), 'server.json'))
-  if (!server?.port) return null
+  const runtime = await readJson(join(ccwtDir(), 'runtime.json'))
+  if (!runtime?.port || typeof runtime.token !== 'string') return null
 
-  const token = await readFile(join(ccwtDir(), 'token'), 'utf8').catch(() => null)
-  if (token === null) return null
+  const host = runtime.host === '::1' ? '[::1]' : (runtime.host ?? '127.0.0.1')
+  if (!(await isListening(runtime.port))) return null
 
-  const host = server.host === '::1' ? '[::1]' : (server.host ?? '127.0.0.1')
-  if (!(await isListening(server.port))) return null
-
-  return { origin: `http://${host}:${server.port}`, token: token.trim() }
+  return { origin: `http://${host}:${runtime.port}`, token: runtime.token }
 }
+
+export async function ask(path) {
+  const server = await reachServer()
+  if (!server) return null
+
+  const answered = await fetch(`${server.origin}${path}`, {
+    headers: { 'x-ccwt-token': server.token },
+    signal: AbortSignal.timeout(CALL_MS),
+  }).catch(() => null)
+
+  if (!answered?.ok) return null
+  return answered.json().catch(() => null)
+}
+
+export async function tell(path, body) {
+  const server = await reachServer()
+  if (!server) return null
+
+  const answered = await fetch(`${server.origin}${path}`, {
+    method: 'PUT',
+    headers: { 'x-ccwt-token': server.token, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(CALL_MS),
+  }).catch(() => null)
+
+  return answered?.ok ? true : null
+}
+
+export const readState = () => ask('/api/plugin/state')
 
 export function parseWorktrees(porcelain) {
   const paths = []

@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
 import type { CcwtConfig } from '../../shared/types'
+import { databasePath, db, stateDir } from './db'
+import type { ProjectTable } from './schema'
+
+export { databasePath, stateDir }
 
 export interface ProjectRecord {
   id: string
@@ -11,64 +12,62 @@ export interface ProjectRecord {
   configRevision?: number
 }
 
-export interface State {
-  version: 1
-  projects: ProjectRecord[]
-}
-
-export function stateDir(): string {
-  return join(homedir(), '.ccwt')
-}
-
-export function statePath(): string {
-  return join(stateDir(), 'state.json')
-}
-
-export function tokenPath(): string {
-  return join(stateDir(), 'token')
-}
-
-function isRecord(value: unknown): value is ProjectRecord {
-  if (typeof value !== 'object' || value === null) return false
-  const candidate = value as Partial<ProjectRecord>
-  return typeof candidate.id === 'string' && typeof candidate.rootPath === 'string'
-}
-
-export async function readState(): Promise<State> {
-  const raw = await readFile(statePath(), 'utf8').catch(() => null)
-  if (raw === null) return { version: 1, projects: [] }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<State>
-    const projects = Array.isArray(parsed.projects) ? parsed.projects.filter(isRecord) : []
-    return { version: 1, projects }
-  } catch {
-    return { version: 1, projects: [] }
+function toRecord(row: ProjectTable): ProjectRecord {
+  const record: ProjectRecord = {
+    id: row.id,
+    rootPath: row.root_path,
+    addedAt: row.added_at,
   }
-}
 
-export async function writeState(state: State): Promise<void> {
-  await mkdir(dirname(statePath()), { recursive: true, mode: 0o700 })
-  await writeFile(statePath(), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 })
+  if (row.config !== null) {
+    try {
+      record.config = JSON.parse(row.config) as CcwtConfig
+    } catch {
+      record.config = undefined
+    }
+  }
+
+  if (row.config_revision !== null) record.configRevision = row.config_revision
+
+  return record
 }
 
 export async function listRecords(): Promise<ProjectRecord[]> {
-  const state = await readState()
-  return state.projects
+  const rows = await db()
+    .selectFrom('projects')
+    .selectAll()
+    .orderBy('added_at')
+    .orderBy('id')
+    .execute()
+
+  return rows.map(toRecord)
 }
 
 export async function findRecord(id: string): Promise<ProjectRecord | null> {
-  const state = await readState()
-  return state.projects.find((project) => project.id === id) ?? null
+  const row = await db()
+    .selectFrom('projects')
+    .selectAll()
+    .where('id', '=', id)
+    .executeTakeFirst()
+
+  return row ? toRecord(row) : null
 }
 
 export async function addRecord(record: ProjectRecord): Promise<ProjectRecord> {
-  const state = await readState()
-  const existing = state.projects.find((project) => project.id === record.id)
+  const existing = await findRecord(record.id)
   if (existing) return existing
 
-  state.projects.push(record)
-  await writeState(state)
+  await db()
+    .insertInto('projects')
+    .values({
+      id: record.id,
+      root_path: record.rootPath,
+      added_at: record.addedAt,
+      config: record.config === undefined ? null : JSON.stringify(record.config),
+      config_revision: record.configRevision ?? null,
+    })
+    .execute()
+
   return record
 }
 
@@ -76,20 +75,26 @@ export async function updateRecord(
   id: string,
   change: Partial<Omit<ProjectRecord, 'id'>>,
 ): Promise<ProjectRecord | null> {
-  const state = await readState()
-  const record = state.projects.find((project) => project.id === id)
+  const record = await findRecord(id)
   if (!record) return null
 
-  Object.assign(record, change)
-  await writeState(state)
-  return record
+  const patch: Partial<ProjectTable> = {}
+
+  if ('rootPath' in change && change.rootPath !== undefined) patch.root_path = change.rootPath
+  if ('addedAt' in change && change.addedAt !== undefined) patch.added_at = change.addedAt
+  if ('config' in change) {
+    patch.config = change.config === undefined ? null : JSON.stringify(change.config)
+  }
+  if ('configRevision' in change) patch.config_revision = change.configRevision ?? null
+
+  if (Object.keys(patch).length) {
+    await db().updateTable('projects').set(patch).where('id', '=', id).execute()
+  }
+
+  return findRecord(id)
 }
 
 export async function removeRecord(id: string): Promise<boolean> {
-  const state = await readState()
-  const next = state.projects.filter((project) => project.id !== id)
-  if (next.length === state.projects.length) return false
-
-  await writeState({ ...state, projects: next })
-  return true
+  const result = await db().deleteFrom('projects').where('id', '=', id).executeTakeFirst()
+  return Number(result.numDeletedRows ?? 0) > 0
 }
