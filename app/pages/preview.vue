@@ -33,6 +33,7 @@ const mixed = ref(false)
 const switched = ref(true)
 const tab = ref<'a' | 'b' | 'c'>('a')
 const modal = ref(false)
+const guide = ref(false)
 
 const LOCKS: (LockState | undefined)[] = [undefined, 'unknown', 'live', 'gone']
 const SERVICES: ServiceState[] = ['stopped', 'starting', 'running', 'crashed']
@@ -221,6 +222,7 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
 <template>
   <ConsoleHeader :title="page.title" :blurb="page.blurb">
     <Button @click="modal = true">open a dialog</Button>
+    <Button variation="primary" :outline="false" @click="guide = true">open the guide</Button>
   </ConsoleHeader>
 
   <main class="grid min-h-0 flex-1 gap-3 overflow-y-auto p-4 xl:grid-cols-2">
@@ -436,4 +438,6 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
       <Button size="sm" variation="error" :outline="false" @click="modal = false">remove</Button>
     </template>
   </ModalPanel>
+
+  <OnboardingModal v-if="guide" @close="guide = false" />
 </template>

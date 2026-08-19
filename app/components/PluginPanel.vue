@@ -1,64 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import type { PluginReport, PluginState } from '#shared/types'
-import type { BadgeVariation } from './variation'
+import { ref } from 'vue'
 
-const api = useApi()
+const { report, busy, error, state, installed, look, says, events, install, enable, remove } =
+  usePluginSetup()
 
-const report = ref<PluginReport | null>(null)
-const busy = ref(false)
-const error = ref<string | null>(null)
 const asking = ref<'install' | 'update' | 'about' | null>(null)
 
-const state = computed<PluginState | null>(() => report.value?.state ?? null)
-const installed = computed(() => state.value === 'installed' || state.value === 'outdated')
-
-const LOOK: Record<PluginState, BadgeVariation> = {
-  unavailable: 'neutral',
-  absent: 'neutral',
-  installed: 'success',
-  disabled: 'warning',
-  outdated: 'warning',
+const confirm = async () => {
+  if (await install()) asking.value = null
 }
-
-const SAYS: Record<PluginState, string> = {
-  unavailable: 'claude code not found',
-  absent: 'not installed',
-  installed: 'installed',
-  disabled: 'switched off',
-  outdated: 'update available',
-}
-
-const events = computed(() =>
-  (report.value?.parts.hooks ?? [])
-    .map((hook) => `${hook.event}${hook.matcher ? `:${hook.matcher}` : ''}`)
-    .join(' · '),
-)
-
-const load = async () => {
-  report.value = await api.getPlugin().catch(() => null)
-}
-
-const act = async (run: () => Promise<PluginReport>) => {
-  busy.value = true
-  error.value = null
-  try {
-    report.value = await run()
-    asking.value = null
-  } catch (cause) {
-    error.value = (cause as Error).message
-  } finally {
-    busy.value = false
-  }
-}
-
-onMounted(load)
 </script>
 
 <template>
   <Panel title="Claude Code">
     <template #label>
-      <Badge v-if="state" :variation="LOOK[state]" size="sm">{{ SAYS[state] }}</Badge>
+      <Badge v-if="state" :variation="look" size="sm">{{ says }}</Badge>
     </template>
 
     <div class="px-3 py-3">
@@ -75,8 +31,8 @@ onMounted(load)
           class="mt-1.5 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1 font-mono text-[0.6875rem] leading-snug"
         >
           <dt class="text-faint">plugin</dt>
-          <dd class="min-w-0 text-ink">
-            {{ report.parts.id }}
+          <dd class="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+            <span class="text-ink">{{ report.parts.id }}</span>
             <span class="text-dim">{{ installed ? report.installed : report.shipped }}</span>
             <span v-if="report.scope" class="text-faint">· {{ report.scope }}</span>
             <span v-if="report.state === 'outdated'" class="text-caution"
@@ -118,27 +74,15 @@ onMounted(load)
       <p v-if="error" class="mt-2 max-w-prose font-sans text-[0.6875rem] text-alarm">{{ error }}</p>
 
       <div class="mt-3 flex items-center gap-2">
-        <Button
-          v-if="state === 'absent'"
-          size="sm"
-          :disabled="busy"
-          @click="asking = 'install'"
+        <Button v-if="state === 'absent'" size="sm" :disabled="busy" @click="asking = 'install'"
           >install…</Button
         >
-        <Button
-          v-if="state === 'outdated'"
-          size="sm"
-          :disabled="busy"
-          @click="asking = 'update'"
+        <Button v-if="state === 'outdated'" size="sm" :disabled="busy" @click="asking = 'update'"
           >update…</Button
         >
-        <Button
-          v-if="state === 'disabled'"
-          size="sm"
-          :disabled="busy"
-          @click="act(api.enablePlugin)"
-          >{{ busy ? 'working…' : 'switch it on' }}</Button
-        >
+        <Button v-if="state === 'disabled'" size="sm" :disabled="busy" @click="enable">{{
+          busy ? 'working…' : 'switch it on'
+        }}</Button>
 
         <Button v-if="report" size="sm" :disabled="busy" @click="asking = 'about'"
           >what it does</Button
@@ -149,7 +93,7 @@ onMounted(load)
           size="sm"
           :disabled="busy"
           title="Uninstall the plugin from Claude Code. Sessions stop being told what ccwt runs."
-          @click="act(api.removePlugin)"
+          @click="remove"
           >remove</Button
         >
       </div>
@@ -161,6 +105,6 @@ onMounted(load)
     :report="report"
     :action="asking === 'about' ? null : asking"
     @close="asking = null"
-    @confirm="act(api.installPlugin)"
+    @confirm="confirm"
   />
 </template>

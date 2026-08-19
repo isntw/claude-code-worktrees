@@ -2,7 +2,7 @@ import { ref } from 'vue'
 
 const RAIL_KEY = 'ccwt.sidebar'
 const GUIDE_KEY = 'ccwt.guide'
-const GUIDE_REVISION = '1'
+const GUIDE_REVISION = '2'
 
 const sidebarCollapsed = ref(false)
 const guideOpen = ref(false)
