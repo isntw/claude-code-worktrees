@@ -26,15 +26,13 @@ const { session, device, busy, error, signedIn, configured, start, cancel, signO
         This sign-in can read pull requests but not merge them. Sign in again to grant write access.
       </p>
 
-      <div v-if="!configured" class="mt-3 border border-caution px-3 py-2">
-        <p class="max-w-prose font-sans text-[0.6875rem] text-caution">
-          This copy of ccwt has no GitHub client id, so it cannot offer a sign-in.
-        </p>
-        <p class="mt-1 max-w-prose font-sans text-[0.6875rem] text-faint">
+      <Notice v-if="!configured" variation="warning" class="mt-3">
+        This copy of ccwt has no GitHub client id, so it cannot offer a sign-in.
+        <template #hint>
           Register an OAuth app with device flow enabled, then start ccwt with
           <code class="font-mono">CCWT_GITHUB_CLIENT_ID</code> set to its client id.
-        </p>
-      </div>
+        </template>
+      </Notice>
 
       <div v-if="device" class="mt-3 border border-line-strong px-3 py-3">
         <p class="t-eyebrow">Enter this code on GitHub</p>

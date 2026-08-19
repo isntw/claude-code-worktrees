@@ -9,9 +9,9 @@ import type {
   Project,
   PullRequest,
   ServiceStatus,
-  Severity,
   Worktree,
 } from '#shared/types'
+import { REPAIR_HINT } from '../../../components/repair'
 import type { StackPart } from '../../../compose'
 import { composeFileOf, containerFor, serviceNames } from '../../../compose'
 import { DETAIL_PAGES } from '../../../nav'
@@ -67,16 +67,20 @@ const selected = ref<string | null>(null)
 const pullFor = (worktree: Worktree) =>
   worktree.branch ? (forge.value?.pulls[worktree.branch] ?? null) : null
 
-const NOTICE: Record<Severity, string> = {
-  error: 'border-alarm text-alarm',
-  warning: 'border-caution text-caution',
-  info: 'border-line text-faint',
-}
+const notices = computed<Diagnostic[]>(() => {
+  const found = [...(project.value?.issues ?? []), ...(forge.value?.issues ?? [])]
+  const behind = unprovisioned.value.length
 
-const notices = computed<Diagnostic[]>(() => [
-  ...(project.value?.issues ?? []),
-  ...(forge.value?.issues ?? []),
-])
+  if (behind)
+    found.push({
+      code: 'project.worktrees-unprovisioned',
+      severity: 'warning',
+      message: `${behind} ${behind === 1 ? 'worktree does' : 'worktrees do'} not match what the recipe declares`,
+      hint: REPAIR_HINT,
+    })
+
+  return found
+})
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -96,6 +100,10 @@ const isRunning = (worktree: Worktree) =>
 const running = computed(() => worktrees.value.filter(isRunning))
 
 const visible = computed(() => (filter.value === 'running' ? running.value : worktrees.value))
+
+const unprovisioned = computed(() =>
+  worktrees.value.filter((worktree) => !worktree.root && !worktree.provisioned),
+)
 
 const tabs = computed(() => [
   { value: 'all' as const, label: 'all', count: worktrees.value.length },
@@ -160,6 +168,41 @@ const clear = async () => {
 const watching = async (worktree: Worktree, run: () => Promise<unknown>) => {
   if (selected.value !== worktree.id) await show(worktree.id)
   await act(run)
+}
+
+const repairing = ref<string | null>(null)
+const repairingAll = ref(false)
+
+const settle = (next: Worktree) => {
+  const at = worktrees.value.findIndex((worktree) => worktree.id === next.id)
+  if (at >= 0) worktrees.value[at] = next
+}
+
+const repair = async (worktree: Worktree) => {
+  repairing.value = worktree.id
+  error.value = null
+  if (selected.value !== worktree.id) await show(worktree.id)
+
+  try {
+    settle(await api.provision(projectId.value, worktree.id, true))
+  } catch (cause) {
+    error.value = (cause as Error).message
+  } finally {
+    repairing.value = null
+  }
+}
+
+const repairEvery = async () => {
+  repairingAll.value = true
+  error.value = null
+
+  try {
+    for (const next of await api.provisionAll(projectId.value, true)) settle(next)
+  } catch (cause) {
+    error.value = (cause as Error).message
+  } finally {
+    repairingAll.value = false
+  }
 }
 
 const act = async (run: () => Promise<unknown>) => {
@@ -280,6 +323,14 @@ onBeforeUnmount(() => {
     <Tabs v-model="filter" :options="tabs" label="Filter worktrees" />
     <Button :disabled="loading" @click="reload">{{ loading ? 'reading…' : 'refresh' }}</Button>
     <Button
+      v-if="unprovisioned.length"
+      variation="warning"
+      :disabled="loading || repairingAll || !project?.config"
+      :title="REPAIR_HINT"
+      @click="repairEvery"
+      >{{ repairingAll ? 'repair all…' : 'repair all' }}</Button
+    >
+    <Button
       variation="primary"
       :outline="false"
       :disabled="!project?.config?.services.length"
@@ -320,15 +371,14 @@ onBeforeUnmount(() => {
 
     <SetupPanel v-if="project" :setup="project.setup" class="mb-3" />
 
-    <p
+    <Notice
       v-for="issue in notices"
       :key="issue.code"
-      class="mb-2 border px-3 py-2 font-sans text-[0.6875rem]"
-      :class="NOTICE[issue.severity]"
+      :variation="issue.severity"
+      :hint="issue.hint"
+      class="mb-2"
+      >{{ issue.message }}</Notice
     >
-      {{ issue.message }}
-      <span v-if="issue.hint" class="text-faint"> — {{ issue.hint }}</span>
-    </p>
 
     <div v-if="visible.length" class="grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
       <WorktreeCard
@@ -351,6 +401,8 @@ onBeforeUnmount(() => {
         @lock="act(() => api.lockWorktree(projectId, worktree.id))"
         @unlock="act(() => api.unlockWorktree(projectId, worktree.id))"
         @remove="doomed = worktree"
+        :repairing="repairing === worktree.id"
+        @repair="repair(worktree)"
         @merge="openMerge(worktree)"
       />
     </div>

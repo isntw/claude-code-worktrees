@@ -1,5 +1,6 @@
 import { basename, join, resolve } from 'node:path'
 import type {
+  CcwtConfig,
   LockState,
   PortHold,
   Project,
@@ -28,6 +29,7 @@ import { isDirectory, isSymlink, pathExists } from './fs'
 import { allocate, isListening, pruneSharedPorts, readAllocated, release } from './ports'
 import type { Placeholders } from './provision'
 import {
+  divergedBeneath,
   missingBeneath,
   needsWriting,
   placeFiles,
@@ -90,7 +92,26 @@ async function lockStateOf(locked: boolean, reason: string | null): Promise<Lock
   return (await startedWhenClaimed(pid, reason)) ? 'live' : 'gone'
 }
 
-async function needsProvisioning(project: Project, worktreePath: string): Promise<boolean> {
+function isLive(status: ServiceStatus | null): boolean {
+  return status !== null && (status.state === 'running' || status.state === 'starting')
+}
+
+async function diverged(project: Project, worktreePath: string): Promise<boolean> {
+  const config = project.config
+  if (!config) return false
+
+  for (const path of config.provision.link) {
+    const source = join(project.rootPath, path)
+    const target = join(worktreePath, path)
+
+    if (!(await isDirectory(source)) || !(await isDirectory(target))) continue
+    if (await divergedBeneath(path, source, target)) return true
+  }
+
+  return false
+}
+
+async function missing(project: Project, worktreePath: string): Promise<boolean> {
   const config = project.config
   if (!config) return false
 
@@ -110,10 +131,15 @@ async function needsProvisioning(project: Project, worktreePath: string): Promis
       continue
     }
 
-    if (linked && (await isDirectory(source)) && (await missingBeneath(source, target))) return true
+    if (linked && (await isDirectory(source)) && (await missingBeneath(path, source, target)))
+      return true
   }
 
   return needsWriting(worktreePath, config.provision.write, placeholders(project, worktreePath))
+}
+
+async function outOfDate(project: Project, worktreePath: string): Promise<boolean> {
+  return (await missing(project, worktreePath)) || (await diverged(project, worktreePath))
 }
 
 export function slugify(name: string): string {
@@ -189,7 +215,7 @@ async function allocateAll(
 
   for (const service of project.config?.services ?? []) {
     const live = supervisor.status(worktreeId, service.name)
-    const keep = live !== null && (live.state === 'running' || live.state === 'starting')
+    const keep = isLive(live)
 
     const main = await allocate(worktreePath, service.name, service.portRange, { keep, reserved })
     if (main.from !== null) moved(service.name, service.name, main.from, main.port)
@@ -296,7 +322,7 @@ export async function list(project: Project): Promise<Worktree[]> {
           lockState: await lockStateOf(entry.locked, entry.lockReason),
           lockedAt: lockedAtOf(entry.locked, entry.lockReason),
           prunable: entry.prunable,
-          provisioned: !(await needsProvisioning(project, entry.path)),
+          provisioned: !(await outOfDate(project, entry.path)),
           services: await servicesFor(project, id, entry.path),
           issues: [],
         }
@@ -381,14 +407,37 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   return created
 }
 
-export async function repair(project: Project, worktreeId: string): Promise<Worktree> {
+function liveServices(config: CcwtConfig, worktreeId: string): string[] {
+  return config.services
+    .filter((service) => isLive(supervisor.status(worktreeId, service.name)))
+    .map((service) => service.name)
+}
+
+async function repairWorktree(
+  project: Project,
+  worktree: Worktree,
+  refresh: boolean,
+): Promise<void> {
   const config = project.config
-  if (!config) throw new Error('This project has no resolvable configuration.')
+  if (!config) return
+  if (worktree.root) throw new Error('The repository root is not provisioned by ccwt.')
 
-  const worktree = await find(project, worktreeId)
-  if (!worktree) throw new Error('No such worktree.')
+  const worktreeId = worktree.id
 
-  supervisor.note(worktreeId, 'provision', 'putting back what the recipe declares…')
+  const live = refresh ? liveServices(config, worktreeId) : []
+
+  if (live.length) {
+    supervisor.note(worktreeId, 'provision', `stopping ${live.join(', ')} to update the worktree…`)
+    for (const name of startOrder(config.services).reverse()) {
+      if (live.includes(name)) await supervisor.stop(worktreeId, name)
+    }
+  }
+
+  supervisor.note(
+    worktreeId,
+    'provision',
+    refresh ? 'relinking what the recipe declares…' : 'putting back what the recipe declares…',
+  )
 
   try {
     const report = await placeFiles(
@@ -396,6 +445,7 @@ export async function repair(project: Project, worktreeId: string): Promise<Work
       worktree.path,
       config,
       placeholders(project, worktree.path),
+      refresh,
     )
 
     if (report.written.length) {
@@ -424,8 +474,49 @@ export async function repair(project: Project, worktreeId: string): Promise<Work
   await allocateAll(project, worktreeId, worktree.path)
   supervisor.note(worktreeId, 'provision', 'ready')
 
+  if (live.length) {
+    supervisor.note(worktreeId, 'provision', `starting ${live.join(', ')} back up…`)
+    for (const name of startOrder(config.services)) {
+      if (!live.includes(name)) continue
+      await startService(project, worktreeId, worktree.path, name, worktree.branch, false).catch(
+        (cause: Error) => {
+          supervisor.note(worktreeId, name, cause.message, 'stderr')
+          return null
+        },
+      )
+    }
+  }
+
+}
+
+export async function repair(
+  project: Project,
+  worktreeId: string,
+  refresh = false,
+): Promise<Worktree> {
+  if (!project.config) throw new Error('This project has no resolvable configuration.')
+
+  const worktree = await find(project, worktreeId)
+  if (!worktree) throw new Error('No such worktree.')
+
+  await repairWorktree(project, worktree, refresh)
+
   const refreshed = await find(project, worktreeId)
   return refreshed ?? worktree
+}
+
+export async function repairAll(project: Project, refresh = false): Promise<Worktree[]> {
+  if (!project.config) throw new Error('This project has no resolvable configuration.')
+
+  for (const worktree of await list(project)) {
+    if (worktree.root || worktree.prunable) continue
+
+    await repairWorktree(project, worktree, refresh).catch((cause: Error) => {
+      supervisor.note(worktree.id, 'provision', cause.message, 'stderr')
+    })
+  }
+
+  return list(project)
 }
 
 export async function startService(
@@ -434,6 +525,7 @@ export async function startService(
   worktreePath: string,
   serviceName: string,
   branch: string | null,
+  mayRepair = true,
 ): Promise<ServiceStatus> {
   const config = project.config
   if (!config) throw new Error('This project has no resolvable configuration.')
@@ -441,7 +533,7 @@ export async function startService(
   const service = config.services.find((candidate) => candidate.name === serviceName)
   if (!service) throw new Error(`No service named \`${serviceName}\` in this project.`)
 
-  if (await needsProvisioning(project, worktreePath)) {
+  if (mayRepair && (await missing(project, worktreePath))) {
     await repair(project, worktreeId).catch((cause: Error) => {
       supervisor.note(worktreeId, 'provision', cause.message, 'stderr')
     })
@@ -456,7 +548,7 @@ export async function startService(
     const next = config.services.find((candidate) => candidate.name === name)!
 
     const live = supervisor.status(worktreeId, name)
-    const already = live && (live.state === 'running' || live.state === 'starting')
+    const already = isLive(live)
 
     const port = ports[name]!
 

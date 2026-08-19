@@ -167,6 +167,23 @@ const act = async (run: () => Promise<unknown>) => {
 
 const start = (row: OverviewRow) => act(() => api.startAll(row.projectId, row.worktree.id))
 const stop = (row: OverviewRow) => act(() => api.stopAll(row.projectId, row.worktree.id))
+const repairing = ref<string | null>(null)
+
+const repair = async (row: OverviewRow) => {
+  repairing.value = row.worktree.id
+  error.value = null
+
+  try {
+    const next = await api.provision(row.projectId, row.worktree.id, true)
+    const held = data.value?.rows
+    const at = held?.findIndex((candidate) => candidate.worktree.id === next.id) ?? -1
+    if (held && at >= 0) held[at] = { ...held[at]!, worktree: next }
+  } catch (cause) {
+    error.value = (cause as Error).message
+  } finally {
+    repairing.value = null
+  }
+}
 
 const merge = (row: OverviewRow) => {
   if (!row.pull) return
@@ -268,6 +285,8 @@ const PANEL = 'border border-line bg-surface'
           @lock="lock"
           @unlock="unlock"
           @remove="remove"
+          :repairing="repairing"
+          @repair="repair"
         />
         <p v-else class="px-3 py-4 font-sans text-[0.6875rem] text-faint">
           Nothing matches this filter.

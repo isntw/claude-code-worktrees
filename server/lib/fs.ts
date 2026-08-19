@@ -22,6 +22,23 @@ export async function isSymlink(path: string): Promise<boolean> {
   )
 }
 
+export async function modifiedAt(path: string): Promise<number | null> {
+  return stat(path).then(
+    (info) => info.mtimeMs,
+    () => null,
+  )
+}
+
+export async function sameFile(a: string, b: string): Promise<boolean> {
+  const [left, right] = await Promise.all([
+    stat(a).catch(() => null),
+    stat(b).catch(() => null),
+  ])
+
+  if (!left || !right) return false
+  return left.ino === right.ino && left.dev === right.dev
+}
+
 export async function readJsonSafe<T>(path: string): Promise<T | null> {
   const raw = await readFile(path, 'utf8').catch(() => null)
   if (raw === null) return null

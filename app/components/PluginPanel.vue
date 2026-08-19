@@ -54,22 +54,14 @@ const confirm = async () => {
         </dl>
       </div>
 
-      <div
+      <Notice
         v-for="issue in report?.issues ?? []"
         :key="issue.code"
-        class="mt-3 border px-3 py-2"
-        :class="issue.severity === 'error' ? 'border-alarm' : 'border-caution'"
+        :variation="issue.severity"
+        :hint="issue.hint"
+        class="mt-3"
+        >{{ issue.message }}</Notice
       >
-        <p
-          class="max-w-prose font-sans text-[0.6875rem]"
-          :class="issue.severity === 'error' ? 'text-alarm' : 'text-caution'"
-        >
-          {{ issue.message }}
-        </p>
-        <p v-if="issue.hint" class="mt-1 max-w-prose font-sans text-[0.6875rem] text-faint">
-          {{ issue.hint }}
-        </p>
-      </div>
 
       <p v-if="error" class="mt-2 max-w-prose font-sans text-[0.6875rem] text-alarm">{{ error }}</p>
 

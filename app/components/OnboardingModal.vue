@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { AlertTriangle, Check, ExternalLink, Minus, X } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type { ToolCheck, ToolState } from '#shared/types'
+import { tone } from './variation'
 import type { Variation } from './variation'
 
 const emit = defineEmits<{ close: [] }>()
@@ -29,15 +30,7 @@ const ICON: Record<ToolState, Component> = {
   missing: X,
 }
 
-const TINT: Record<Variation, string> = {
-  neutral: 'text-faint',
-  info: 'text-info',
-  primary: 'text-ink',
-  success: 'text-success',
-  agent: 'text-agent',
-  warning: 'text-caution',
-  error: 'text-alarm',
-}
+const tint = (variation: Variation) => `${tone(variation)} text-[var(--tone-quiet)]`
 
 const at = ref(0)
 const tools = ref<ToolCheck[] | null>(null)
@@ -57,7 +50,7 @@ const rows = computed(() =>
     return {
       ...tool,
       icon: spare ? Minus : ICON[tool.state],
-      tint: TINT[spare ? 'neutral' : VARIATION[tool.state]],
+      tint: tint(spare ? 'neutral' : VARIATION[tool.state]),
       said: tool.state === 'missing' ? 'not found' : (tool.version ?? 'installed'),
     }
   }),
@@ -77,20 +70,20 @@ const status = computed<{ text: string; tint: string } | null>(() => {
   if (at.value === 0) {
     if (!tools.value) return null
     return ok.value
-      ? { text: 'ready', tint: TINT.success }
-      : { text: 'action needed', tint: TINT.error }
+      ? { text: 'ready', tint: tint('success') }
+      : { text: 'action needed', tint: tint('error') }
   }
 
   if (at.value === 1) {
     if (!forge.session.value) return null
-    if (!forge.configured.value) return { text: 'unavailable', tint: TINT.warning }
+    if (!forge.configured.value) return { text: 'unavailable', tint: tint('warning') }
     return forge.signedIn.value
-      ? { text: 'connected', tint: TINT.success }
-      : { text: 'not connected', tint: TINT.neutral }
+      ? { text: 'connected', tint: tint('success') }
+      : { text: 'not connected', tint: tint('neutral') }
   }
 
   if (!plugin.state.value) return null
-  return { text: plugin.says.value, tint: TINT[plugin.look.value] }
+  return { text: plugin.says.value, tint: tint(plugin.look.value) }
 })
 
 const commands = computed(() =>
@@ -204,10 +197,10 @@ onMounted(load)
           This sign-in can read pull requests but not merge them.
         </p>
 
-        <p v-if="!forge.configured.value" class="mt-3 border border-caution px-3 py-2 font-sans text-[0.6875rem] text-caution">
+        <Notice v-if="!forge.configured.value" variation="warning" class="mt-3">
           This copy of ccwt has no GitHub client id, so it cannot offer a sign-in. Start it with
           <code class="font-mono">CCWT_GITHUB_CLIENT_ID</code> set.
-        </p>
+        </Notice>
 
         <div v-if="forge.device.value" class="mt-3 border border-line-strong px-3 py-3">
           <p class="t-eyebrow">Enter this code on GitHub</p>
@@ -294,19 +287,14 @@ onMounted(load)
           </template>
         </dl>
 
-        <div
+        <Notice
           v-for="issue in plugin.report.value?.issues ?? []"
           :key="issue.code"
-          class="mt-3 border px-3 py-2"
-          :class="issue.severity === 'error' ? 'border-alarm' : 'border-caution'"
+          :variation="issue.severity"
+          :hint="issue.hint"
+          class="mt-3"
+          >{{ issue.message }}</Notice
         >
-          <p
-            class="max-w-prose font-sans text-[0.6875rem]"
-            :class="issue.severity === 'error' ? 'text-alarm' : 'text-caution'"
-          >
-            {{ issue.message }}
-          </p>
-        </div>
 
         <div v-if="commands.length" class="mt-3 border border-line-strong px-3 py-2">
           <p class="t-eyebrow">ccwt will run these, and nothing else</p>
