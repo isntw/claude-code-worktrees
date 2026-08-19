@@ -1,31 +1,24 @@
 #!/usr/bin/env node
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
-import { ccwtDir, describe, duplicates, targetOf } from '../lib/discover.mjs'
+import { resolve } from 'node:path'
+import { ask, describe, duplicates, targetOf, tell } from '../lib/discover.mjs'
 import { changes, overview, renameTo, snapshot } from '../lib/report.mjs'
 
-const markerPath = (sessionId) =>
-  join(ccwtDir(), 'sessions', `${sessionId.replace(/[^A-Za-z0-9_-]/g, '')}.json`)
+const markerId = (sessionId) => encodeURIComponent(sessionId.replace(/[^A-Za-z0-9_-]/g, ''))
 
 async function readMarker(sessionId) {
   if (!sessionId) return null
-  const raw = await readFile(markerPath(sessionId), 'utf8').catch(() => null)
-  if (raw === null) return null
-  try {
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
+  const held = await ask(`/api/plugin/session/${markerId(sessionId)}`)
+  return held && typeof held.at === 'string' ? held : null
 }
 
 async function writeMarker(sessionId, rows, title) {
   if (!sessionId) return
-  await mkdir(join(ccwtDir(), 'sessions'), { recursive: true, mode: 0o700 }).catch(() => undefined)
-  await writeFile(
-    markerPath(sessionId),
-    JSON.stringify({ at: new Date().toISOString(), rows, title }),
-    { mode: 0o600 },
-  ).catch(() => undefined)
+  await tell(`/api/plugin/session/${markerId(sessionId)}`, { rows, title })
+}
+
+async function dropMarker(sessionId) {
+  if (!sessionId) return
+  await tell(`/api/plugin/session/${markerId(sessionId)}`, { done: true })
 }
 
 const emit = (payload) => {
@@ -119,7 +112,7 @@ const input = await read()
 
 if (mode === 'end') {
   const sessionId = input?.session_id
-  if (sessionId) await rm(markerPath(sessionId), { force: true }).catch(() => undefined)
+  await dropMarker(sessionId)
   process.exit(0)
 }
 

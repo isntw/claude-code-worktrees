@@ -623,6 +623,7 @@ export async function remove(
 
   if (worktree.prunable) {
     await supervisor.stopWorktree(worktreeId)
+    supervisor.forgetScrollback(worktreeId)
     await pruneWorktrees(project.rootPath)
     return dropBranch(project.rootPath, worktree.branch, alsoBranch)
   }
@@ -697,6 +698,7 @@ export async function remove(
   }
 
   await removeWorktree(project.rootPath, worktree.path, owned)
+  supervisor.forgetScrollback(worktreeId)
 
   return dropBranch(project.rootPath, worktree.branch, alsoBranch)
 }

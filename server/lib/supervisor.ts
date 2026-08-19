@@ -9,9 +9,11 @@ import type {
 } from '../../shared/types'
 import { argv, exec } from './exec'
 import { envKey } from './env'
+import * as logstore from './logstore'
 import { isListening } from './ports'
 
 const MAX_LINES = 1000
+const MAX_CARRY = 8_192
 const KILL_AFTER_MS = 4000
 const GIVE_UP_AFTER_MS = 8000
 const INSPECT_FOR_MS = 5000
@@ -61,7 +63,6 @@ interface Entry {
 }
 
 const entries = new Map<string, Entry>()
-const logs = new Map<string, LogLine[]>()
 const logListeners = new Set<LogListener>()
 const statusListeners = new Set<StatusListener>()
 
@@ -126,7 +127,6 @@ export function note(
   text: string,
   stream: 'stdout' | 'stderr' = 'stdout',
 ): void {
-  const key = keyFor(worktreeId, service)
   const line: LogLine = {
     worktreeId,
     service,
@@ -135,10 +135,7 @@ export function note(
     text,
   }
 
-  const buffer = logs.get(key) ?? []
-  buffer.push(line)
-  if (buffer.length > MAX_LINES) buffer.splice(0, buffer.length - MAX_LINES)
-  logs.set(key, buffer)
+  logstore.append(line)
 
   for (const listener of logListeners) listener(line)
 }
@@ -153,9 +150,15 @@ function pipe(entry: Entry, stream: NodeJS.ReadableStream | null, kind: 'stdout'
 
   let carry = ''
   stream.on('data', (chunk: string) => {
-    const parts = (carry + chunk).split('\n')
+    const parts = (carry + chunk).replace(/\r(?!\n)/g, '\n').split('\n')
     carry = parts.pop() ?? ''
+
     for (const part of parts) push(entry, kind, part.replace(/\r$/, ''))
+
+    if (carry.length > MAX_CARRY) {
+      push(entry, kind, carry)
+      carry = ''
+    }
   })
   stream.on('end', () => {
     if (carry) {
@@ -224,21 +227,15 @@ export function waitReachable(
 }
 
 export function scrollback(worktreeId: string, service: string): LogLine[] {
-  return logs.get(keyFor(worktreeId, service)) ?? []
+  return logstore.tail(worktreeId, service, MAX_LINES)
 }
 
 export function forgetScrollback(worktreeId: string): void {
-  for (const key of [...logs.keys()]) {
-    if (key.startsWith(`${worktreeId}:`)) logs.delete(key)
-  }
+  logstore.forget(worktreeId)
 }
 
 export function scrollbackFor(worktreeId: string): LogLine[] {
-  const out: LogLine[] = []
-  for (const [key, buffer] of logs) {
-    if (key.startsWith(`${worktreeId}:`)) out.push(...buffer)
-  }
-  return out.sort((a, b) => a.at.localeCompare(b.at))
+  return logstore.tailAll(worktreeId, MAX_LINES)
 }
 
 export function subscribe(listener: LogListener): () => void {
@@ -733,7 +730,7 @@ export async function stopWorktree(worktreeId: string): Promise<void> {
   await Promise.all(names.map((name) => stop(worktreeId, name)))
   for (const name of names) {
     entries.delete(keyFor(worktreeId, name))
-    logs.delete(keyFor(worktreeId, name))
+    logstore.closeService(worktreeId, name)
   }
 }
 

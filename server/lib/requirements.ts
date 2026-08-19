@@ -24,9 +24,9 @@ const TOOLS: Probe[] = [
   {
     name: 'node',
     required: true,
-    minimum: '20',
+    minimum: '24',
     purpose:
-      'Runs ccwt itself. This is the version ccwt is executing on, not whichever one is first on PATH.',
+      'Runs ccwt itself, and reads the store through the built-in node:sqlite, which needs 24. This is the version ccwt is executing on, not whichever one is first on PATH.',
     install: 'https://nodejs.org',
     running: process.versions.node,
   },

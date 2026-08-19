@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import type { DeviceCode, DeviceOutcome, ForgeSession } from '../../shared/types'
-import { stateDir } from './store'
+import { db } from './db'
 
 const CLIENT_ID = process.env.CCWT_GITHUB_CLIENT_ID || 'Ov23liRxgqL7pFa2Wo7L'
 const SCOPE = 'repo'
@@ -41,37 +39,57 @@ let memoAt = 0
 let renewing: Promise<Credential | null> | null = null
 let epoch = 0
 
-function savedPath(): string {
-  return join(stateDir(), 'forge.json')
-}
-
 export function configured(): boolean {
   return CLIENT_ID !== ''
 }
 
 async function readSaved(): Promise<Saved | null> {
-  const raw = await readFile(savedPath(), 'utf8').catch(() => null)
-  if (raw === null) return null
+  const row = await db()
+    .selectFrom('credentials')
+    .selectAll()
+    .where('id', '=', 1)
+    .executeTakeFirst()
 
+  if (!row || !row.token) return null
+
+  let scopes: string[] = []
   try {
-    const parsed = JSON.parse(raw) as Partial<Saved>
-    if (typeof parsed.token !== 'string' || !parsed.token) return null
-    return {
-      token: parsed.token,
-      login: typeof parsed.login === 'string' ? parsed.login : null,
-      scopes: Array.isArray(parsed.scopes) ? parsed.scopes.filter((s) => typeof s === 'string') : [],
-      savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date().toISOString(),
-      refreshToken: typeof parsed.refreshToken === 'string' ? parsed.refreshToken : null,
-      expiresAt: typeof parsed.expiresAt === 'string' ? parsed.expiresAt : null,
-    }
+    const parsed = JSON.parse(row.scopes) as unknown
+    if (Array.isArray(parsed)) scopes = parsed.filter((s): s is string => typeof s === 'string')
   } catch {
-    return null
+    scopes = []
+  }
+
+  return {
+    token: row.token,
+    login: row.login,
+    scopes,
+    savedAt: row.saved_at,
+    refreshToken: row.refresh_token,
+    expiresAt: row.expires_at,
   }
 }
 
 async function writeSaved(saved: Saved): Promise<void> {
-  await mkdir(stateDir(), { recursive: true, mode: 0o700 })
-  await writeFile(savedPath(), `${JSON.stringify(saved, null, 2)}\n`, { mode: 0o600 })
+  const values = {
+    id: 1,
+    token: saved.token,
+    login: saved.login,
+    scopes: JSON.stringify(saved.scopes),
+    saved_at: saved.savedAt,
+    refresh_token: saved.refreshToken,
+    expires_at: saved.expiresAt,
+  }
+
+  await db()
+    .insertInto('credentials')
+    .values(values)
+    .onConflict((clash) => clash.column('id').doUpdateSet(values))
+    .execute()
+}
+
+async function dropSaved(): Promise<void> {
+  await db().deleteFrom('credentials').where('id', '=', 1).execute()
 }
 
 function expiryOf(seconds: number | undefined): string | null {
@@ -101,7 +119,7 @@ async function renew(saved: Saved): Promise<Credential | null> {
   if (!raw || era !== epoch) return null
 
   if (!raw.access_token) {
-    await rm(savedPath(), { force: true })
+    await dropSaved()
     return null
   }
 
@@ -209,7 +227,7 @@ export async function session(): Promise<ForgeSession> {
 }
 
 export async function signOut(): Promise<void> {
-  await rm(savedPath(), { force: true })
+  await dropSaved()
   forget()
 }
 

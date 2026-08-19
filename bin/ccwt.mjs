@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { unlinkSync } from 'node:fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -50,29 +51,63 @@ if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
   process.exit(1)
 }
 
-const free = await new Promise((resolve) => {
-  const probe = createServer()
-  probe.once('error', () => resolve(false))
-  probe.once('listening', () => probe.close(() => resolve(true)))
-  probe.listen(port, host)
-})
+const dir = join(homedir(), '.ccwt')
+const runtimeFile = join(dir, 'runtime.json')
 
-if (!free) {
-  process.stderr.write(`\n  Port ${port} is already in use.\n  Another ccwt may be running — try \`ccwt --port ${port + 1}\`.\n\n`)
+const isFree = (at, on) =>
+  new Promise((resolve) => {
+    const probe = createServer()
+    probe.once('error', () => resolve(false))
+    probe.once('listening', () => probe.close(() => resolve(true)))
+    probe.listen(at, on)
+  })
+
+const alive = (pid) => {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (cause) {
+    return cause.code === 'EPERM'
+  }
+}
+
+const running = await readFile(runtimeFile, 'utf8')
+  .then((raw) => JSON.parse(raw))
+  .catch(() => null)
+
+if (running && alive(running.pid) && !(await isFree(running.port, running.host ?? '127.0.0.1'))) {
+  const at = running.host === '::1' ? '[::1]' : (running.host ?? '127.0.0.1')
+  process.stderr.write(
+    `\n  ccwt is already running on http://${at}:${running.port} (pid ${running.pid}).\n  One ccwt per machine: a second would supervise the same worktrees\n  and hand out the same ports. Open that one, or stop it first.\n\n`,
+  )
+  process.exit(1)
+}
+
+if (!(await isFree(port, host))) {
+  process.stderr.write(`\n  Port ${port} is already in use by something else.\n  Try \`ccwt --port ${port + 1}\`.\n\n`)
   process.exit(1)
 }
 
 const token = randomBytes(32).toString('hex')
-const dir = join(homedir(), '.ccwt')
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 await mkdir(dir, { recursive: true, mode: 0o700 })
-await writeFile(join(dir, 'token'), token, { mode: 0o600 })
 await writeFile(
-  join(dir, 'server.json'),
-  JSON.stringify({ host, port, pid: process.pid, startedAt: new Date().toISOString() }),
+  runtimeFile,
+  JSON.stringify({ host, port, pid: process.pid, token, startedAt: new Date().toISOString() }),
   { mode: 0o600 },
 )
+
+const release = () => {
+  try {
+    unlinkSync(runtimeFile)
+  } catch {
+    /* already gone */
+  }
+}
+
+process.once('exit', release)
 
 process.env.NITRO_PORT = String(port)
 process.env.NITRO_HOST = host
