@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Lock, LockOpen, Trash2 } from 'lucide-vue-next'
 import type { GitStatus, PullRequest, ServiceStatus, Worktree, WorktreeOrigin } from '#shared/types'
+import { repairTitle } from './repair'
 import type { StackPart } from '../compose'
 import type { Variation } from './variation'
 
@@ -9,12 +10,13 @@ const props = withDefaults(
   defineProps<{
     worktree: Worktree
     selected?: boolean
+    repairing?: boolean
     parts?: Record<string, StackPart[]>
     git?: GitStatus | null
     pull?: PullRequest | null
     since?: string | null
   }>(),
-  { parts: () => ({}), git: null, pull: null, since: null },
+  { parts: () => ({}), git: null, pull: null, since: null, repairing: false },
 )
 
 const portOf = (service: ServiceStatus, part: StackPart): number | null => {
@@ -34,6 +36,7 @@ const emit = defineEmits<{
   take: [service: string]
   lock: []
   unlock: []
+  repair: []
   remove: []
   merge: []
 }>()
@@ -224,7 +227,17 @@ const mergeable = computed(
       class="flex items-center gap-2 border-b border-line px-3 py-1.5"
     >
       <span class="t-eyebrow">Services</span>
-      <Button v-if="!allRunning" size="sm" class="ml-auto" @click="emit('startAll')"
+      <Button
+        v-if="!worktree.provisioned && !worktree.root"
+        size="sm"
+        variation="warning"
+        class="ml-auto"
+        :disabled="repairing"
+        :title="repairTitle(worktree.name)"
+        @click="emit('repair')"
+        >{{ repairing ? 'repair…' : 'repair' }}</Button
+      >
+      <Button v-else-if="!allRunning" size="sm" class="ml-auto" @click="emit('startAll')"
         >start all</Button
       >
       <Button v-else size="sm" class="ml-auto" @click="emit('stopAll')">stop all</Button>
@@ -292,7 +305,17 @@ const mergeable = computed(
 
         <span class="ml-auto flex shrink-0 gap-1">
           <Button
-            v-if="service.state === 'running' || service.state === 'starting'"
+            v-if="!worktree.provisioned && !worktree.root"
+            v-show="worktree.services.length === 1"
+            size="sm"
+            variation="warning"
+            :disabled="repairing"
+            :title="repairTitle(worktree.name)"
+            @click="emit('repair')"
+            >{{ repairing ? 'repair…' : 'repair' }}</Button
+          >
+          <Button
+            v-else-if="service.state === 'running' || service.state === 'starting'"
             size="sm"
             @click="emit('stop', service.name)"
             >stop</Button

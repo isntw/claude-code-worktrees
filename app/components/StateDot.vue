@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { tone } from './variation'
 import type { Variation } from './variation'
 
 const props = withDefaults(
@@ -11,35 +12,15 @@ const props = withDefaults(
   { variation: 'neutral', beating: false, outline: false },
 )
 
-const FILL: Record<Variation, string> = {
-  neutral: 'bg-faint',
-  info: 'bg-info',
-  primary: 'bg-ink',
-  success: 'bg-success',
-  agent: 'bg-agent',
-  warning: 'bg-caution',
-  error: 'bg-alarm',
-}
-
-const EDGE: Record<Variation, string> = {
-  neutral: 'border-faint',
-  info: 'border-info',
-  primary: 'border-ink',
-  success: 'border-success',
-  agent: 'border-agent',
-  warning: 'border-caution',
-  error: 'border-alarm',
-}
-
 const look = computed(() =>
-  props.outline ? `border ${EDGE[props.variation]}` : FILL[props.variation],
+  props.outline ? 'border border-[var(--tone-quiet)]' : 'bg-[var(--tone-quiet)]',
 )
 </script>
 
 <template>
   <span
     class="inline-block size-1.5 shrink-0"
-    :class="[look, beating ? 'pulse' : '']"
+    :class="[tone(variation), look, beating ? 'pulse' : '']"
     aria-hidden="true"
   />
 </template>

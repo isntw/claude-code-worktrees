@@ -16,12 +16,11 @@ import type {
 } from '#shared/types'
 import type { BadgeSize } from '../components/Badge.vue'
 import type { Stat } from '../components/StatBar.vue'
-import type { Variation } from '../components/variation'
+import { VARIATIONS } from '../components/variation'
 import { NAV } from '../nav'
 
 const page = NAV.find((item) => item.name === 'preview')!
 
-const VARIATIONS: Variation[] = ['neutral', 'info', 'primary', 'success', 'agent', 'warning', 'error']
 const SIZES: BadgeSize[] = ['sm', 'md', 'lg']
 
 const text = ref('npm run dev -- --port 5200')
@@ -270,7 +269,7 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
       <header :class="HEAD"><p class="t-eyebrow">Badge</p></header>
       <div :class="BODY">
         <Badge v-for="v in VARIATIONS" :key="v" :variation="v">{{ v }}</Badge>
-        <Badge variation="selected">selected</Badge>
+        <Badge selected>selected</Badge>
         <Badge mono>mono</Badge>
       </div>
       <div class="flex flex-wrap items-center gap-3 border-t border-line px-3 py-3">
@@ -286,6 +285,29 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
         <Badge v-for="s in SIZES" :key="`${s}-fill`" :size="s" variation="success" :outline="false">{{
           s
         }}</Badge>
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Notice</p></header>
+      <div class="flex flex-col gap-2 px-3 py-3">
+        <Notice v-for="v in VARIATIONS" :key="v" :variation="v"
+          >{{ v }} — one line, nothing further to say</Notice
+        >
+        <Notice
+          v-for="v in VARIATIONS"
+          :key="`${v}-hint`"
+          :variation="v"
+          hint="The hint sits underneath in faint, for what to do about it."
+          >{{ v }} — with a hint</Notice
+        >
+        <Notice variation="warning">
+          A hint may carry markup instead of a string
+          <template #hint>
+            Start ccwt with <code class="font-mono">CCWT_GITHUB_CLIENT_ID</code> set to its client
+            id.
+          </template>
+        </Notice>
       </div>
     </section>
 

@@ -2,7 +2,7 @@ import { cp, link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promi
 import { dirname, join, resolve } from 'node:path'
 import type { CcwtConfig, WriteEntry } from '../../shared/types'
 import { argv, exec } from './exec'
-import { isDirectory, isSymlink, pathExists } from './fs'
+import { isDirectory, isSymlink, modifiedAt, pathExists, sameFile } from './fs'
 import { stub } from './stub'
 
 export const ALWAYS_PER_WORKTREE = [
@@ -163,15 +163,51 @@ async function replaceSymlink(
   return false
 }
 
-export async function missingBeneath(source: string, target: string): Promise<boolean> {
+function perWorktree(entry: string, name: string): boolean {
+  return (ALWAYS_PER_WORKTREE as readonly string[]).includes(`${entry}/${name}`)
+}
+
+async function bothSides(
+  entry: string,
+  source: string,
+  target: string,
+): Promise<{ shared: string[]; have: Set<string> } | 'unreadable' | 'absent'> {
   const here = await readdir(source).catch(() => null)
-  if (!here) return false
+  if (!here) return 'unreadable'
 
   const there = await readdir(target).catch(() => null)
-  if (!there) return true
+  if (!there) return 'absent'
 
-  const have = new Set(there)
-  return here.some((name) => !have.has(name))
+  return { shared: here.filter((name) => !perWorktree(entry, name)), have: new Set(there) }
+}
+
+export async function missingBeneath(entry: string, source: string, target: string): Promise<boolean> {
+  const sides = await bothSides(entry, source, target)
+  if (typeof sides === 'string') return sides === 'absent'
+
+  return sides.shared.some((name) => !sides.have.has(name))
+}
+
+export async function divergedBeneath(
+  entry: string,
+  source: string,
+  target: string,
+): Promise<boolean> {
+  const sides = await bothSides(entry, source, target)
+  if (typeof sides === 'string') return false
+
+  for (const name of sides.shared) {
+    if (!sides.have.has(name)) continue
+
+    const [mine, theirs] = await Promise.all([
+      modifiedAt(join(source, name)),
+      modifiedAt(join(target, name)),
+    ])
+
+    if (mine === null || theirs === null || mine !== theirs) return true
+  }
+
+  return false
 }
 
 function cannotHardlink(detail: string): Error {
@@ -189,10 +225,12 @@ function alreadyLinked(stderr: string): boolean {
   return lines.length > 0 && lines.every((line) => /are identical \(not copied\)\.$/.test(line.trim()))
 }
 
-async function hardlinkTree(source: string, target: string): Promise<void> {
+async function hardlinkTree(source: string, target: string, refresh: boolean): Promise<void> {
   if (process.platform === 'win32') throw cannotHardlink('this platform cannot hardlink a directory tree')
 
-  const merging = await pathExists(target)
+  if (refresh) await rm(target, { recursive: true, force: true })
+
+  const merging = !refresh && (await pathExists(target))
   const args = merging ? ['-aln', `${source}/.`, target] : ['-al', source, target]
   const result = await exec('cp', args, { timeoutMs: 300_000 }).catch(() => null)
 
@@ -211,6 +249,7 @@ export async function linkPaths(
   worktreePath: string,
   entries: string[],
   report: ProvisionReport,
+  refresh = false,
 ): Promise<void> {
   for (const entry of entries) {
     const reason = unsafe(entry)
@@ -230,12 +269,23 @@ export async function linkPaths(
     const target = join(worktreePath, entry)
     const directory = await isDirectory(source)
 
+    if (
+      refresh &&
+      !directory &&
+      (await pathExists(target)) &&
+      !(await isSymlink(target)) &&
+      !(await sameFile(source, target))
+    ) {
+      await rm(target, { force: true })
+      report.replaced.push(entry)
+    }
+
     if (await replaceSymlink(target, entry, report, directory)) continue
 
     try {
       await mkdir(dirname(target), { recursive: true })
 
-      if (directory) await hardlinkTree(source, target)
+      if (directory) await hardlinkTree(source, target, refresh)
       else
         await link(source, target).catch((cause: Error) => {
           throw cannotHardlink(cause.message)
@@ -306,11 +356,12 @@ export async function placeFiles(
   worktreePath: string,
   config: CcwtConfig,
   at: Placeholders,
+  refresh = false,
 ): Promise<ProvisionReport> {
   const report = emptyReport()
 
   await copyFiles(rootPath, worktreePath, config.provision.copy, report)
-  await linkPaths(rootPath, worktreePath, config.provision.link, report)
+  await linkPaths(rootPath, worktreePath, config.provision.link, report, refresh)
   await writeFiles(worktreePath, config.provision.write, at, report)
   await pruneCaches(worktreePath, report.linked, report)
 

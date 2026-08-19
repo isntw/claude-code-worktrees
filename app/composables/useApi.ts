@@ -114,8 +114,13 @@ export function useApi() {
       call<ServiceStatus>(`${worktree(projectId, worktreeId)}/services/${service}/start`, {
         method: 'POST',
       }),
-    provision: (projectId: string, worktreeId: string) =>
-      call<Worktree>(`${worktree(projectId, worktreeId)}/provision`, { method: 'POST' }),
+    provision: (projectId: string, worktreeId: string, refresh = false) =>
+      call<Worktree>(`${worktree(projectId, worktreeId)}/provision`, {
+        method: 'POST',
+        body: { refresh },
+      }),
+    provisionAll: (projectId: string, refresh = false) =>
+      call<Worktree[]>(`/projects/${projectId}/provision`, { method: 'POST', body: { refresh } }),
     startAll: (projectId: string, worktreeId: string) =>
       call<ServiceStatus[]>(`${worktree(projectId, worktreeId)}/services/start`, { method: 'POST' }),
     stopAll: (projectId: string, worktreeId: string) =>

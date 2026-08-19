@@ -51,6 +51,10 @@
 
   --ccwt-alarm-strong: color-mix(in oklab, var(--ccwt-alarm) 80%, var(--ccwt-ink));
   --ccwt-caution-strong: color-mix(in oklab, var(--ccwt-caution) 80%, var(--ccwt-ink));
+  --ccwt-success-strong: color-mix(in oklab, var(--ccwt-success) 80%, var(--ccwt-ink));
+  --ccwt-merged-strong: color-mix(in oklab, var(--ccwt-merged) 80%, var(--ccwt-ink));
+  --ccwt-agent-strong: color-mix(in oklab, var(--ccwt-agent) 80%, var(--ccwt-ink));
+  --ccwt-info-strong: color-mix(in oklab, var(--ccwt-info) 80%, var(--ccwt-ink));
 
   color-scheme: light;
 }
@@ -74,6 +78,10 @@
   --ccwt-caution: #e2a33c;
   --ccwt-alarm-strong: color-mix(in oklab, var(--ccwt-alarm) 80%, var(--ccwt-ink));
   --ccwt-caution-strong: color-mix(in oklab, var(--ccwt-caution) 80%, var(--ccwt-ink));
+  --ccwt-success-strong: color-mix(in oklab, var(--ccwt-success) 80%, var(--ccwt-ink));
+  --ccwt-merged-strong: color-mix(in oklab, var(--ccwt-merged) 80%, var(--ccwt-ink));
+  --ccwt-agent-strong: color-mix(in oklab, var(--ccwt-agent) 80%, var(--ccwt-ink));
+  --ccwt-info-strong: color-mix(in oklab, var(--ccwt-info) 80%, var(--ccwt-ink));
 
   color-scheme: dark;
 }
@@ -121,6 +129,57 @@
 
   *::-webkit-scrollbar-track {
     background: transparent;
+  }
+}
+
+@layer components {
+  .t-tone-neutral {
+    --tone: var(--ccwt-dim);
+    --tone-quiet: var(--ccwt-faint);
+    --tone-line: var(--ccwt-line);
+    --tone-strong: var(--ccwt-line-strong);
+  }
+  .t-tone-info {
+    --tone: var(--ccwt-info);
+    --tone-quiet: var(--ccwt-info);
+    --tone-line: var(--ccwt-info);
+    --tone-strong: var(--ccwt-info-strong);
+  }
+  .t-tone-primary {
+    --tone: var(--ccwt-ink);
+    --tone-quiet: var(--ccwt-ink);
+    --tone-line: var(--ccwt-ink);
+    --tone-strong: var(--ccwt-dim);
+  }
+  .t-tone-success {
+    --tone: var(--ccwt-success);
+    --tone-quiet: var(--ccwt-success);
+    --tone-line: var(--ccwt-success);
+    --tone-strong: var(--ccwt-success-strong);
+  }
+  .t-tone-agent {
+    --tone: var(--ccwt-agent);
+    --tone-quiet: var(--ccwt-agent);
+    --tone-line: var(--ccwt-agent);
+    --tone-strong: var(--ccwt-agent-strong);
+  }
+  .t-tone-merged {
+    --tone: var(--ccwt-merged);
+    --tone-quiet: var(--ccwt-merged);
+    --tone-line: var(--ccwt-merged);
+    --tone-strong: var(--ccwt-merged-strong);
+  }
+  .t-tone-warning {
+    --tone: var(--ccwt-caution);
+    --tone-quiet: var(--ccwt-caution);
+    --tone-line: var(--ccwt-caution);
+    --tone-strong: var(--ccwt-caution-strong);
+  }
+  .t-tone-error {
+    --tone: var(--ccwt-alarm);
+    --tone-quiet: var(--ccwt-alarm);
+    --tone-line: var(--ccwt-alarm);
+    --tone-strong: var(--ccwt-alarm-strong);
   }
 }
 

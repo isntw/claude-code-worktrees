@@ -4,7 +4,7 @@ import type { OverviewRow, ServiceState, ServiceStatus, Worktree } from '#shared
 import { PULL } from './pull'
 import type { Variation } from './variation'
 
-defineProps<{ rows: OverviewRow[] }>()
+const { rows, repairing = null } = defineProps<{ rows: OverviewRow[]; repairing?: string | null }>()
 
 const emit = defineEmits<{
   open: [row: OverviewRow]
@@ -14,6 +14,7 @@ const emit = defineEmits<{
   lock: [row: OverviewRow]
   unlock: [row: OverviewRow]
   remove: [row: OverviewRow]
+  repair: [row: OverviewRow]
 }>()
 
 const lockAction = (worktree: Worktree) => {
@@ -194,7 +195,16 @@ const problems = (worktree: Worktree) =>
           <td>
             <span class="flex items-center justify-end gap-1">
               <Button
-                v-if="row.worktree.services.length && anyLive(row.worktree)"
+                v-if="row.worktree.services.length && !row.worktree.provisioned && !row.worktree.root"
+                size="sm"
+                variation="warning"
+                :disabled="repairing === row.worktree.id"
+                :title="repairTitle(row.worktree.name)"
+                @click.stop="emit('repair', row)"
+                >{{ repairing === row.worktree.id ? 'repair…' : 'repair' }}</Button
+              >
+              <Button
+                v-else-if="row.worktree.services.length && anyLive(row.worktree)"
                 size="sm"
                 :title="`Stop every service in ${row.worktree.name}`"
                 @click.stop="emit('stop', row)"
