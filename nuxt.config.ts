@@ -3,7 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-12',
   ssr: false,
-  devtools: { enabled: false },
+  devtools: { enabled: true },
   css: ['~/assets/style.css'],
 
   app: {
