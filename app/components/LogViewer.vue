@@ -3,8 +3,8 @@ import { computed, nextTick, ref, watch } from 'vue'
 import type { LogLine } from '#shared/types'
 import { segments, type Segment, type Tone } from '../ansi'
 
-const props = withDefaults(defineProps<{ lines: LogLine[]; height?: string }>(), {
-  height: '18rem',
+const props = withDefaults(defineProps<{ lines: LogLine[]; max?: string }>(), {
+  max: '18rem',
 })
 
 const emit = defineEmits<{ clear: [] }>()
@@ -50,6 +50,57 @@ const mixed = computed(() => new Set(props.lines.map((line) => line.service)).si
 const scroller = ref<HTMLElement | null>(null)
 const follow = ref(true)
 
+const KEY = 'ccwt.log-height'
+const MIN = 64
+
+const size = ref<number | null>(null)
+
+const stored = Number(localStorage.getItem(KEY))
+if (Number.isFinite(stored) && stored >= MIN) size.value = stored
+
+const box = computed(() =>
+  size.value === null ? { maxHeight: props.max } : { height: `${size.value}px` },
+)
+
+const limit = (value: number) =>
+  Math.min(Math.max(value, MIN), Math.max(MIN, window.innerHeight - 120))
+
+const held = ref<{ id: number; y: number; from: number } | null>(null)
+
+const onDown = (event: PointerEvent) => {
+  const element = scroller.value
+  if (event.button !== 0 || !element) return
+  held.value = { id: event.pointerId, y: event.clientY, from: element.clientHeight }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  event.preventDefault()
+}
+
+const onDrag = (event: PointerEvent) => {
+  const drag = held.value
+  if (!drag || drag.id !== event.pointerId) return
+  size.value = limit(drag.from + (event.clientY - drag.y))
+  const element = scroller.value
+  if (element && follow.value) element.scrollTop = element.scrollHeight
+}
+
+const onDrop = (event: PointerEvent) => {
+  if (held.value?.id !== event.pointerId) return
+  held.value = null
+  if (size.value !== null) localStorage.setItem(KEY, String(size.value))
+}
+
+const onReset = () => {
+  size.value = null
+  localStorage.removeItem(KEY)
+}
+
+const step = (by: number) => {
+  const element = scroller.value
+  if (!element) return
+  size.value = limit(element.clientHeight + by)
+  localStorage.setItem(KEY, String(size.value))
+}
+
 const onScroll = () => {
   const element = scroller.value
   if (!element) return
@@ -68,13 +119,15 @@ watch(
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col border border-line bg-canvas">
+  <div class="relative flex min-h-0 flex-col border border-line bg-canvas">
     <header class="flex shrink-0 items-center gap-2 border-b border-line bg-surface px-3 py-1.5">
       <p class="t-eyebrow">Logs</p>
       <span class="ml-auto font-mono text-[0.625rem] tabular-nums text-faint"
         >{{ lines.length }} lines</span
       >
-      <Checkbox v-model="follow">follow</Checkbox>
+      <Checkbox v-model="follow" title="Keep the newest line in view as output arrives"
+        >follow</Checkbox
+      >
       <Button
         size="sm"
         :disabled="!lines.length"
@@ -86,8 +139,8 @@ watch(
 
     <div
       ref="scroller"
-      class="ccwt-log min-h-0 flex-1 overflow-y-auto px-3 py-2"
-      :style="{ height }"
+      class="ccwt-log min-h-0 grow overflow-y-auto px-3 py-2"
+      :style="box"
       @scroll="onScroll"
     >
       <p v-if="!lines.length" class="font-sans text-[0.6875rem] text-faint">
@@ -104,5 +157,33 @@ watch(
         >
       </div>
     </div>
+
+    <button
+      type="button"
+      class="absolute right-0 bottom-0 flex size-4 cursor-ns-resize touch-none items-end justify-end p-0.5 text-faint hover:text-dim"
+      title="Drag to resize, double-click to reset"
+      aria-label="Resize the log"
+      @pointerdown="onDown"
+      @pointermove="onDrag"
+      @pointerup="onDrop"
+      @pointercancel="onDrop"
+      @dblclick="onReset"
+      @keydown.up.prevent="step(-24)"
+      @keydown.down.prevent="step(24)"
+    >
+      <svg
+        viewBox="0 0 8 8"
+        width="8"
+        height="8"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1"
+        stroke-linecap="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M8 1.5 1.5 8M8 5 5 8" />
+      </svg>
+    </button>
   </div>
 </template>

@@ -424,7 +424,7 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
 
     <section class="xl:col-span-2">
       <p class="t-eyebrow mb-2">Log viewer</p>
-      <LogViewer height="10rem" :lines="LOGS" />
+      <LogViewer max="10rem" :lines="LOGS" />
     </section>
   </main>
 
