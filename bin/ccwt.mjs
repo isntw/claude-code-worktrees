@@ -123,8 +123,8 @@ await import(server).catch((cause) => {
   process.exit(1)
 })
 
-const url = `http://${host}:${port}/?t=${token}`
-process.stdout.write(`\n  ccwt listening on http://${host}:${port}\n\n`)
+const url = `http://${host}:${port}/`
+process.stdout.write(`\n  ccwt listening on ${url}\n  Open it in any browser.\n\n`)
 
 if (values.open) {
   const opener =
