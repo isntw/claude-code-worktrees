@@ -256,6 +256,19 @@ export interface Setup {
 
 export type ConfigSourceKind = 'ccwt' | 'project' | 'detected'
 
+export interface RecipeNote {
+  path: string
+  severity: Severity
+  message: string
+  hint?: string
+}
+
+export interface RecipeCheck {
+  ok: boolean
+  issues: { path: string; message: string }[]
+  notes: RecipeNote[]
+}
+
 export interface ConfigView {
   source: ConfigSourceKind
   path: string | null
@@ -378,12 +391,18 @@ export interface PluginHook {
   blurb: string
 }
 
+export interface PluginSkill {
+  name: string
+  blurb: string
+}
+
 export interface PluginParts {
   marketplace: string
   id: string
   hooks: PluginHook[]
   servers: string[]
   tools: string[]
+  skills: PluginSkill[]
 }
 
 export interface PluginReport {

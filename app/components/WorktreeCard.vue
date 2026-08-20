@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { Lock, LockOpen, Trash2 } from 'lucide-vue-next'
 import type { GitStatus, PullRequest, ServiceStatus, Worktree, WorktreeOrigin } from '#shared/types'
 import { repairTitle } from './repair'
-import type { StackPart } from '../compose'
+import type { StackPart } from '#shared/compose'
 import type { Variation } from './variation'
 
 const props = withDefaults(

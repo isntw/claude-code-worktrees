@@ -1,7 +1,8 @@
-import type { CcwtConfig, ConfigView, Project } from '../../shared/types'
+import type { CcwtConfig, ConfigView, Project, RecipeCheck } from '../../shared/types'
 import type { ConfigIssue } from '../../shared/config-schema'
 import { RECIPE_REVISION, parseConfig } from '../../shared/config-schema'
 import { configPath, loadConfig, suggestConfig } from './detect'
+import { noteRecipe } from './lint'
 import { findRecord, updateRecord } from './store'
 
 const MAX_BYTES = 256 * 1024
@@ -77,6 +78,33 @@ export async function readConfig(project: Project): Promise<ConfigView> {
     detected: true,
     stale: false,
   }
+}
+
+export function checkConfig(text: string): RecipeCheck {
+  if (text.length > MAX_BYTES) {
+    return {
+      ok: false,
+      issues: [
+        {
+          path: '(root)',
+          message: `A recipe over ${Math.round(MAX_BYTES / 1024)} KB is not something ccwt keeps.`,
+        },
+      ],
+      notes: [],
+    }
+  }
+
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch (cause) {
+    return { ok: false, issues: [{ path: '(root)', message: (cause as Error).message }], notes: [] }
+  }
+
+  const parsed = parseConfig(value)
+  if (!parsed.ok) return { ok: false, issues: parsed.issues, notes: [] }
+
+  return { ok: true, issues: [], notes: noteRecipe(parsed.config) }
 }
 
 export class ConfigInvalid extends Error {

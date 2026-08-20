@@ -12,8 +12,8 @@ import type {
   Worktree,
 } from '#shared/types'
 import { REPAIR_HINT } from '../../../components/repair'
-import type { StackPart } from '../../../compose'
-import { composeFileOf, containerFor, serviceNames } from '../../../compose'
+import type { StackPart } from '#shared/compose'
+import { composeFileOf, containerFor, serviceNames } from '#shared/compose'
 import { DETAIL_PAGES } from '../../../nav'
 
 const page = DETAIL_PAGES['project-id']!

@@ -49,7 +49,11 @@ const confirm = async () => {
           <dt v-if="report.parts.tools.length" class="text-faint">tools</dt>
           <dd v-if="report.parts.tools.length" class="min-w-0 text-ink">
             {{ report.parts.tools.join(' · ') }}
-            <span class="font-sans text-faint">read only</span>
+          </dd>
+
+          <dt v-if="report.parts.skills.length" class="text-faint">skills</dt>
+          <dd v-if="report.parts.skills.length" class="min-w-0 text-ink">
+            {{ report.parts.skills.map((skill) => skill.name).join(' · ') }}
           </dd>
         </dl>
       </div>

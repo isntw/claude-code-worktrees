@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type {
@@ -7,6 +7,7 @@ import type {
   PluginHook,
   PluginParts,
   PluginReport,
+  PluginSkill,
   PluginState,
 } from '../../shared/types'
 import { exec } from './exec'
@@ -51,7 +52,13 @@ export const CAPABILITIES: PluginCapability[] = [
     name: 'tools',
     title: 'Status and logs on request',
     blurb:
-      'Two read-only tools, so a change can be checked against what the running service printed rather than by starting another one. Nothing can start, stop or restart a service.',
+      'A change can be checked against what the running service printed rather than by starting another one. A session can also ask ccwt to start a worktree\u2019s services — ccwt still allocates the port and owns the process. Nothing stops or restarts one.',
+  },
+  {
+    name: 'recipe',
+    title: 'A session can write the recipe',
+    blurb:
+      'A session sitting in your project can read it, work out what a worktree of it needs and store the recipe in ccwt — validated first, and never written into the repository. A recipe already saved is not replaced without being asked.',
   },
 ]
 
@@ -84,6 +91,25 @@ async function readJson<T>(path: string): Promise<T | null> {
 
 const manifestPath = () => join(packageRoot(), 'plugin', '.claude-plugin', 'plugin.json')
 
+const SKILL_BLURBS: Record<string, string> = {
+  'ccwt-recipe-create':
+    'how to read a project and write the recipe for it, for plain commands and container stacks alike',
+}
+
+async function skills(): Promise<PluginSkill[]> {
+  const root = join(packageRoot(), 'plugin', 'skills')
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
+
+  const found: PluginSkill[] = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    if (!(await stat(join(root, entry.name, 'SKILL.md')).catch(() => null))) continue
+    found.push({ name: entry.name, blurb: SKILL_BLURBS[entry.name] ?? '' })
+  }
+
+  return found
+}
+
 async function parts(): Promise<PluginParts> {
   const declared = await readJson<HooksFile>(join(packageRoot(), 'plugin', 'hooks', 'hooks.json'))
   const manifest = await readJson<Manifest>(manifestPath())
@@ -114,6 +140,7 @@ async function parts(): Promise<PluginParts> {
     hooks,
     servers: Object.keys(manifest?.mcpServers ?? {}),
     tools,
+    skills: await skills(),
   }
 }
 
