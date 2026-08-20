@@ -1,22 +1,36 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
+import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 import type { PluginReport } from '#shared/types'
 
-withDefaults(defineProps<{ report: PluginReport; action?: 'install' | 'update' | null }>(), {
-  action: null,
-})
+const props = withDefaults(
+  defineProps<{ report: PluginReport; action?: 'install' | 'update' | null }>(),
+  { action: null },
+)
 
 const emit = defineEmits<{ close: []; confirm: [] }>()
+
+const open = ref(false)
+
+const updating = computed(() => props.action === 'update')
+const folded = computed(() => props.action !== null)
+const shown = computed(() => !folded.value || open.value)
 </script>
 
 <template>
-  <ModalPanel title="Claude Code plugin" @close="emit('close')">
-    <p class="max-w-prose font-sans text-xs text-dim">
+  <ModalPanel :title="updating ? 'Update the plugin' : 'Claude Code plugin'" @close="emit('close')">
+    <p v-if="updating" class="max-w-prose font-sans text-xs text-dim">
+      You have <span class="font-mono text-dim">{{ report.installed }}</span
+      >; ccwt ships <span class="font-mono text-ink">{{ report.shipped }}</span
+      >. Same plugin, replaced in place — nothing is written into any repository.
+    </p>
+    <p v-else class="max-w-prose font-sans text-xs text-dim">
       A Claude Code session working in one of these worktrees has no idea ccwt is already running its
       dev server, so it starts a second one — on the wrong port, outliving the session, holding a
       port ccwt will not hand out again. This plugin tells it.
     </p>
 
-    <section class="mt-4">
+    <section v-if="!updating" class="mt-4">
       <p class="t-eyebrow">What it does</p>
       <dl class="mt-2 grid gap-2">
         <div v-for="capability in report.capabilities" :key="capability.name">
@@ -28,7 +42,35 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       </dl>
     </section>
 
-    <section class="mt-4">
+    <button
+      v-if="folded"
+      type="button"
+      class="mt-4 flex w-full cursor-pointer items-center gap-2 text-left"
+      :aria-expanded="open"
+      @click="open = !open"
+    >
+      <component
+        :is="open ? ChevronDown : ChevronRight"
+        :size="12"
+        class="shrink-0 text-faint"
+        aria-hidden="true"
+      />
+      <span class="t-eyebrow">{{ updating ? 'What it does' : 'What it registers' }}</span>
+      <span v-if="open" class="ml-auto shrink-0 font-mono text-[0.625rem] text-faint">hide</span>
+    </button>
+
+    <section v-if="updating && open" class="mt-3">
+      <dl class="grid gap-2">
+        <div v-for="capability in report.capabilities" :key="capability.name">
+          <dt class="font-sans text-[0.6875rem] text-ink">{{ capability.title }}</dt>
+          <dd class="mt-0.5 max-w-prose font-sans text-[0.6875rem] text-faint">
+            {{ capability.blurb }}
+          </dd>
+        </div>
+      </dl>
+    </section>
+
+    <section v-if="shown" class="mt-4">
       <p class="t-eyebrow">Every hook it registers</p>
       <dl class="mt-2 grid grid-cols-[10.5rem_1fr] gap-x-3 gap-y-1">
         <template v-for="hook in report.parts.hooks" :key="`${hook.event}${hook.matcher}`">
@@ -40,7 +82,7 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       </dl>
     </section>
 
-    <section v-if="report.parts.servers.length" class="mt-4">
+    <section v-if="shown && report.parts.servers.length" class="mt-4">
       <p class="t-eyebrow">Tools it adds</p>
       <dl class="mt-2 grid grid-cols-[10.5rem_1fr] gap-x-3 gap-y-1">
         <dt class="font-mono text-[0.6875rem] text-ink">ccwt_status</dt>
@@ -79,7 +121,7 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       </p>
     </section>
 
-    <section v-if="report.parts.skills.length" class="mt-4">
+    <section v-if="shown && report.parts.skills.length" class="mt-4">
       <p class="t-eyebrow">Skills it adds</p>
       <dl class="mt-2 grid grid-cols-[10.5rem_1fr] gap-x-3 gap-y-1">
         <template v-for="skill in report.parts.skills" :key="skill.name">
@@ -94,7 +136,13 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       <pre
         class="mt-2 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-ink"
       >{{ report.commands.join('\n') }}</pre>
-      <p class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
+      <p v-if="updating" class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
+        The new copy replaces <code class="font-mono">{{ report.source }}</code> first. A session you
+        already have open needs
+        <code class="font-mono text-dim">/reload-plugins --force</code>; a new one picks it up on its
+        own.
+      </p>
+      <p v-else class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
         The plugin is copied into <code class="font-mono">{{ report.source }}</code> first — ccwt has
         written nothing there until you press this. Claude Code says at the end of the install
         whether it switched the plugin on; if it did not, run
