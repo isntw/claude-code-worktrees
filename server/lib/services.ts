@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { PackageManager, ServiceConfig } from '../../shared/types'
+import type { PackageManager, Service } from '../../shared/types'
 import { DEFAULT_PORT_RANGE, devCommand } from './detect'
 import { isDirectory, readJsonSafe } from './fs'
 
@@ -90,7 +90,7 @@ export async function walkWorkspaces(rootPath: string): Promise<Candidate[]> {
   return candidates
 }
 
-export function toServices(candidates: Candidate[], manager: PackageManager): ServiceConfig[] {
+export function toServices(candidates: Candidate[], manager: PackageManager): Service[] {
   const seen = new Set<string>()
 
   return candidates.map((candidate, index) => {
@@ -110,7 +110,7 @@ export function toServices(candidates: Candidate[], manager: PackageManager): Se
 export async function detectServices(
   rootPath: string,
   manager: PackageManager,
-): Promise<ServiceConfig[]> {
+): Promise<Service[]> {
   const manifest = await readJsonSafe<Manifest>(join(rootPath, 'package.json'))
   const scripts = manifest?.scripts ?? {}
 

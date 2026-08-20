@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Plus, Trash2, X } from 'lucide-vue-next'
-import type { ServiceConfig, ServiceKind, WriteEntry } from '#shared/types'
+import type { Service, ServiceKind, WriteEntry } from '#shared/types'
 import {
   COMPOSE_SKELETON,
   DEFAULT_COMPOSE_FILE,
@@ -16,7 +16,7 @@ import {
 
 const props = withDefaults(
   defineProps<{
-    service: ServiceConfig
+    service: Service
     index: number
     writes?: WriteEntry[]
     startOpen?: boolean
@@ -27,13 +27,13 @@ const props = withDefaults(
 const open = ref(props.startOpen)
 
 const emit = defineEmits<{
-  update: [index: number, service: ServiceConfig]
+  update: [index: number, service: Service]
   remove: [index: number]
   write: [path: string, content: string]
   unwrite: [path: string]
 }>()
 
-const patch = (change: Partial<ServiceConfig>) => {
+const patch = (change: Partial<Service>) => {
   emit('update', props.index, { ...props.service, ...change })
 }
 

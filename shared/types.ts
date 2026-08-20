@@ -17,7 +17,7 @@ export interface Diagnostic {
   hint?: string
 }
 
-export interface ServiceConfig {
+export interface Service {
   name: string
   kind?: ServiceKind
   cwd: string
@@ -36,7 +36,7 @@ export interface WriteEntry {
   content: string
 }
 
-export interface ProvisionConfig {
+export interface Provision {
   copy: string[]
   link: string[]
   write: WriteEntry[]
@@ -44,15 +44,15 @@ export interface ProvisionConfig {
   postRemove: string[]
 }
 
-export interface ClaudeConfig {
+export interface ClaudeOptions {
   ownWorktreeCreation: boolean
 }
 
 export interface Recipe {
   worktreesDir: string
-  provision: ProvisionConfig
-  services: ServiceConfig[]
-  claude: ClaudeConfig
+  provision: Provision
+  services: Service[]
+  claude: ClaudeOptions
 }
 
 export interface Project {

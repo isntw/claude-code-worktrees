@@ -5,7 +5,7 @@ import type {
   PortHold,
   Project,
   RemoveOutcome,
-  ServiceConfig,
+  Service,
   ServiceStatus,
   Worktree,
 } from '../../shared/types'
@@ -174,11 +174,11 @@ function placeholders(project: Project, worktreePath: string): Placeholders {
   }
 }
 
-const portKey = (service: ServiceConfig, variable: string) => `${service.name}-${variable}`
+const portKey = (service: Service, variable: string) => `${service.name}-${variable}`
 
 async function readNamedPorts(
   worktreePath: string,
-  service: ServiceConfig,
+  service: Service,
 ): Promise<Record<string, number>> {
   const entries = await Promise.all(
     Object.entries(service.ports ?? {}).map(async ([variable, range]) => {
@@ -582,7 +582,7 @@ export async function startService(
   return status!
 }
 
-export function startOrder(services: ServiceConfig[], target?: string): string[] {
+export function startOrder(services: Service[], target?: string): string[] {
   const byName = new Map(services.map((service) => [service.name, service]))
   const seen = new Set<string>()
   const order: string[] = []

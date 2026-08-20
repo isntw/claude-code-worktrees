@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { Recipe, ServiceConfig } from '#shared/types'
+import type { Recipe, Service } from '#shared/types'
 
 const props = defineProps<{ current: Recipe; suggested: Recipe }>()
 const emit = defineEmits<{ apply: [Recipe]; close: [] }>()
@@ -22,7 +22,7 @@ const TITLE: Record<Section, string> = {
   services: 'Services',
 }
 
-const same = (a: ServiceConfig, b: ServiceConfig) => JSON.stringify(a) === JSON.stringify(b)
+const same = (a: Service, b: Service) => JSON.stringify(a) === JSON.stringify(b)
 
 const rows = computed<Row[]>(() => {
   const out: Row[] = []

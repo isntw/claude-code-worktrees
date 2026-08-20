@@ -1,15 +1,15 @@
-import type { Recipe, RecipeNote, ServiceConfig } from '../../shared/types'
+import type { Recipe, RecipeNote, Service } from '../../shared/types'
 import { COMPOSE, STACK_PROJECT_NAME, isStack, variesPerWorktree } from '../../shared/compose'
 import { ALWAYS_PER_WORKTREE } from './provision'
 
 const PORT_TOKEN = '{{port}}'
 
-function portReaches(service: ServiceConfig): boolean {
+function portReaches(service: Service): boolean {
   if (service.command.includes(PORT_TOKEN)) return true
   return Object.values(service.env ?? {}).some((value) => value.includes(PORT_TOKEN))
 }
 
-function stackNotes(service: ServiceConfig, where: string): RecipeNote[] {
+function stackNotes(service: Service, where: string): RecipeNote[] {
   const notes: RecipeNote[] = []
   const name = service.env?.COMPOSE_PROJECT_NAME
 
@@ -41,7 +41,7 @@ function stackNotes(service: ServiceConfig, where: string): RecipeNote[] {
   return notes
 }
 
-function serviceNotes(service: ServiceConfig, index: number): RecipeNote[] {
+function serviceNotes(service: Service, index: number): RecipeNote[] {
   const where = `services.${index}`
   const notes: RecipeNote[] = []
 

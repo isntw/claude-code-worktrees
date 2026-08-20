@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, Plus } from 'lucide-vue-next'
-import type { Recipe, RecipeView, ServiceConfig, WriteEntry } from '#shared/types'
+import type { Recipe, RecipeView, Service, WriteEntry } from '#shared/types'
 import { changed, collapse, diffLines } from '../../../diff'
 import { composeFileOf, isStack, teardownCommand } from '#shared/compose'
 
@@ -22,7 +22,7 @@ const parseError = ref<string | null>(null)
 const confirming = ref(false)
 const forgetting = ref(false)
 
-const serialise = (config: Recipe) => `${JSON.stringify(config, null, 2)}\n`
+const serialise = (recipe: Recipe) => `${JSON.stringify(recipe, null, 2)}\n`
 
 const payload = computed(() => (mode.value === 'json' ? raw.value : draft.value ? serialise(draft.value) : ''))
 
@@ -37,7 +37,7 @@ const load = async () => {
   loading.value = true
   error.value = null
   try {
-    const next = await api.getConfig(projectId.value)
+    const next = await api.getRecipe(projectId.value)
     view.value = next
     draft.value = structuredClone(next.recipe)
     raw.value = next.text
@@ -99,9 +99,9 @@ const detect = async () => {
   }
 }
 
-const bring = (config: Recipe) => {
-  draft.value = config
-  raw.value = serialise(config)
+const bring = (recipe: Recipe) => {
+  draft.value = recipe
+  raw.value = serialise(recipe)
   suggested.value = null
 }
 
@@ -109,7 +109,7 @@ const save = async () => {
   saving.value = true
   error.value = null
   try {
-    const next = await api.saveConfig(projectId.value, payload.value)
+    const next = await api.saveRecipe(projectId.value, payload.value)
     view.value = next
     draft.value = structuredClone(next.recipe)
     raw.value = next.text
@@ -122,7 +122,7 @@ const save = async () => {
   }
 }
 
-const updateService = (index: number, service: ServiceConfig) => {
+const updateService = (index: number, service: Service) => {
   if (!draft.value) return
   const services = [...draft.value.services]
   services[index] = service
@@ -270,9 +270,6 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
       </NuxtLink>
       <Badge v-if="view?.source === 'detected'" variation="info">detected</Badge>
       <Badge v-else-if="stored" variation="neutral">saved in ccwt</Badge>
-      <code v-if="view?.path" class="truncate font-mono text-[0.625rem] text-faint">{{
-        view.path
-      }}</code>
       <Badge v-if="dirty" variation="warning">unsaved</Badge>
       <Button v-if="stored" size="sm" class="ml-auto" @click="forgetting = true"
         >forget customisations</Button
@@ -283,7 +280,7 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
       v-if="view?.issues.length"
       class="mb-3 border border-alarm bg-surface px-3 py-2"
     >
-      <p class="t-eyebrow mb-1">The file on disk does not parse</p>
+      <p class="t-eyebrow mb-1">The recipe ccwt has stored does not parse</p>
       <p v-for="issue in view.issues" :key="issue.path" class="font-sans text-[0.6875rem] text-alarm">
         {{ issue.path }} — {{ issue.message }}
       </p>

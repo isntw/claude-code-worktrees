@@ -29,11 +29,11 @@ const project = ref<Project | null>(null)
 const parts = computed(() => {
   const found: Record<string, StackPart[]> = {}
   const recipe = project.value?.recipe
-  if (!config) return found
+  if (!recipe) return found
 
-  for (const service of config.services) {
+  for (const service of recipe.services) {
     const file = composeFileOf(service.command)
-    const text = config.provision.write.find((entry) => entry.path === file)?.content
+    const text = recipe.provision.write.find((entry) => entry.path === file)?.content
     if (!text) continue
 
     const primary =

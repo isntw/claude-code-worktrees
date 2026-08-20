@@ -1,6 +1,6 @@
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { PackageManager, ProvisionConfig, Recipe, ServiceConfig } from '../../shared/types'
+import type { PackageManager, Provision, Recipe, Service } from '../../shared/types'
 import { isDirectory, pathExists, readJsonSafe } from './fs'
 import { isIgnored } from './git'
 
@@ -71,8 +71,8 @@ export async function projectName(rootPath: string): Promise<string> {
 }
 
 export function defaultRecipe(
-  services: ServiceConfig[],
-  provision: Partial<ProvisionConfig> = {},
+  services: Service[],
+  provision: Partial<Provision> = {},
 ): Recipe {
   return {
     worktreesDir: '.claude/worktrees',
@@ -93,7 +93,7 @@ export function defaultRecipe(
 
 export function suggestDependencies(
   manager: PackageManager | null,
-): Pick<ProvisionConfig, 'link' | 'postCreate'> {
+): Pick<Provision, 'link' | 'postCreate'> {
   return { link: manager ? ['node_modules'] : [], postCreate: [] }
 }
 

@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import type {
   LogLine,
-  ServiceConfig,
+  Service,
   ServiceState,
   ServiceStatus,
 } from '../../shared/types'
@@ -249,7 +249,7 @@ export function subscribeStatus(listener: StatusListener): () => void {
 }
 
 export function environmentFor(
-  service: ServiceConfig,
+  service: Service,
   port: number,
   vars: Vars,
 ): NodeJS.ProcessEnv {
@@ -282,7 +282,7 @@ export function environmentFor(
 export async function start(
   worktreeId: string,
   worktreePath: string,
-  service: ServiceConfig,
+  service: Service,
   port: number,
   vars: Vars,
 ): Promise<ServiceStatus> {
