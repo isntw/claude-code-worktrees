@@ -21,9 +21,7 @@ up by hand. **ccwt does that part.**
 Needs git 2.20+ and Node 24+.
 
 ```bash
-npm install
-npm run build
-npm start          # opens http://127.0.0.1:4600
+npx ccwt           # opens http://127.0.0.1:4600
 ```
 
 1. **Register project** — point it at a repository. ccwt reads it and fills in the setup.
@@ -73,7 +71,7 @@ A session can then set a project up and run it *through* ccwt instead of around 
 |---|---|
 | `ccwt_status` | Every worktree, its services, the port each holds and whether that port answers. Works with the dashboard closed. |
 | `ccwt_logs` | A service's recent output, so a change can be checked without starting or building anything. |
-| `ccwt_recipe_read` | The recipe, where it came from — ccwt's own storage, a committed `ccwt.config.json`, or nothing but detection — and whether it has gone stale. |
+| `ccwt_recipe_read` | The recipe, where it came from — ccwt's own storage, or nothing but detection — and whether it has gone stale. |
 
 Four act:
 
@@ -106,7 +104,8 @@ carry out — write the recipe, check it, store it — instead of you filling in
 - **A worktree keeps its port.** If something else takes it, the card says so and the next start moves.
 - **Removal names the path first**, keeps your branch unless you tick the box, and won't delete a
   worktree you made yourself if it has anything to lose.
-- **Local only** — binds `127.0.0.1`, new token every run, nothing leaves your machine.
+- **Local only** — binds `127.0.0.1`, new token every run, nothing leaves your machine. Settings
+  moves it off 4600, and it stays moved.
 
 ## Hardcoded addresses
 

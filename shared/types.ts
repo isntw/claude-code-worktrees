@@ -48,7 +48,7 @@ export interface ClaudeConfig {
   ownWorktreeCreation: boolean
 }
 
-export interface CcwtConfig {
+export interface Recipe {
   worktreesDir: string
   provision: ProvisionConfig
   services: ServiceConfig[]
@@ -61,8 +61,7 @@ export interface Project {
   rootPath: string
   packageManager: PackageManager | null
   defaultBranch: string | null
-  config: CcwtConfig | null
-  configPath: string | null
+  recipe: Recipe | null
   addedAt: string
   setup: Setup
   issues: Diagnostic[]
@@ -254,7 +253,20 @@ export interface Setup {
   notes: SetupNote[]
 }
 
-export type ConfigSourceKind = 'ccwt' | 'project' | 'detected'
+export type LoopbackHost = '127.0.0.1' | 'localhost' | '::1'
+
+export interface Address {
+  host: LoopbackHost
+  port: number
+}
+
+export interface AddressView {
+  saved: Address
+  live: Address | null
+  pending: boolean
+}
+
+export type RecipeSourceKind = 'ccwt' | 'detected'
 
 export interface RecipeNote {
   path: string
@@ -269,11 +281,10 @@ export interface RecipeCheck {
   notes: RecipeNote[]
 }
 
-export interface ConfigView {
-  source: ConfigSourceKind
-  path: string | null
+export interface RecipeView {
+  source: RecipeSourceKind
   text: string
-  config: CcwtConfig
+  recipe: Recipe
   issues: { path: string; message: string }[]
   detected: boolean
   stale: boolean

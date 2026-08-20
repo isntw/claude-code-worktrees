@@ -1,6 +1,8 @@
 import type {
-  CcwtConfig,
-  ConfigView,
+  Address,
+  AddressView,
+  Recipe,
+  RecipeView,
   DeviceCode,
   DeviceOutcome,
   DirListing,
@@ -64,15 +66,18 @@ export function useApi() {
     probePath: (path: string) =>
       call<ProbeResult>('/projects/probe', { method: 'POST', body: { path } }),
 
-    getConfig: (projectId: string) => call<ConfigView>(`/projects/${projectId}/config`),
-    saveConfig: (projectId: string, text: string) =>
-      call<ConfigView>(`/projects/${projectId}/config`, { method: 'PUT', body: { text } }),
-    resetConfig: (projectId: string) =>
-      call<ConfigView>(`/projects/${projectId}/config`, { method: 'DELETE' }),
-    suggestConfig: (projectId: string) =>
-      call<{ config: CcwtConfig; text: string }>(`/projects/${projectId}/config/suggest`, {
+    getRecipe: (projectId: string) => call<RecipeView>(`/projects/${projectId}/recipe`),
+    saveRecipe: (projectId: string, text: string) =>
+      call<RecipeView>(`/projects/${projectId}/recipe`, { method: 'PUT', body: { text } }),
+    resetRecipe: (projectId: string) =>
+      call<RecipeView>(`/projects/${projectId}/recipe`, { method: 'DELETE' }),
+    suggestRecipe: (projectId: string) =>
+      call<{ recipe: Recipe; text: string }>(`/projects/${projectId}/recipe/suggest`, {
         method: 'POST',
       }),
+
+    getAddress: () => call<AddressView>('/address'),
+    saveAddress: (address: Address) => call<AddressView>('/address', { method: 'PUT', body: address }),
 
     getGit: (projectId: string) => call<GitReport>(`/projects/${projectId}/git`),
     getPulls: (projectId: string, force = false) =>

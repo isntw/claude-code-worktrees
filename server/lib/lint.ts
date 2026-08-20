@@ -1,4 +1,4 @@
-import type { CcwtConfig, RecipeNote, ServiceConfig } from '../../shared/types'
+import type { Recipe, RecipeNote, ServiceConfig } from '../../shared/types'
 import { COMPOSE, STACK_PROJECT_NAME, isStack, variesPerWorktree } from '../../shared/compose'
 import { ALWAYS_PER_WORKTREE } from './provision'
 
@@ -69,10 +69,10 @@ function serviceNotes(service: ServiceConfig, index: number): RecipeNote[] {
   return notes
 }
 
-function provisionNotes(config: CcwtConfig): RecipeNote[] {
+function provisionNotes(recipe: Recipe): RecipeNote[] {
   const notes: RecipeNote[] = []
 
-  config.provision.link.forEach((entry, index) => {
+  recipe.provision.link.forEach((entry, index) => {
     if ((ALWAYS_PER_WORKTREE as readonly string[]).includes(entry)) {
       notes.push({
         path: `provision.link.${index}`,
@@ -92,8 +92,8 @@ function provisionNotes(config: CcwtConfig): RecipeNote[] {
     }
   })
 
-  const installs = config.provision.postCreate.length > 0
-  if (!config.provision.link.length && !config.provision.copy.length && !installs) {
+  const installs = recipe.provision.postCreate.length > 0
+  if (!recipe.provision.link.length && !recipe.provision.copy.length && !installs) {
     notes.push({
       path: 'provision',
       severity: 'info',
@@ -105,9 +105,9 @@ function provisionNotes(config: CcwtConfig): RecipeNote[] {
   return notes
 }
 
-export function noteRecipe(config: CcwtConfig): RecipeNote[] {
+export function noteRecipe(recipe: Recipe): RecipeNote[] {
   return [
-    ...config.services.flatMap(serviceNotes),
-    ...provisionNotes(config),
+    ...recipe.services.flatMap(serviceNotes),
+    ...provisionNotes(recipe),
   ]
 }

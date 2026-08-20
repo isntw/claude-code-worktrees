@@ -59,44 +59,44 @@ test('registering the same id twice keeps the first and does not throw', async (
 test('a recipe survives the round trip through the database', async () => {
   await withStore(async () => {
     await store.addRecord({ id: 'one', rootPath: '/repo/one', addedAt: 'now' })
-    await store.updateRecord('one', { config: RECIPE, configRevision: 3 })
+    await store.updateRecord('one', { recipe: RECIPE, recipeRevision: 3 })
 
     const found = await store.findRecord('one')
 
-    assert.deepEqual(found.config, RECIPE)
-    assert.equal(found.configRevision, 3)
+    assert.deepEqual(found.recipe, RECIPE)
+    assert.equal(found.recipeRevision, 3)
   })
 })
 
 test('clearing a recipe is distinguishable from never having one', async () => {
   await withStore(async () => {
     await store.addRecord({ id: 'one', rootPath: '/repo/one', addedAt: 'now' })
-    await store.updateRecord('one', { config: RECIPE, configRevision: 3 })
-    await store.updateRecord('one', { config: undefined, configRevision: undefined })
+    await store.updateRecord('one', { recipe: RECIPE, recipeRevision: 3 })
+    await store.updateRecord('one', { recipe: undefined, recipeRevision: undefined })
 
     const found = await store.findRecord('one')
 
-    assert.equal(found.config, undefined)
-    assert.equal(found.configRevision, undefined)
+    assert.equal(found.recipe, undefined)
+    assert.equal(found.recipeRevision, undefined)
   })
 })
 
 test('an update touching one field leaves the others alone', async () => {
   await withStore(async () => {
     await store.addRecord({ id: 'one', rootPath: '/repo/one', addedAt: 'first' })
-    await store.updateRecord('one', { configRevision: 4 })
+    await store.updateRecord('one', { recipeRevision: 4 })
 
     const found = await store.findRecord('one')
 
     assert.equal(found.rootPath, '/repo/one')
     assert.equal(found.addedAt, 'first')
-    assert.equal(found.configRevision, 4)
+    assert.equal(found.recipeRevision, 4)
   })
 })
 
 test('updating a repository that is not registered reports so rather than creating one', async () => {
   await withStore(async () => {
-    assert.equal(await store.updateRecord('ghost', { configRevision: 1 }), null)
+    assert.equal(await store.updateRecord('ghost', { recipeRevision: 1 }), null)
     assert.equal((await store.listRecords()).length, 0)
   })
 })
@@ -108,13 +108,13 @@ test('a corrupt stored recipe reads as absent instead of throwing', async () => 
 
     await db()
       .updateTable('projects')
-      .set({ config: '{not json' })
+      .set({ recipe: '{not json' })
       .where('id', '=', 'one')
       .execute()
 
     const found = await store.findRecord('one')
 
-    assert.equal(found.config, undefined)
+    assert.equal(found.recipe, undefined)
     assert.equal(found.rootPath, '/repo/one')
   })
 })

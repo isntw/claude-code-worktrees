@@ -62,16 +62,17 @@ Delivered past what the spec asked for.
 
 - **zod schema** shared by loader, write endpoint and editor; strict objects, so `"service"` for
   `"services"` is an error naming the key rather than a silently ignored block
-- **recipe editor** at `/project/:id/config` — form ⇄ JSON, line-diff before saving, `detect` button
+- **recipe editor** at `/project/:id/recipe` — form ⇄ JSON, line-diff before saving, `detect` button
 - **multi-service detection** — parses `concurrently` / `npm-run-all`, walks pnpm and npm workspaces
 - **`dependsOn`** with reachability-based ordering; cycles and unknown names refused at validation
 - **`postRemove`** teardown that can never block a removal
 - **copy and link** as separate lists, because a hardlink is the same inode
 
 **Reversed from the spec**: §6 called for a committed `ccwt.config.json`. Recipes live in
-`~/.ccwt/state.json` instead and ccwt has **no code path that writes into a repository**. A
-committed file is still read if a project ships one. The sharing that a committed file bought is a
-team feature §2 puts out of scope, and detection reconstructs the recipe anyway.
+`~/.ccwt/ccwt.db` instead and ccwt has **no code path that writes into a repository**. The read
+path for a committed file was dropped too: nothing produced one, so nobody could ship one. The
+sharing it bought is a team feature §2 puts out of scope, and detection reconstructs the recipe
+anyway.
 
 **Verified**: detection produced `claude-code-manager`'s two services from its `concurrently` script
 exactly, so the hand-written config could be deleted; a dependency taking four seconds to listen

@@ -9,8 +9,8 @@ export default defineEventHandler(async () => {
       id: record.id,
       rootPath: record.rootPath,
       addedAt: record.addedAt,
-      config: record.config,
-      configRevision: record.configRevision,
+      recipe: record.recipe,
+      recipeRevision: record.recipeRevision,
     })),
   }
 })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, Plus } from 'lucide-vue-next'
-import type { CcwtConfig, ConfigView, ServiceConfig, WriteEntry } from '#shared/types'
+import type { Recipe, RecipeView, ServiceConfig, WriteEntry } from '#shared/types'
 import { changed, collapse, diffLines } from '../../../diff'
 import { composeFileOf, isStack, teardownCommand } from '#shared/compose'
 
@@ -9,9 +9,9 @@ const api = useApi()
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
 
-const view = ref<ConfigView | null>(null)
-const draft = ref<CcwtConfig | null>(null)
-const suggested = ref<CcwtConfig | null>(null)
+const view = ref<RecipeView | null>(null)
+const draft = ref<Recipe | null>(null)
+const suggested = ref<Recipe | null>(null)
 const raw = ref('')
 const mode = ref<'form' | 'json'>('form')
 
@@ -22,7 +22,7 @@ const parseError = ref<string | null>(null)
 const confirming = ref(false)
 const forgetting = ref(false)
 
-const serialise = (config: CcwtConfig) => `${JSON.stringify(config, null, 2)}\n`
+const serialise = (config: Recipe) => `${JSON.stringify(config, null, 2)}\n`
 
 const payload = computed(() => (mode.value === 'json' ? raw.value : draft.value ? serialise(draft.value) : ''))
 
@@ -39,7 +39,7 @@ const load = async () => {
   try {
     const next = await api.getConfig(projectId.value)
     view.value = next
-    draft.value = structuredClone(next.config)
+    draft.value = structuredClone(next.recipe)
     raw.value = next.text
   } catch (cause) {
     error.value = (cause as Error).message
@@ -58,7 +58,7 @@ watch(mode, (next, previous) => {
 
   if (next === 'form' && previous === 'json') {
     try {
-      draft.value = JSON.parse(raw.value) as CcwtConfig
+      draft.value = JSON.parse(raw.value) as Recipe
     } catch (cause) {
       parseError.value = (cause as Error).message
       mode.value = 'json'
@@ -69,9 +69,9 @@ watch(mode, (next, previous) => {
 const reset = async () => {
   error.value = null
   try {
-    const next = await api.resetConfig(projectId.value)
+    const next = await api.resetRecipe(projectId.value)
     view.value = next
-    draft.value = structuredClone(next.config)
+    draft.value = structuredClone(next.recipe)
     raw.value = next.text
     forgetting.value = false
   } catch (cause) {
@@ -85,7 +85,7 @@ const detect = async () => {
 
   if (mode.value === 'json') {
     try {
-      draft.value = JSON.parse(raw.value) as CcwtConfig
+      draft.value = JSON.parse(raw.value) as Recipe
     } catch (cause) {
       parseError.value = (cause as Error).message
       return
@@ -93,13 +93,13 @@ const detect = async () => {
   }
 
   try {
-    suggested.value = (await api.suggestConfig(projectId.value)).config
+    suggested.value = (await api.suggestRecipe(projectId.value)).recipe
   } catch (cause) {
     error.value = (cause as Error).message
   }
 }
 
-const bring = (config: CcwtConfig) => {
+const bring = (config: Recipe) => {
   draft.value = config
   raw.value = serialise(config)
   suggested.value = null
@@ -111,7 +111,7 @@ const save = async () => {
   try {
     const next = await api.saveConfig(projectId.value, payload.value)
     view.value = next
-    draft.value = structuredClone(next.config)
+    draft.value = structuredClone(next.recipe)
     raw.value = next.text
     confirming.value = false
   } catch (cause) {
@@ -269,7 +269,6 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
         worktrees
       </NuxtLink>
       <Badge v-if="view?.source === 'detected'" variation="info">detected</Badge>
-      <Badge v-else-if="view?.source === 'project'" variation="info">from the project</Badge>
       <Badge v-else-if="stored" variation="neutral">saved in ccwt</Badge>
       <code v-if="view?.path" class="truncate font-mono text-[0.625rem] text-faint">{{
         view.path
@@ -459,9 +458,8 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
   <ModalPanel v-if="forgetting" title="Forget customisations" @close="forgetting = false">
     <p class="max-w-prose font-sans text-xs text-dim">
       Drops the recipe ccwt has stored for this project. It is not kept anywhere else, so what you
-      wrote is gone — ccwt goes back to a committed
-      <code class="font-mono">ccwt.config.json</code> if there is one, and to detection if there is
-      not. Worktrees that already exist are untouched.
+      wrote is gone — ccwt goes back to what it can detect. Worktrees that already exist are
+      untouched.
     </p>
 
     <template #footer>

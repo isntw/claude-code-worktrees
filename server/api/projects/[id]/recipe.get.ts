@@ -1,6 +1,6 @@
-import { resetConfig } from '~~/server/lib/config'
+import { readRecipe } from '~~/server/lib/recipe'
 
 export default defineEventHandler(async (event) => {
   const project = await requireProject(event)
-  return guard(() => resetConfig(project))
+  return guard(() => readRecipe(project))
 })

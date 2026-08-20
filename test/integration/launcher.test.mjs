@@ -12,10 +12,11 @@ const LAUNCHER = fileURLToPath(new URL('../../bin/ccwt.mjs', import.meta.url))
 const WAIT_MS = 10_000
 const skip = built() ? false : NO_BUILD
 
-function start(home, args) {
+function start(home, args, extra = {}) {
   const child = spawn(process.execPath, [LAUNCHER, ...args], {
-    env: { ...process.env, HOME: home, CCWT_HOME: join(home, '.ccwt') },
+    env: { ...process.env, HOME: home, CCWT_HOME: join(home, '.ccwt'), ...extra },
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
   })
 
   let out = ''
@@ -25,11 +26,19 @@ function start(home, args) {
 
   const closed = new Promise((done) => child.on('close', (code) => done(code)))
 
-  return { child, closed, read: () => ({ out, err }) }
+  const stop = () => {
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch {
+      child.kill('SIGKILL')
+    }
+  }
+
+  return { child, closed, stop, read: () => ({ out, err }) }
 }
 
-async function refuses(home, args) {
-  const running = start(home, args)
+async function refuses(home, args, extra = {}) {
+  const running = start(home, args, extra)
   const code = await running.closed
   return { code, ...running.read() }
 }
@@ -160,6 +169,45 @@ test('the handshake is written for the plugin, and removed again on a clean exit
       assert.ok(!existsSync(path), 'a clean exit should take the handshake with it')
     } finally {
       running.child.kill('SIGKILL')
+    }
+  })
+})
+
+test('the dev launcher writes the handshake, so a session can reach a server run from source', async () => {
+  await withFakeHome(async (home, dir) => {
+    const path = join(dir, 'runtime.json')
+    const running = start(home, ['--dev', '--port', String(await freePort()), '--no-open'])
+
+    try {
+      assert.ok(await until(() => existsSync(path)), `runtime.json never appeared: ${running.read().err}`)
+
+      const held = JSON.parse(readFileSync(path, 'utf8'))
+
+      assert.match(held.token, /^[0-9a-f]{64}$/, 'dev must mint a token like the built server does')
+      assert.ok(Number.isInteger(held.port))
+    } finally {
+      running.stop()
+      await running.closed
+    }
+  })
+})
+
+
+test('a saved address supplies the port when no flag does', async () => {
+  await withFakeHome(async (home, dir) => {
+    const port = await freePort()
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ host: '127.0.0.1', port }))
+
+    const running = start(home, ['--dev', '--no-open'])
+
+    try {
+      const path = join(dir, 'runtime.json')
+      assert.ok(await until(() => existsSync(path)), `runtime.json never appeared: ${running.read().err}`)
+
+      assert.equal(JSON.parse(readFileSync(path, 'utf8')).port, port)
+    } finally {
+      running.stop()
+      await running.closed
     }
   })
 })

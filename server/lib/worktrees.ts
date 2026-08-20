@@ -1,6 +1,6 @@
 import { basename, join, resolve } from 'node:path'
 import type {
-  CcwtConfig,
+  Recipe,
   LockState,
   PortHold,
   Project,
@@ -97,10 +97,10 @@ function isLive(status: ServiceStatus | null): boolean {
 }
 
 async function diverged(project: Project, worktreePath: string): Promise<boolean> {
-  const config = project.config
-  if (!config) return false
+  const recipe = project.recipe
+  if (!recipe) return false
 
-  for (const path of config.provision.link) {
+  for (const path of recipe.provision.link) {
     const source = join(project.rootPath, path)
     const target = join(worktreePath, path)
 
@@ -112,12 +112,12 @@ async function diverged(project: Project, worktreePath: string): Promise<boolean
 }
 
 async function missing(project: Project, worktreePath: string): Promise<boolean> {
-  const config = project.config
-  if (!config) return false
+  const recipe = project.recipe
+  if (!recipe) return false
 
   const entries = [
-    ...config.provision.copy.map((path) => ({ path, linked: false })),
-    ...config.provision.link.map((path) => ({ path, linked: true })),
+    ...recipe.provision.copy.map((path) => ({ path, linked: false })),
+    ...recipe.provision.link.map((path) => ({ path, linked: true })),
   ]
 
   for (const { path, linked } of entries) {
@@ -135,7 +135,7 @@ async function missing(project: Project, worktreePath: string): Promise<boolean>
       return true
   }
 
-  return needsWriting(worktreePath, config.provision.write, placeholders(project, worktreePath))
+  return needsWriting(worktreePath, recipe.provision.write, placeholders(project, worktreePath))
 }
 
 async function outOfDate(project: Project, worktreePath: string): Promise<boolean> {
@@ -213,7 +213,7 @@ async function allocateAll(
     supervisor.note(worktreeId, service, `port ${from} is taken, so ${what} moved to ${to}`)
   }
 
-  for (const service of project.config?.services ?? []) {
+  for (const service of project.recipe?.services ?? []) {
     const live = supervisor.status(worktreeId, service.name)
     const keep = isLive(live)
 
@@ -264,11 +264,11 @@ async function servicesFor(
   worktreeId: string,
   worktreePath: string,
 ): Promise<ServiceStatus[]> {
-  const config = project.config
-  if (!config) return []
+  const recipe = project.recipe
+  if (!recipe) return []
 
   return Promise.all(
-    config.services.map(async (service) => {
+    recipe.services.map(async (service) => {
       const live = supervisor.status(worktreeId, service.name)
       if (live && live.state !== 'stopped') return live
 
@@ -294,9 +294,9 @@ async function servicesFor(
 }
 
 export async function list(project: Project): Promise<Worktree[]> {
-  if (!project.config) return []
+  if (!project.recipe) return []
 
-  const dir = worktreesDirFor(project.rootPath, project.config)
+  const dir = worktreesDirFor(project.rootPath, project.recipe)
   const raw = await listWorktrees(project.rootPath)
 
   return Promise.all(
@@ -342,13 +342,13 @@ export interface CreateInput {
 }
 
 export async function create(project: Project, input: CreateInput): Promise<Worktree> {
-  const config = project.config
-  if (!config) throw new Error('This project has no resolvable configuration.')
+  const recipe = project.recipe
+  if (!recipe) throw new Error('This project has no resolvable recipe.')
 
   const slug = slugify(input.name)
   if (!slug) throw new Error('That name has no usable characters in it.')
 
-  const path = worktreePathFor(project.rootPath, config, slugify(project.name), slug)
+  const path = worktreePathFor(project.rootPath, recipe, slugify(project.name), slug)
 
   if (await pathExists(path)) {
     throw new Error(`${path} already exists.`)
@@ -364,7 +364,7 @@ export async function create(project: Project, input: CreateInput): Promise<Work
 
   supervisor.note(id, 'provision', 'provisioning…')
   try {
-    const report = await provision(project.rootPath, path, config, placeholders(project, path))
+    const report = await provision(project.rootPath, path, recipe, placeholders(project, path))
 
     if (report.written.length) {
       supervisor.note(id, 'provision', `wrote ${report.written.join(', ')}`)
@@ -395,7 +395,7 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   supervisor.note(id, 'provision', 'ready')
 
   if (input.start) {
-    for (const service of config.services) {
+    for (const service of recipe.services) {
       await startService(project, id, path, service.name, branch).catch((cause: Error) => {
         supervisor.note(id, 'provision', cause.message, 'stderr')
       })
@@ -407,8 +407,8 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   return created
 }
 
-function liveServices(config: CcwtConfig, worktreeId: string): string[] {
-  return config.services
+function liveServices(recipe: Recipe, worktreeId: string): string[] {
+  return recipe.services
     .filter((service) => isLive(supervisor.status(worktreeId, service.name)))
     .map((service) => service.name)
 }
@@ -418,17 +418,17 @@ async function repairWorktree(
   worktree: Worktree,
   refresh: boolean,
 ): Promise<void> {
-  const config = project.config
-  if (!config) return
+  const recipe = project.recipe
+  if (!recipe) return
   if (worktree.root) throw new Error('The repository root is not provisioned by ccwt.')
 
   const worktreeId = worktree.id
 
-  const live = refresh ? liveServices(config, worktreeId) : []
+  const live = refresh ? liveServices(recipe, worktreeId) : []
 
   if (live.length) {
     supervisor.note(worktreeId, 'provision', `stopping ${live.join(', ')} to update the worktree…`)
-    for (const name of startOrder(config.services).reverse()) {
+    for (const name of startOrder(recipe.services).reverse()) {
       if (live.includes(name)) await supervisor.stop(worktreeId, name)
     }
   }
@@ -443,7 +443,7 @@ async function repairWorktree(
     const report = await placeFiles(
       project.rootPath,
       worktree.path,
-      config,
+      recipe,
       placeholders(project, worktree.path),
       refresh,
     )
@@ -476,7 +476,7 @@ async function repairWorktree(
 
   if (live.length) {
     supervisor.note(worktreeId, 'provision', `starting ${live.join(', ')} back up…`)
-    for (const name of startOrder(config.services)) {
+    for (const name of startOrder(recipe.services)) {
       if (!live.includes(name)) continue
       await startService(project, worktreeId, worktree.path, name, worktree.branch, false).catch(
         (cause: Error) => {
@@ -494,7 +494,7 @@ export async function repair(
   worktreeId: string,
   refresh = false,
 ): Promise<Worktree> {
-  if (!project.config) throw new Error('This project has no resolvable configuration.')
+  if (!project.recipe) throw new Error('This project has no resolvable recipe.')
 
   const worktree = await find(project, worktreeId)
   if (!worktree) throw new Error('No such worktree.')
@@ -506,7 +506,7 @@ export async function repair(
 }
 
 export async function repairAll(project: Project, refresh = false): Promise<Worktree[]> {
-  if (!project.config) throw new Error('This project has no resolvable configuration.')
+  if (!project.recipe) throw new Error('This project has no resolvable recipe.')
 
   for (const worktree of await list(project)) {
     if (worktree.root || worktree.prunable) continue
@@ -527,10 +527,10 @@ export async function startService(
   branch: string | null,
   mayRepair = true,
 ): Promise<ServiceStatus> {
-  const config = project.config
-  if (!config) throw new Error('This project has no resolvable configuration.')
+  const recipe = project.recipe
+  if (!recipe) throw new Error('This project has no resolvable recipe.')
 
-  const service = config.services.find((candidate) => candidate.name === serviceName)
+  const service = recipe.services.find((candidate) => candidate.name === serviceName)
   if (!service) throw new Error(`No service named \`${serviceName}\` in this project.`)
 
   if (mayRepair && (await missing(project, worktreePath))) {
@@ -540,12 +540,12 @@ export async function startService(
   }
 
   const { ports, named } = await allocateAll(project, worktreeId, worktreePath)
-  const order = startOrder(config.services, service.name)
+  const order = startOrder(recipe.services, service.name)
 
   let status: ServiceStatus | null = null
 
   for (const name of order) {
-    const next = config.services.find((candidate) => candidate.name === name)!
+    const next = recipe.services.find((candidate) => candidate.name === name)!
 
     const live = supervisor.status(worktreeId, name)
     const already = isLive(live)
@@ -612,22 +612,22 @@ export async function startAll(
   worktreePath: string,
   branch: string | null,
 ): Promise<ServiceStatus[]> {
-  const config = project.config
-  if (!config) throw new Error('This project has no resolvable configuration.')
+  const recipe = project.recipe
+  if (!recipe) throw new Error('This project has no resolvable recipe.')
 
   const out: ServiceStatus[] = []
-  for (const name of startOrder(config.services)) {
+  for (const name of startOrder(recipe.services)) {
     out.push(await startService(project, worktreeId, worktreePath, name, branch))
   }
   return out
 }
 
 export async function stopAll(project: Project, worktreeId: string): Promise<ServiceStatus[]> {
-  const config = project.config
-  if (!config) throw new Error('This project has no resolvable configuration.')
+  const recipe = project.recipe
+  if (!recipe) throw new Error('This project has no resolvable recipe.')
 
   const out: ServiceStatus[] = []
-  for (const name of startOrder(config.services).reverse()) {
+  for (const name of startOrder(recipe.services).reverse()) {
     out.push(await supervisor.stop(worktreeId, name))
   }
   return out
@@ -720,7 +720,7 @@ export async function remove(
     return dropBranch(project.rootPath, worktree.branch, alsoBranch)
   }
 
-  const config = project.config
+  const recipe = project.recipe
   const owned = worktree.origin !== 'manual'
 
   if (!owned) await assertNothingToLose(worktree.path)
@@ -730,7 +730,7 @@ export async function remove(
   const leaving: Record<string, number> = {}
   const perService: Record<string, Record<string, number>> = {}
 
-  for (const service of config?.services ?? []) {
+  for (const service of recipe?.services ?? []) {
     const port = await readAllocated(worktree.path, service.name, service.portRange)
     if (port !== null) leaving[service.name] = port
     perService[service.name] = await readNamedPorts(worktree.path, service)
@@ -745,7 +745,7 @@ export async function remove(
     worktreePath: worktree.path,
   }
 
-  for (const service of config?.services ?? []) {
+  for (const service of recipe?.services ?? []) {
     if (!service.removeCommand) continue
 
     const named = perService[service.name] ?? {}
@@ -770,7 +770,7 @@ export async function remove(
 
   const named = Object.assign({}, ...Object.values(perService)) as Record<string, number>
 
-  for (const command of config?.provision.postRemove ?? []) {
+  for (const command of recipe?.provision.postRemove ?? []) {
     let rendered: string
     try {
       rendered = supervisor.render(command, { ...base, port: 0, named })
@@ -782,7 +782,7 @@ export async function remove(
     await runPostRemove(worktree.path, rendered).catch(() => undefined)
   }
 
-  for (const service of config?.services ?? []) {
+  for (const service of recipe?.services ?? []) {
     await release(worktree.path, service.name).catch(() => undefined)
     for (const variable of Object.keys(service.ports ?? {})) {
       await release(worktree.path, portKey(service, variable)).catch(() => undefined)
