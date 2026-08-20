@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline'
-import { call as request, describe, locate, reachServer } from '../lib/discover.mjs'
+import { PLACE_MS, call as request, describe, locate, reachServer } from '../lib/discover.mjs'
 
 const NAME = 'ccwt'
-const VERSION = '0.2.0'
+const VERSION = '0.2.1'
 const PROTOCOL = '2025-06-18'
 const TAIL = 100
 
@@ -249,8 +249,14 @@ function why(result, what) {
   if (result.ok && result.body === null) {
     return `ccwt answered the request to ${what} with something that is not JSON, which is what an older ccwt does with a route it does not have. Update ccwt so it matches this plugin.`
   }
+  if (result.timedOut) {
+    return `ccwt did not answer the request to ${what} in time, so this plugin stopped waiting. It was not refused, and ccwt may well be carrying it out. Check ccwt_status before starting anything yourself.`
+  }
+  if (result.status === 0) {
+    return `ccwt could not be reached to ${what}, though it was listening a moment ago. It may have been closed mid-request.`
+  }
   const said = result.body?.message || result.body?.statusMessage
-  return `ccwt refused to ${what} (${result.status || 'no response'})${said ? `: ${said}` : ''}.`
+  return `ccwt refused to ${what} (${result.status})${said ? `: ${said}` : ''}.`
 }
 
 const answered = (result) => result.ok && result.body !== null
@@ -444,7 +450,7 @@ async function worktreeStart(args) {
     ? `/api/projects/${id}/worktrees/${wanted.id}/services/${encodeURIComponent(args.service)}/start`
     : `/api/projects/${id}/worktrees/${wanted.id}/services/start`
 
-  const started = await request('POST', route, {})
+  const started = await request('POST', route, {}, PLACE_MS)
   if (!answered(started)) return { ...text(why(started, 'start that service')), isError: true }
 
   const statuses = Array.isArray(started.body) ? started.body : [started.body]
