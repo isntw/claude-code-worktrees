@@ -27,10 +27,10 @@ test('the plugin state endpoint returns every project and its recipe', { skip },
 
     const alpha = body.projects.find((entry) => entry.id === 'aaa111')
     assert.equal(alpha.rootPath, '/repo/alpha')
-    assert.deepEqual(alpha.config.services, LEGACY_PROJECTS.projects[0].config.services)
+    assert.deepEqual(alpha.recipe.services, LEGACY_PROJECTS.projects[0].config.services)
 
     const beta = body.projects.find((entry) => entry.id === 'bbb222')
-    assert.equal(beta.config, undefined)
+    assert.equal(beta.recipe, undefined)
   }, seed)
 })
 

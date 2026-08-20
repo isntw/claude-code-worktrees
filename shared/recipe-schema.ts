@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { CcwtConfig } from './types'
+import type { Recipe } from './types'
 
 const NAME = /^[a-z0-9][a-z0-9_-]*$/i
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -78,10 +78,10 @@ const configObject = z
       )
       .prefault({}),
   })
-  .superRefine((config, ctx) => {
-    const names = new Set(config.services.map((service) => service.name))
+  .superRefine((recipe, ctx) => {
+    const names = new Set(recipe.services.map((service) => service.name))
 
-    config.services.forEach((service, index) => {
+    recipe.services.forEach((service, index) => {
       for (const variable of Object.keys(service.ports ?? {})) {
         if (names.has(variable)) {
           ctx.addIssue({
@@ -111,7 +111,7 @@ const configObject = z
       }
     })
 
-    const cycle = findCycle(config.services)
+    const cycle = findCycle(recipe.services)
     if (cycle) {
       ctx.addIssue({
         code: 'custom',
@@ -120,7 +120,7 @@ const configObject = z
       })
     }
 
-    config.provision.write.forEach((entry, index) => {
+    recipe.provision.write.forEach((entry, index) => {
       if (entry.path.startsWith('/') || entry.path.includes('..')) {
         ctx.addIssue({
           code: 'custom',
@@ -147,7 +147,7 @@ const configObject = z
       }
     })
 
-    const paths = config.provision.write.map((entry) => entry.path)
+    const paths = recipe.provision.write.map((entry) => entry.path)
     if (new Set(paths).size !== paths.length) {
       ctx.addIssue({
         code: 'custom',
@@ -156,8 +156,8 @@ const configObject = z
       })
     }
 
-    for (const entry of config.provision.copy) {
-      if (!config.provision.link.includes(entry)) continue
+    for (const entry of recipe.provision.copy) {
+      if (!recipe.provision.link.includes(entry)) continue
       ctx.addIssue({
         code: 'custom',
         path: ['provision', 'link'],
@@ -168,7 +168,7 @@ const configObject = z
 
 export const configSchema = z
   .preprocess((value) => without(value, RETIRED_KEYS), configObject)
-  .describe('ccwt.config.json')
+  .describe('the ccwt recipe')
 
 interface Dependant {
   name: string
@@ -206,20 +206,20 @@ export function findCycle(services: Dependant[]): string[] | null {
   return null
 }
 
-export interface ConfigIssue {
+export interface RecipeIssue {
   path: string
   message: string
 }
 
 export type ParseResult =
-  | { ok: true; config: CcwtConfig }
-  | { ok: false; issues: ConfigIssue[] }
+  | { ok: true; recipe: Recipe }
+  | { ok: false; issues: RecipeIssue[] }
 
-export function parseConfig(value: unknown): ParseResult {
+export function parseRecipe(value: unknown): ParseResult {
   const result = configSchema.safeParse(value)
 
   if (result.success) {
-    return { ok: true, config: result.data as CcwtConfig }
+    return { ok: true, recipe: result.data as Recipe }
   }
 
   return {
@@ -231,12 +231,12 @@ export function parseConfig(value: unknown): ParseResult {
   }
 }
 
-export function parseConfigText(text: string): ParseResult {
+export function parseRecipeText(text: string): ParseResult {
   let value: unknown
   try {
     value = JSON.parse(text)
   } catch (cause) {
     return { ok: false, issues: [{ path: '(root)', message: (cause as Error).message }] }
   }
-  return parseConfig(value)
+  return parseRecipe(value)
 }

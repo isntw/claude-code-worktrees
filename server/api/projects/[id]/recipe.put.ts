@@ -1,4 +1,4 @@
-import { ConfigInvalid, writeConfig } from '~~/server/lib/config'
+import { RecipeInvalid, writeRecipe } from '~~/server/lib/recipe'
 
 export default defineEventHandler(async (event) => {
   const project = await requireProject(event)
@@ -9,9 +9,9 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    return await writeConfig(project, body.text)
+    return await writeRecipe(project, body.text)
   } catch (cause) {
-    if (cause instanceof ConfigInvalid) {
+    if (cause instanceof RecipeInvalid) {
       throw createError({
         statusCode: 422,
         statusMessage: 'Invalid recipe',

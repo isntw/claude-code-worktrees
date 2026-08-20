@@ -130,10 +130,10 @@ instead of one per repository, but it requires `read:org` on top of the `repo` c
 `server/lib/forgeauth.ts:8`, which forces every existing user to re-authorise. The probe reaches the
 same answer for free.
 
-### Precedence mirrors `readConfig`
+### Precedence mirrors `readRecipe`
 
-Stored binding → detection → persist what detection found. `readConfig` already establishes this
-shape (stored recipe → committed file → detection) and there is no reason for a second one.
+Stored binding → detection → persist what detection found. `readRecipe` already establishes this
+shape (stored recipe → detection) and there is no reason for a second one.
 
 **Detection proposes; the store decides.** A purely derived binding would re-resolve on every read,
 so the day an account's access changes — you leave the org, a repository goes private — *which

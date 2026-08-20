@@ -8,7 +8,7 @@ way.
 ## Commands
 
 ```bash
-npm run dev          # nuxt dev on 127.0.0.1:5600, auth disabled
+npm run dev          # bin/ccwt.mjs --dev: nuxt dev on 127.0.0.1:5600, with the handshake
 npm run build        # nuxt build -> .output/
 npm run typecheck    # vue-tsc across app/, server/ and shared/
 npm start            # bin/ccwt.mjs — the shipped entry point
@@ -140,11 +140,11 @@ schedule; releasing a port and reaping a process must tolerate the directory bei
 
 ### The recipe is ccwt's, not the project's
 
-`writeConfig` stores it on the project record in `~/.ccwt/state.json`. **There is no code path that
+`writeRecipe` stores it on the project record in `~/.ccwt/ccwt.db`. **There is no code path that
 writes a file into a registered repository, and there must not be one.**
 
-`readConfig` order: the stored recipe → a committed `ccwt.config.json`, **read only** → detection.
-`resetConfig` drops the stored recipe, which is the only way back from a bad edit.
+`readRecipe` order: the stored recipe → detection. `resetRecipe` drops the stored recipe, which is
+the only way back from a bad edit.
 
 `store.ts` holds `{id, rootPath, addedAt}` plus the recipe once edited. Everything else on `Project`
 is **re-derived on every read** by `projects.hydrate()`.
@@ -160,11 +160,12 @@ The backend runs `git` and spawns processes, so a page that reaches it has RCE.
 
 - **Host header validation is what stops DNS rebinding**, not the loopback bind. Only `127.0.0.1`,
   `localhost` and `[::1]` pass.
-- **The token is per run.** `bin/ccwt.mjs` writes 32 random bytes to `~/.ccwt/token` at mode 600 and
-  puts them in the launch URL; the middleware exchanges `?t=` for an HttpOnly `SameSite=Strict`
-  cookie and **redirects to strip it from the URL**.
-- **An empty token disables auth, and that is only ever true in `npm run dev`.** Do not add a path
-  that boots the built server without one.
+- **The token is per run.** `bin/ccwt.mjs` writes 32 random bytes into `~/.ccwt/runtime.json` at
+  mode 600. The browser never needs it — `Sec-Fetch-Site: same-origin` is what admits the page; the
+  Claude Code plugin reads it from that file and sends it as `x-ccwt-token`.
+- **An empty token disables auth, and that is only ever true under a bare `nuxt dev`.** `npm run
+  dev` goes through the launcher and mints one like the built server does. Do not add a path that
+  boots the built server without one.
 - **WebSocket upgrades validate `Origin` separately** — WebSockets ignore CORS.
 - **`GET /api/fs/list` carries `assertBrowsable()`** on top of that: it is deliberately outside §9's
   containment rule, so it refuses outright when bound to anything but loopback, returns

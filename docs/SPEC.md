@@ -107,9 +107,9 @@ claude-code-worktrees/
     │   ├── provision.ts         copy / hardlink / install
     │   ├── ports.ts             allocate + persist
     │   ├── supervisor.ts        spawn / logs / kill
-    │   └── store.ts             ~/.ccwt/state.json
+    │   └── store.ts             ~/.ccwt/ccwt.db
     ├── api/                     # thin HTTP wrappers around lib/
-    ├── middleware/security.ts   # Host validation, token exchange
+    ├── middleware/security.ts   # Host validation, token
     └── routes/_ws.ts            # WebSocket: logs + status
 ```
 
@@ -184,7 +184,7 @@ A `WorktreeCreate` hook replaces Claude Code's git logic entirely, so `claude --
 
 `.worktreeinclude` uses `.gitignore` syntax, and a file is copied only if it **matches a pattern *and* is gitignored** — so tracked files are never duplicated. Claude Code and worktrunk both read it.
 
-**ccwt reads it as a config source.** A repo already set up for Claude Code works with zero ccwt configuration, and `provision.copy` in `ccwt.config.json` merges with it rather than replacing it.
+**ccwt reads it as a config source.** A repo already set up for Claude Code works with zero ccwt configuration, and `provision.copy` in the recipe merges with it rather than replacing it.
 
 ### 5.5 Safety rules this imposes
 
@@ -231,9 +231,9 @@ person asks, and a newer ccwt marks an installed plugin outdated and waits.
 
 ## 6. Configuration
 
-> **As built:** the recipe lives in ccwt's own storage (`~/.ccwt/state.json`), **not** in the
-> project. ccwt has no code path that writes a file into a repository. A committed
-> `ccwt.config.json` is still *read* if a project chooses to ship one, but ccwt never creates it.
+> **As built:** the recipe lives in ccwt's own storage (`~/.ccwt/ccwt.db`), **not** in the
+> project. ccwt has no code path that writes a file into a repository, and none that reads one
+> either — the committed `ccwt.config.json` this section assumed was dropped.
 > The original decision below assumed a committed file; it was reversed once "never modify the
 > user's project" became a hard constraint, since the sharing it bought is a team feature §2 puts
 > out of scope, and detection reconstructs the recipe anyway.
@@ -326,7 +326,7 @@ Register project → create worktree → provision → start dev server → logs
 Discover and adopt Claude-created worktrees (§5.1). Read `.worktreeinclude` (§5.4). Respect worktree locks (§5.5).
 
 **Milestone 3 — configurable**
-Full `ccwt.config.json` with validation, auto-detection, multiple services, recipe editor.
+Full recipe with validation, auto-detection, multiple services, recipe editor.
 
 **Milestone 4 — polish**
 Port map view, git status per worktree, `.env` diff, drift detection and repair.

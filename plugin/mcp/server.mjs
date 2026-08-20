@@ -64,7 +64,7 @@ const TOOLS = [
   {
     name: 'ccwt_recipe_read',
     description:
-      "The recipe ccwt holds for this repository, where it came from — a recipe stored in ccwt, a ccwt.config.json committed to the repository, or nothing but detection — and whether it has gone stale. Read this before writing a recipe: it says whether one already exists and whether a person wrote it.",
+      "The recipe ccwt holds for this repository, where it came from — a recipe stored in ccwt, or nothing but detection — and whether it has gone stale. Read this before writing a recipe: it says whether one already exists and whether a person wrote it.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -233,7 +233,6 @@ const NO_SERVER =
 
 const SOURCES = {
   ccwt: 'a recipe stored in ccwt',
-  project: 'a ccwt.config.json committed to the repository, which ccwt reads but never writes',
   detected: 'nothing stored — this is only what detection guessed',
 }
 
@@ -307,7 +306,7 @@ async function recipeRead(args) {
     )
   }
 
-  const result = await request('GET', `/api/projects/${found.project.id}/config`)
+  const result = await request('GET', `/api/projects/${found.project.id}/recipe`)
   if (!answered(result)) return { ...text(why(result, 'read that recipe')), isError: true }
 
   const view = result.body
@@ -341,7 +340,7 @@ async function recipeCheck(args) {
     )
   }
 
-  const result = await request('POST', `/api/projects/${found.project.id}/config/check`, {
+  const result = await request('POST', `/api/projects/${found.project.id}/recipe/check`, {
     text: args.recipe,
   })
   if (!answered(result)) return { ...text(why(result, 'check that recipe')), isError: true }
@@ -370,7 +369,7 @@ async function recipeWrite(args) {
 
   const id = found.project.id
 
-  const existing = await request('GET', `/api/projects/${id}/config`)
+  const existing = await request('GET', `/api/projects/${id}/recipe`)
   if (answered(existing) && existing.body.source === 'ccwt' && args.replace !== true) {
     return text(
       [
@@ -380,7 +379,7 @@ async function recipeWrite(args) {
     )
   }
 
-  const checked = await request('POST', `/api/projects/${id}/config/check`, { text: args.recipe })
+  const checked = await request('POST', `/api/projects/${id}/recipe/check`, { text: args.recipe })
   if (!answered(checked)) return { ...text(why(checked, 'check that recipe')), isError: true }
 
   if (!checked.body.ok) {
@@ -389,7 +388,7 @@ async function recipeWrite(args) {
     )
   }
 
-  const written = await request('PUT', `/api/projects/${id}/config`, { text: args.recipe })
+  const written = await request('PUT', `/api/projects/${id}/recipe`, { text: args.recipe })
   if (!answered(written)) return { ...text(why(written, 'store that recipe')), isError: true }
 
   return text(

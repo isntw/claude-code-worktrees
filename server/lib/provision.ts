@@ -1,6 +1,6 @@
 import { cp, link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import type { CcwtConfig, WriteEntry } from '../../shared/types'
+import type { Recipe, WriteEntry } from '../../shared/types'
 import { argv, exec } from './exec'
 import { isDirectory, isSymlink, modifiedAt, pathExists, sameFile } from './fs'
 import { stub } from './stub'
@@ -354,15 +354,15 @@ export async function runPostRemove(
 export async function placeFiles(
   rootPath: string,
   worktreePath: string,
-  config: CcwtConfig,
+  recipe: Recipe,
   at: Placeholders,
   refresh = false,
 ): Promise<ProvisionReport> {
   const report = emptyReport()
 
-  await copyFiles(rootPath, worktreePath, config.provision.copy, report)
-  await linkPaths(rootPath, worktreePath, config.provision.link, report, refresh)
-  await writeFiles(worktreePath, config.provision.write, at, report)
+  await copyFiles(rootPath, worktreePath, recipe.provision.copy, report)
+  await linkPaths(rootPath, worktreePath, recipe.provision.link, report, refresh)
+  await writeFiles(worktreePath, recipe.provision.write, at, report)
   await pruneCaches(worktreePath, report.linked, report)
 
   return report
@@ -371,24 +371,24 @@ export async function placeFiles(
 export async function provision(
   rootPath: string,
   worktreePath: string,
-  config: CcwtConfig,
+  recipe: Recipe,
   at: Placeholders,
 ): Promise<ProvisionReport> {
-  const report = await placeFiles(rootPath, worktreePath, config, at)
-  await runPostCreate(worktreePath, config.provision.postCreate, at)
+  const report = await placeFiles(rootPath, worktreePath, recipe, at)
+  await runPostCreate(worktreePath, recipe.provision.postCreate, at)
 
   return report
 }
 
-export function worktreesDirFor(rootPath: string, config: CcwtConfig): string {
-  return resolve(rootPath, config.worktreesDir)
+export function worktreesDirFor(rootPath: string, recipe: Recipe): string {
+  return resolve(rootPath, recipe.worktreesDir)
 }
 
 export function worktreePathFor(
   rootPath: string,
-  config: CcwtConfig,
+  recipe: Recipe,
   projectSlug: string,
   slug: string,
 ): string {
-  return join(worktreesDirFor(rootPath, config), projectSlug, slug)
+  return join(worktreesDirFor(rootPath, recipe), projectSlug, slug)
 }

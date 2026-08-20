@@ -44,7 +44,7 @@ export const LEGACY_PROJECTS = {
         services: [{ name: 'dev', cwd: '.', command: 'npm run dev', portRange: [5200, 5299] }],
         claude: { ownWorktreeCreation: false },
       },
-      configRevision: 3,
+      recipeRevision: 3,
     },
     { id: 'bbb222', rootPath: '/repo/beta', addedAt: '2026-01-02T00:00:00.000Z' },
   ],

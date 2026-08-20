@@ -2,7 +2,7 @@
 
 **Status:** proposed, unbuilt. Branch `worktree-worktree-stacks-spec`.
 
-Scope: three additions to `ccwt.config.json` that let a project describe an environment ccwt has
+Scope: three additions to the recipe that let a project describe an environment ccwt has
 never seen — a container stack, a multi-port dev server, anything — without ccwt learning what any
 of it is.
 
@@ -212,7 +212,7 @@ ServiceConfig
 ProvisionConfig
 + write:    { path: string; content: string }[]
 
-CcwtConfig
+Recipe
 + scripts:  { name: string; command: string; service?: string; cwd?: string }[]
 ```
 

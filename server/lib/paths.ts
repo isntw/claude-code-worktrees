@@ -20,3 +20,7 @@ export function logsDir(): string {
 export function fileKey(name: string): string {
   return name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'service'
 }
+
+export function configPath(): string {
+  return join(stateDir(), 'config.json')
+}

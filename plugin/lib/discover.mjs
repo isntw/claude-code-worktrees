@@ -189,7 +189,7 @@ export async function describe(cwd, transcriptPath) {
   const project = (state?.projects ?? []).find(
     (entry) => resolve(entry.rootPath) === resolve(rootPath),
   )
-  const declared = project?.config?.services ?? []
+  const declared = project?.recipe?.services ?? []
   if (!project || !declared.length) return null
 
   const worktrees = await Promise.all(

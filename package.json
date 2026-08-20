@@ -1,5 +1,5 @@
 {
-  "name": "claude-code-worktrees",
+  "name": "ccwt",
   "version": "0.2.1",
   "description": "Manage git worktrees as running environments — provisioned, ported, served.",
   "license": "AGPL-3.0-only",
@@ -18,10 +18,11 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "nuxt dev",
+    "dev": "node bin/ccwt.mjs --dev",
     "build": "nuxt build",
     "test": "node --test",
     "prepare": "nuxt prepare",
+    "prepack": "nuxt build",
     "preview": "node .output/server/index.mjs",
     "typecheck": "nuxt typecheck",
     "start": "node bin/ccwt.mjs"

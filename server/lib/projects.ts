@@ -1,9 +1,8 @@
-import { resolve } from 'node:path'
 import type { Diagnostic, Project } from '../../shared/types'
-import { detectPackageManager, loadConfig, projectName, suggestConfig } from './detect'
+import { detectPackageManager, projectName, suggestRecipe } from './detect'
 import { defaultBranch, idFor, repoRoot } from './git'
 import { pathExists } from './fs'
-import { RECIPE_REVISION, parseConfig } from '../../shared/config-schema'
+import { RECIPE_REVISION, parseRecipe } from '../../shared/recipe-schema'
 import { describeSetup } from './setup'
 import { addRecord, findRecord, listRecords, removeRecord } from './store'
 import type { ProjectRecord } from './store'
@@ -25,31 +24,15 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
       rootPath: record.rootPath,
       packageManager: null,
       defaultBranch: null,
-      config: null,
-      configPath: null,
+      recipe: null,
       addedAt: record.addedAt,
       setup: { portMode: 'none', headline: 'This path no longer exists.', notes: [] },
       issues,
     }
   }
 
-  const stored = record.config ? parseConfig(record.config) : null
-  const source = record.config ? { state: 'stored' as const } : await loadConfig(record.rootPath)
-  const config =
-    (stored?.ok ? stored.config : undefined) ??
-    (source.state === 'ok' ? source.config : await suggestConfig(record.rootPath))
-  const configPath = resolve(record.rootPath, 'ccwt.config.json')
-
-  if (source.state === 'invalid') {
-    for (const issue of source.issues.slice(0, 5)) {
-      issues.push({
-        code: 'project.config-invalid',
-        severity: 'error',
-        message: `ccwt.config.json — ${issue.path}: ${issue.message}`,
-        hint: 'Until this parses, ccwt falls back to what it can detect.',
-      })
-    }
-  }
+  const stored = record.recipe ? parseRecipe(record.recipe) : null
+  const recipe = (stored?.ok ? stored.recipe : undefined) ?? (await suggestRecipe(record.rootPath))
 
   if (stored && !stored.ok) {
     for (const issue of stored.issues.slice(0, 5)) {
@@ -62,7 +45,7 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     }
   }
 
-  if (stored?.ok && (record.configRevision ?? 0) < RECIPE_REVISION) {
+  if (stored?.ok && (record.recipeRevision ?? 0) < RECIPE_REVISION) {
     issues.push({
       code: 'project.recipe-stale',
       severity: 'warning',
@@ -71,16 +54,16 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     })
   }
 
-  if (config.services.length === 0) {
+  if (recipe.services.length === 0) {
     issues.push({
       code: 'project.no-dev-script',
       severity: 'warning',
       message: 'No dev script found, so worktrees get no service.',
-      hint: 'Add a `dev` script, or declare services in ccwt.config.json.',
+      hint: 'Add a `dev` script, or declare the services in the recipe.',
     })
   }
 
-  for (const service of config.services) {
+  for (const service of recipe.services) {
     if (service.command.includes('{{port}}')) continue
     if (Object.values(service.env ?? {}).some((value) => value.includes('{{port}}'))) continue
     if (service.portRange[0] === service.portRange[1]) continue
@@ -99,10 +82,9 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     rootPath: record.rootPath,
     packageManager: await detectPackageManager(record.rootPath),
     defaultBranch: await defaultBranch(record.rootPath),
-    config,
-    configPath: (await pathExists(configPath)) ? configPath : null,
+    recipe,
     addedAt: record.addedAt,
-    setup: await describeSetup(record.rootPath, config),
+    setup: await describeSetup(record.rootPath, recipe),
     issues,
   }
 }

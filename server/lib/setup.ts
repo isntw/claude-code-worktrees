@@ -1,11 +1,11 @@
-import type { CcwtConfig, Setup, SetupNote } from '../../shared/types'
+import type { Recipe, Setup, SetupNote } from '../../shared/types'
 import { envKey } from './env'
 
 import { findHardcodedAddresses } from './inspect'
 
-export async function describeSetup(rootPath: string, config: CcwtConfig): Promise<Setup> {
+export async function describeSetup(rootPath: string, recipe: Recipe): Promise<Setup> {
   const notes: SetupNote[] = []
-  const names = config.services.map((service) => service.name)
+  const names = recipe.services.map((service) => service.name)
 
   if (names.length === 0) {
     return {
@@ -26,7 +26,7 @@ export async function describeSetup(rootPath: string, config: CcwtConfig): Promi
     }
   }
 
-  const pinned = config.services.filter(
+  const pinned = recipe.services.filter(
     (service) => service.portRange[0] === service.portRange[1],
   )
 
@@ -34,7 +34,7 @@ export async function describeSetup(rootPath: string, config: CcwtConfig): Promi
     tone: 'good',
     title: names.length === 1 ? 'One service' : `${names.length} services`,
     body:
-      pinned.length === config.services.length
+      pinned.length === recipe.services.length
         ? `Each worktree runs ${names.map((name) => `\`${name}\``).join(' and ')}, on the port you pinned it to.`
         : `Each worktree runs ${names.map((name) => `\`${name}\``).join(' and ')}. ccwt picks a free port per service, per worktree, and remembers it.`,
   })
@@ -58,7 +58,7 @@ export async function describeSetup(rootPath: string, config: CcwtConfig): Promi
   })
 
   const { addresses } = await findHardcodedAddresses(rootPath)
-  const ours = new Set(config.services.flatMap((service) => service.portRange))
+  const ours = new Set(recipe.services.flatMap((service) => service.portRange))
   const crossService = addresses.filter((address) => !ours.has(address.port))
 
   if (crossService.length === 0) {
