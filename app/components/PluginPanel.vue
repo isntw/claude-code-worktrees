@@ -4,7 +4,7 @@ import { ref } from 'vue'
 const { report, busy, error, state, installed, look, says, events, install, enable, remove } =
   usePluginSetup()
 
-const asking = ref<'install' | 'update' | 'about' | null>(null)
+const asking = ref<'install' | 'about' | null>(null)
 
 const confirm = async () => {
   if (await install()) asking.value = null
@@ -33,11 +33,8 @@ const confirm = async () => {
           <dt class="text-faint">plugin</dt>
           <dd class="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
             <span class="text-ink">{{ report.parts.id }}</span>
-            <span class="text-dim">{{ installed ? report.installed : report.shipped }}</span>
+            <span class="text-dim">{{ report.shipped }}</span>
             <span v-if="report.scope" class="text-faint">· {{ report.scope }}</span>
-            <span v-if="report.state === 'outdated'" class="text-caution"
-              >· ccwt ships {{ report.shipped }}</span
-            >
           </dd>
 
           <dt class="text-faint">from</dt>
@@ -72,9 +69,6 @@ const confirm = async () => {
       <div class="mt-3 flex items-center gap-2">
         <Button v-if="state === 'absent'" size="sm" :disabled="busy" @click="asking = 'install'"
           >install…</Button
-        >
-        <Button v-if="state === 'outdated'" size="sm" :disabled="busy" @click="asking = 'update'"
-          >update…</Button
         >
         <Button v-if="state === 'disabled'" size="sm" :disabled="busy" @click="enable">{{
           busy ? 'working…' : 'switch it on'
