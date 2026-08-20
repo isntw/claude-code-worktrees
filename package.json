@@ -1,6 +1,6 @@
 {
   "name": "claude-code-worktrees",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Manage git worktrees as running environments — provisioned, ported, served.",
   "license": "AGPL-3.0-only",
   "type": "module",

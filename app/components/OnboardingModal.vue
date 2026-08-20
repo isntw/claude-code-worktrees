@@ -282,7 +282,13 @@ onMounted(load)
             <dt class="text-faint">tools</dt>
             <dd class="min-w-0 text-ink">
               {{ plugin.report.value.parts.tools.join(' · ') }}
-              <span class="font-sans text-faint">read only</span>
+            </dd>
+          </template>
+
+          <template v-if="plugin.report.value.parts.skills.length">
+            <dt class="text-faint">skills</dt>
+            <dd class="min-w-0 text-ink">
+              {{ plugin.report.value.parts.skills.map((skill) => skill.name).join(' · ') }}
             </dd>
           </template>
         </dl>

@@ -12,7 +12,7 @@ import {
   readComposeExec,
   serviceNames,
   teardownCommand,
-} from '../compose'
+} from '#shared/compose'
 
 const props = withDefaults(
   defineProps<{

@@ -120,3 +120,11 @@ export const COMPOSE_SKELETON = [
   '    ports: ["${WEB_PORT:-8080}:80"]',
   '',
 ].join('\n')
+
+export const STACK_PROJECT_NAME = 'ccwt-{{project}}-{{slug}}'
+
+export const PER_WORKTREE_TOKENS = ['slug', 'branch', 'worktreePath'] as const
+
+export function variesPerWorktree(value: string): boolean {
+  return PER_WORKTREE_TOKENS.some((token) => value.includes(`{{${token}}}`))
+}

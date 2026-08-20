@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, Plus } from 'lucide-vue-next'
 import type { CcwtConfig, ConfigView, ServiceConfig, WriteEntry } from '#shared/types'
 import { changed, collapse, diffLines } from '../../../diff'
-import { composeFileOf, isStack, teardownCommand } from '../../../compose'
+import { composeFileOf, isStack, teardownCommand } from '#shared/compose'
 
 const api = useApi()
 const route = useRoute()

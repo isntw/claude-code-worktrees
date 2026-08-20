@@ -100,7 +100,44 @@ export async function tell(path, body) {
   return answered?.ok ? true : null
 }
 
+export async function call(method, path, body) {
+  const server = await reachServer()
+  if (!server) return { server: false, ok: false, status: 0, body: null }
+
+  const answered = await fetch(`${server.origin}${path}`, {
+    method,
+    headers: {
+      'x-ccwt-token': server.token,
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(CALL_MS),
+  }).catch(() => null)
+
+  if (!answered) return { server: true, ok: false, status: 0, body: null }
+
+  const payload = await answered.json().catch(() => null)
+  return { server: true, ok: answered.ok, status: answered.status, body: payload }
+}
+
 export const readState = () => ask('/api/plugin/state')
+
+export async function locate(cwd) {
+  const toplevel = await git(cwd, ['rev-parse', '--show-toplevel'])
+  if (!toplevel) return null
+
+  const paths = parseWorktrees(await git(cwd, ['worktree', 'list', '--porcelain']))
+  const rootPath = paths[0] ?? toplevel
+
+  const state = await readState()
+  if (!state) return { rootPath, here: toplevel, project: null, reachable: false }
+
+  const project = (state.projects ?? []).find(
+    (entry) => resolve(entry.rootPath) === resolve(rootPath),
+  )
+
+  return { rootPath, here: toplevel, project: project ?? null, reachable: true }
+}
 
 export function parseWorktrees(porcelain) {
   const paths = []

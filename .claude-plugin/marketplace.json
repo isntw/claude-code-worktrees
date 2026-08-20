@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "ccwt",
-      "description": "Tells a Claude Code session which services ccwt already runs for the current repository, stops it starting a second copy of one, and names the session after its worktree.",
+      "description": "Tells a Claude Code session which services ccwt already runs for the current repository, stops it starting a second copy of one, lets it write the recipe that says what running the project means, and names the session after its worktree.",
       "source": "./plugin",
       "category": "productivity"
     }

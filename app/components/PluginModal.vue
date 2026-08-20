@@ -51,11 +51,42 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
         <dd class="font-sans text-[0.6875rem] text-faint">
           what a running service has printed, so a change can be checked without building
         </dd>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_project_add</dt>
+        <dd class="font-sans text-[0.6875rem] text-faint">
+          registers the repository the session is in, so it can hold a recipe
+        </dd>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_recipe_read</dt>
+        <dd class="font-sans text-[0.6875rem] text-faint">
+          the recipe you have, where it came from, and whether it has gone stale
+        </dd>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_recipe_check</dt>
+        <dd class="font-sans text-[0.6875rem] text-faint">
+          validates a recipe and stores nothing, so a session can get it right before saving
+        </dd>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_recipe_write</dt>
+        <dd class="font-sans text-[0.6875rem] text-faint">
+          saves the recipe into ccwt, never into your repository
+        </dd>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_worktree_start</dt>
+        <dd class="font-sans text-[0.6875rem] text-faint">
+          asks ccwt to start a worktree's services, rather than the session starting its own
+        </dd>
       </dl>
       <p class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
-        Both are read-only. Nothing the session can call will start, stop or restart a service —
-        that stays yours, from this dashboard.
+        A session can ask ccwt to start a worktree, and can write the recipe that says what starting
+        one means. ccwt still allocates every port and owns every process, and nothing a session
+        calls will stop or restart a service — that stays yours, from this dashboard.
       </p>
+    </section>
+
+    <section v-if="report.parts.skills.length" class="mt-4">
+      <p class="t-eyebrow">Skills it adds</p>
+      <dl class="mt-2 grid grid-cols-[10.5rem_1fr] gap-x-3 gap-y-1">
+        <template v-for="skill in report.parts.skills" :key="skill.name">
+          <dt class="font-mono text-[0.6875rem] text-ink">{{ skill.name }}</dt>
+          <dd class="font-sans text-[0.6875rem] text-faint">{{ skill.blurb }}</dd>
+        </template>
+      </dl>
     </section>
 
     <section v-if="action" class="mt-4 border border-line-strong px-3 py-3">
