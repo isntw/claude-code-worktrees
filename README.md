@@ -21,7 +21,8 @@ up by hand. **ccwt does that part.**
 Needs git 2.20+ and Node 24+.
 
 ```bash
-npx ccwt           # opens http://127.0.0.1:4600
+npm i -g claude-code-worktrees
+ccwt               # opens http://127.0.0.1:4600
 ```
 
 1. **Register project** — point it at a repository. ccwt reads it and fills in the setup.
