@@ -1,4 +1,4 @@
-import { checkConfig } from '~~/server/lib/config'
+import { checkRecipe } from '~~/server/lib/recipe'
 
 export default defineEventHandler(async (event) => {
   await requireProject(event)
@@ -8,5 +8,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'text is required' })
   }
 
-  return guard(() => checkConfig(body.text!))
+  return guard(() => checkRecipe(body.text!))
 })

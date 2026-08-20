@@ -28,7 +28,7 @@ const project = ref<Project | null>(null)
 
 const parts = computed(() => {
   const found: Record<string, StackPart[]> = {}
-  const config = project.value?.config
+  const recipe = project.value?.recipe
   if (!config) return found
 
   for (const service of config.services) {
@@ -325,7 +325,7 @@ onBeforeUnmount(() => {
     <Button
       v-if="unprovisioned.length"
       variation="warning"
-      :disabled="loading || repairingAll || !project?.config"
+      :disabled="loading || repairingAll || !project?.recipe"
       :title="REPAIR_HINT"
       @click="repairEvery"
       >{{ repairingAll ? 'repair all…' : 'repair all' }}</Button
@@ -333,9 +333,9 @@ onBeforeUnmount(() => {
     <Button
       variation="primary"
       :outline="false"
-      :disabled="!project?.config?.services.length"
+      :disabled="!project?.recipe?.services.length"
       :title="
-        project?.config?.services.length ? undefined : 'No dev script detected for this project'
+        project?.recipe?.services.length ? undefined : 'No dev script detected for this project'
       "
       @click="creating = true"
       >new worktree</Button
@@ -363,7 +363,7 @@ onBeforeUnmount(() => {
         project.rootPath
       }}</code>
 
-      <NuxtLink :to="`/project/${projectId}/config`" class="ml-auto">
+      <NuxtLink :to="`/project/${projectId}/recipe`" class="ml-auto">
         <Button size="sm">recipe</Button>
       </NuxtLink>
       <Button size="sm" @click="forget">forget project</Button>

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { CcwtConfig, ServiceConfig } from '#shared/types'
+import type { Recipe, ServiceConfig } from '#shared/types'
 
-const props = defineProps<{ current: CcwtConfig; suggested: CcwtConfig }>()
-const emit = defineEmits<{ apply: [CcwtConfig]; close: [] }>()
+const props = defineProps<{ current: Recipe; suggested: Recipe }>()
+const emit = defineEmits<{ apply: [Recipe]; close: [] }>()
 
 type Section = 'copy' | 'link' | 'postCreate' | 'services'
 
@@ -82,8 +82,8 @@ const chosen = (section: Section) =>
 const openable = (section: Section) =>
   rows.value.filter((row) => row.section === section && !row.held).length
 
-const merged = computed<CcwtConfig>(() => {
-  const next = JSON.parse(JSON.stringify(props.current)) as CcwtConfig
+const merged = computed<Recipe>(() => {
+  const next = JSON.parse(JSON.stringify(props.current)) as Recipe
 
   for (const section of ['copy', 'link', 'postCreate'] as const) {
     const additions = props.suggested.provision[section].filter(

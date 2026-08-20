@@ -1,8 +1,6 @@
-import { readFile, readdir } from 'node:fs/promises'
+import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { CcwtConfig, PackageManager, ProvisionConfig, ServiceConfig } from '../../shared/types'
-import type { ConfigIssue } from '../../shared/config-schema'
-import { parseConfigText } from '../../shared/config-schema'
+import type { PackageManager, ProvisionConfig, Recipe, ServiceConfig } from '../../shared/types'
 import { isDirectory, pathExists, readJsonSafe } from './fs'
 import { isIgnored } from './git'
 
@@ -72,10 +70,10 @@ export async function projectName(rootPath: string): Promise<string> {
   return fromManifest || rootPath.split('/').filter(Boolean).pop() || rootPath
 }
 
-export function defaultConfig(
+export function defaultRecipe(
   services: ServiceConfig[],
   provision: Partial<ProvisionConfig> = {},
-): CcwtConfig {
+): Recipe {
   return {
     worktreesDir: '.claude/worktrees',
     provision: {
@@ -112,36 +110,12 @@ export async function detectCopies(rootPath: string): Promise<string[]> {
   return found
 }
 
-export async function suggestConfig(rootPath: string): Promise<CcwtConfig> {
+export async function suggestRecipe(rootPath: string): Promise<Recipe> {
   const manager = await detectPackageManager(rootPath)
   const { detectServices } = await import('./services')
 
-  return defaultConfig(await detectServices(rootPath, manager ?? 'npm'), {
+  return defaultRecipe(await detectServices(rootPath, manager ?? 'npm'), {
     copy: await detectCopies(rootPath),
     ...suggestDependencies(manager),
   })
-}
-
-export type ConfigSource =
-  | { state: 'absent' }
-  | { state: 'ok'; config: CcwtConfig; text: string }
-  | { state: 'invalid'; issues: ConfigIssue[]; text: string }
-
-export function configPath(rootPath: string): string {
-  return join(rootPath, 'ccwt.config.json')
-}
-
-export async function loadConfig(rootPath: string): Promise<ConfigSource> {
-  const raw = await readFile(configPath(rootPath), 'utf8').catch(() => null)
-  if (raw === null) return { state: 'absent' }
-
-  const parsed = parseConfigText(raw)
-  if (!parsed.ok) return { state: 'invalid', issues: parsed.issues, text: raw }
-
-  return { state: 'ok', config: parsed.config, text: raw }
-}
-
-export async function resolveConfig(rootPath: string): Promise<CcwtConfig> {
-  const source = await loadConfig(rootPath)
-  return source.state === 'ok' ? source.config : suggestConfig(rootPath)
 }

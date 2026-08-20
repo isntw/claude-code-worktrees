@@ -1,4 +1,4 @@
-import type { CcwtConfig } from '../../shared/types'
+import type { Recipe } from '../../shared/types'
 import { databasePath, db, stateDir } from './db'
 import type { ProjectTable } from './schema'
 
@@ -8,8 +8,8 @@ export interface ProjectRecord {
   id: string
   rootPath: string
   addedAt: string
-  config?: CcwtConfig
-  configRevision?: number
+  recipe?: Recipe
+  recipeRevision?: number
 }
 
 function toRecord(row: ProjectTable): ProjectRecord {
@@ -19,15 +19,15 @@ function toRecord(row: ProjectTable): ProjectRecord {
     addedAt: row.added_at,
   }
 
-  if (row.config !== null) {
+  if (row.recipe !== null) {
     try {
-      record.config = JSON.parse(row.config) as CcwtConfig
+      record.recipe = JSON.parse(row.recipe) as Recipe
     } catch {
-      record.config = undefined
+      record.recipe = undefined
     }
   }
 
-  if (row.config_revision !== null) record.configRevision = row.config_revision
+  if (row.recipe_revision !== null) record.recipeRevision = row.recipe_revision
 
   return record
 }
@@ -63,8 +63,8 @@ export async function addRecord(record: ProjectRecord): Promise<ProjectRecord> {
       id: record.id,
       root_path: record.rootPath,
       added_at: record.addedAt,
-      config: record.config === undefined ? null : JSON.stringify(record.config),
-      config_revision: record.configRevision ?? null,
+      recipe: record.recipe === undefined ? null : JSON.stringify(record.recipe),
+      recipe_revision: record.recipeRevision ?? null,
     })
     .execute()
 
@@ -82,10 +82,10 @@ export async function updateRecord(
 
   if ('rootPath' in change && change.rootPath !== undefined) patch.root_path = change.rootPath
   if ('addedAt' in change && change.addedAt !== undefined) patch.added_at = change.addedAt
-  if ('config' in change) {
-    patch.config = change.config === undefined ? null : JSON.stringify(change.config)
+  if ('recipe' in change) {
+    patch.recipe = change.recipe === undefined ? null : JSON.stringify(change.recipe)
   }
-  if ('configRevision' in change) patch.config_revision = change.configRevision ?? null
+  if ('recipeRevision' in change) patch.recipe_revision = change.recipeRevision ?? null
 
   if (Object.keys(patch).length) {
     await db().updateTable('projects').set(patch).where('id', '=', id).execute()
