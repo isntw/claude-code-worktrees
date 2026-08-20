@@ -2,6 +2,7 @@
 import { Lock, LockOpen, Trash2 } from 'lucide-vue-next'
 import type { OverviewRow, ServiceState, ServiceStatus, Worktree } from '#shared/types'
 import { PULL } from './pull'
+import { repairTitle } from './repair'
 import type { Variation } from './variation'
 
 const { rows, repairing = null } = defineProps<{ rows: OverviewRow[]; repairing?: string | null }>()
