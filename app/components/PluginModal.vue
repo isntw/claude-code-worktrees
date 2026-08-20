@@ -1,11 +1,18 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
+import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 import type { PluginReport } from '#shared/types'
 
-withDefaults(defineProps<{ report: PluginReport; action?: 'install' | null }>(), {
+const props = withDefaults(defineProps<{ report: PluginReport; action?: 'install' | null }>(), {
   action: null,
 })
 
 const emit = defineEmits<{ close: []; confirm: [] }>()
+
+const open = ref(false)
+
+const folded = computed(() => props.action !== null)
+const shown = computed(() => !folded.value || open.value)
 </script>
 
 <template>
@@ -28,7 +35,24 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       </dl>
     </section>
 
-    <section class="mt-4">
+    <button
+      v-if="folded"
+      type="button"
+      class="mt-4 flex w-full cursor-pointer items-center gap-2 text-left"
+      :aria-expanded="open"
+      @click="open = !open"
+    >
+      <component
+        :is="open ? ChevronDown : ChevronRight"
+        :size="12"
+        class="shrink-0 text-faint"
+        aria-hidden="true"
+      />
+      <span class="t-eyebrow">What it registers</span>
+      <span v-if="open" class="ml-auto shrink-0 font-mono text-[0.625rem] text-faint">hide</span>
+    </button>
+
+    <section v-if="shown" class="mt-4">
       <p class="t-eyebrow">Every hook it registers</p>
       <dl class="mt-2 grid grid-cols-[10.5rem_1fr] gap-x-3 gap-y-1">
         <template v-for="hook in report.parts.hooks" :key="`${hook.event}${hook.matcher}`">
@@ -40,7 +64,7 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       </dl>
     </section>
 
-    <section v-if="report.parts.servers.length" class="mt-4">
+    <section v-if="shown && report.parts.servers.length" class="mt-4">
       <p class="t-eyebrow">Tools it adds</p>
       <dl class="mt-2 grid grid-cols-[10.5rem_1fr] gap-x-3 gap-y-1">
         <dt class="font-mono text-[0.6875rem] text-ink">ccwt_status</dt>
@@ -79,7 +103,7 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       </p>
     </section>
 
-    <section v-if="report.parts.skills.length" class="mt-4">
+    <section v-if="shown && report.parts.skills.length" class="mt-4">
       <p class="t-eyebrow">Skills it adds</p>
       <dl class="mt-2 grid grid-cols-[10.5rem_1fr] gap-x-3 gap-y-1">
         <template v-for="skill in report.parts.skills" :key="skill.name">

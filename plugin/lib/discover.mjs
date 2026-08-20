@@ -14,6 +14,8 @@ export const ccwtDir = () => process.env.CCWT_HOME || join(homedir(), '.ccwt')
 
 const CALL_MS = 3_000
 
+export const PLACE_MS = 300_000
+
 export const git = async (cwd, args) => {
   const { stdout } = await run('git', args, { cwd }).catch(() => ({ stdout: '' }))
   return stdout.trim()
@@ -100,9 +102,9 @@ export async function tell(path, body) {
   return answered?.ok ? true : null
 }
 
-export async function call(method, path, body) {
+export async function call(method, path, body, timeoutMs = CALL_MS) {
   const server = await reachServer()
-  if (!server) return { server: false, ok: false, status: 0, body: null }
+  if (!server) return { server: false, ok: false, status: 0, timedOut: false, body: null }
 
   const answered = await fetch(`${server.origin}${path}`, {
     method,
@@ -111,13 +113,16 @@ export async function call(method, path, body) {
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    signal: AbortSignal.timeout(CALL_MS),
-  }).catch(() => null)
+    signal: AbortSignal.timeout(timeoutMs),
+  }).catch((cause) => cause)
 
-  if (!answered) return { server: true, ok: false, status: 0, body: null }
+  if (!(answered instanceof Response)) {
+    const timedOut = answered?.name === 'TimeoutError' || answered?.name === 'AbortError'
+    return { server: true, ok: false, status: 0, timedOut, body: null }
+  }
 
   const payload = await answered.json().catch(() => null)
-  return { server: true, ok: answered.ok, status: answered.status, body: payload }
+  return { server: true, ok: answered.ok, status: answered.status, timedOut: false, body: payload }
 }
 
 export const readState = () => ask('/api/plugin/state')
