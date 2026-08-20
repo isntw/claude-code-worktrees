@@ -1,5 +1,4 @@
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   Diagnostic,
@@ -11,11 +10,15 @@ import type {
   PluginState,
 } from '../../shared/types'
 import { exec } from './exec'
+import { stateDir } from './paths'
+import { below, parseVersion } from './requirements'
 
 const NAME = 'ccwt'
 const ID = `${NAME}@${NAME}`
 const PROBE_MS = 20_000
 const INSTALL_MS = 120_000
+const CLAUDE_MIN = '2.1.229'
+const COMMAND_MAX = 500
 
 interface Installed {
   id: string
@@ -25,7 +28,7 @@ interface Installed {
   installedAt?: string
 }
 
-export const sourceDir = (): string => join(homedir(), '.ccwt', 'plugin')
+export const sourceDir = (): string => join(stateDir(), 'plugin')
 
 const packageRoot = (): string => process.env.CCWT_ROOT ?? process.cwd()
 
@@ -76,6 +79,15 @@ interface HooksFile {
 interface Manifest {
   version?: string
   mcpServers?: Record<string, unknown>
+}
+
+interface MarketplaceEntry {
+  name?: string
+  source?: unknown
+}
+
+interface Marketplace {
+  plugins?: MarketplaceEntry[]
 }
 
 async function readJson<T>(path: string): Promise<T | null> {
@@ -165,15 +177,11 @@ function absent(missing: string[]): Diagnostic {
   }
 }
 
-export async function commands(): Promise<string[]> {
-  const already = (await present()) && (await installed()) !== null
-
+export function commands(): string[] {
   return [
     `claude plugin marketplace add ${sourceDir()}`,
     `claude plugin marketplace update ${NAME}`,
-    already
-      ? `claude plugin update ${ID} --scope user -y`
-      : `claude plugin install ${ID} --scope user -y`,
+    `claude plugin install ${ID} --scope user -y`,
   ]
 }
 
@@ -186,9 +194,25 @@ async function claude(args: string[], timeoutMs = PROBE_MS) {
   return exec('claude', args, { timeoutMs }).catch(() => null)
 }
 
-async function present(): Promise<boolean> {
+async function claudeVersion(): Promise<string | null> {
   const result = await claude(['--version'])
-  return result !== null && result.code === 0
+  if (!result || result.code !== 0) return null
+  return parseVersion(result.stdout || result.stderr)
+}
+
+function tooOld(version: string | null): boolean {
+  return version !== null && below(version, CLAUDE_MIN)
+}
+
+export function pluginCommand(): string {
+  return `${process.execPath} ${join(packageRoot(), 'bin', 'ccwt.mjs')} --plugin-path`
+}
+
+export function unusable(command: string): string | null {
+  if (command.length > COMMAND_MAX) return `it is ${command.length} characters, over the ${COMMAND_MAX} allowed`
+  if (!/^[\x20-\x7e]+$/.test(command)) return 'it is not all printable ASCII'
+  if (/ {4}/.test(command)) return 'it contains a run of four or more spaces'
+  return null
 }
 
 async function installed(): Promise<Installed | null> {
@@ -203,13 +227,13 @@ async function installed(): Promise<Installed | null> {
   }
 }
 
-function stateOf(found: Installed | null, shipped: string): PluginState {
+function stateOf(found: Installed | null): PluginState {
   if (!found) return 'absent'
   if (found.enabled === false) return 'disabled'
-  return found.version === shipped ? 'installed' : 'outdated'
+  return 'installed'
 }
 
-function issuesFor(state: PluginState, shipped: string, found: Installed | null): Diagnostic[] {
+function issuesFor(state: PluginState, version: string | null): Diagnostic[] {
   if (state === 'unavailable') {
     return [
       {
@@ -217,6 +241,17 @@ function issuesFor(state: PluginState, shipped: string, found: Installed | null)
         severity: 'info',
         message: 'Claude Code is not on this machine’s PATH.',
         hint: 'ccwt drives `claude plugin` to install this. Install Claude Code, then reload.',
+      },
+    ]
+  }
+
+  if (tooOld(version)) {
+    return [
+      {
+        code: 'plugin.claude-too-old',
+        severity: 'warning',
+        message: `Claude Code ${version} cannot install this plugin; it needs ${CLAUDE_MIN} or newer.`,
+        hint: 'ccwt hands Claude Code a command that prints the plugin, so it can update itself without ccwt being asked. Older versions fail to read the marketplace at all, so nothing is written until Claude Code is updated.',
       },
     ]
   }
@@ -232,13 +267,14 @@ function issuesFor(state: PluginState, shipped: string, found: Installed | null)
     ]
   }
 
-  if (state === 'outdated') {
+  const broken = unusable(pluginCommand())
+  if (broken) {
     return [
       {
-        code: 'plugin.outdated',
-        severity: 'warning',
-        message: `The installed plugin is ${found?.version ?? 'an older version'}; this ccwt ships ${shipped}.`,
-        hint: 'Update it here. Nothing is installed or changed until you do.',
+        code: 'plugin.command-unusable',
+        severity: 'error',
+        message: `Claude Code will not accept the command that prints this plugin — ${broken}.`,
+        hint: `The command is built from where ccwt is installed: ${pluginCommand()}. Install ccwt somewhere Claude Code can name.`,
       },
     ]
   }
@@ -248,8 +284,9 @@ function issuesFor(state: PluginState, shipped: string, found: Installed | null)
 
 export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
   const shipped = await shippedVersion()
+  const version = await claudeVersion()
 
-  if (!(await present())) {
+  if (version === null) {
     return {
       state: 'unavailable',
       installed: null,
@@ -257,15 +294,15 @@ export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
       scope: null,
       installedAt: null,
       source: sourceDir(),
-      commands: await commands(),
+      commands: commands(),
       capabilities: CAPABILITIES,
       parts: await parts(),
-      issues: [...issuesFor('unavailable', shipped, null), ...extra],
+      issues: [...issuesFor('unavailable', version), ...extra],
     }
   }
 
   const found = await installed()
-  const state = stateOf(found, shipped)
+  const state = stateOf(found)
   const missing = state === 'absent' ? await missingSource() : []
 
   return {
@@ -275,36 +312,36 @@ export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
     scope: found?.scope ?? null,
     installedAt: found?.installedAt ?? null,
     source: sourceDir(),
-    commands: await commands(),
+    commands: commands(),
     capabilities: CAPABILITIES,
     parts: await parts(),
     issues: [
       ...(missing.length ? [absent(missing)] : []),
-      ...issuesFor(state, shipped, found),
+      ...issuesFor(state, version),
       ...extra,
     ],
   }
 }
 
-async function materialise(): Promise<void> {
+export async function materialise(): Promise<void> {
   const root = packageRoot()
   const target = sourceDir()
+
+  const template = await readJson<Marketplace>(join(root, '.claude-plugin', 'marketplace.json'))
+  if (!template?.plugins?.length) throw new Error('ccwt ships no marketplace to install from.')
+
+  const listed = template.plugins.map((entry) =>
+    entry.name === NAME
+      ? { ...entry, source: { source: 'command', command: pluginCommand() } }
+      : entry,
+  )
 
   await rm(target, { recursive: true, force: true })
   await mkdir(join(target, '.claude-plugin'), { recursive: true, mode: 0o700 })
 
-  await cp(join(root, 'plugin'), join(target, 'plugin'), { recursive: true })
-  await cp(
-    join(root, '.claude-plugin', 'marketplace.json'),
-    join(target, '.claude-plugin', 'marketplace.json'),
-  )
-
-  const written = join(target, 'plugin', '.claude-plugin', 'plugin.json')
-  const manifest = (await readJson<Manifest>(written)) ?? {}
-
   await writeFile(
-    written,
-    JSON.stringify({ ...manifest, version: await shippedVersion() }, null, 2) + '\n',
+    join(target, '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({ ...template, plugins: listed }, null, 2) + '\n',
     { mode: 0o600 },
   )
 }
@@ -320,7 +357,11 @@ function failed(what: string, code: number, stderr: string): Diagnostic {
 }
 
 export async function install(): Promise<PluginReport> {
-  if (!(await present())) return report()
+  const version = await claudeVersion()
+  if (version === null || tooOld(version)) return report()
+
+  const broken = unusable(pluginCommand())
+  if (broken) return report()
 
   const missing = await missingSource()
   if (missing.length) return report([absent(missing)])
@@ -334,18 +375,12 @@ export async function install(): Promise<PluginReport> {
 
   await claude(['plugin', 'marketplace', 'update', NAME], INSTALL_MS)
 
-  const already = (await installed()) !== null
-  const verb = already ? 'update' : 'install'
-  const args = already
-    ? ['plugin', 'update', ID, '--scope', 'user', '-y']
-    : ['plugin', 'install', ID, '--scope', 'user', '-y']
-
-  const put = await claude(args, INSTALL_MS)
+  const put = await claude(['plugin', 'install', ID, '--scope', 'user', '-y'], INSTALL_MS)
   if (!put) {
-    return report([failed(`claude plugin ${verb}`, -1, 'the command did not finish')])
+    return report([failed('claude plugin install', -1, 'the command did not finish')])
   }
   if (put.code !== 0) {
-    return report([failed(`claude plugin ${verb}`, put.code, put.stderr)])
+    return report([failed('claude plugin install', put.code, put.stderr)])
   }
 
   const said = put.stdout.trim().split('\n').slice(-4).join('\n')
@@ -355,13 +390,13 @@ export async function install(): Promise<PluginReport> {
       code: 'plugin.installed',
       severity: 'info',
       message: said || 'Claude Code installed the plugin without saying anything.',
-      hint: 'If it did not switch the plugin on, run `/reload-plugins --force` in a session you already have open. A new session picks it up either way.',
+      hint: 'From here Claude Code keeps it current on its own: it runs ccwt once a session to find the plugin, and reloads when the files change. If it did not switch the plugin on, run `/reload-plugins --force` in a session you already have open.',
     },
   ])
 }
 
 export async function enable(): Promise<PluginReport> {
-  if (!(await present())) return report()
+  if ((await claudeVersion()) === null) return report()
 
   const result = await claude(['plugin', 'enable', ID], INSTALL_MS)
   if (result && result.code !== 0) {
@@ -372,7 +407,7 @@ export async function enable(): Promise<PluginReport> {
 }
 
 export async function remove(): Promise<PluginReport> {
-  if (!(await present())) return report()
+  if ((await claudeVersion()) === null) return report()
 
   const result = await claude(['plugin', 'uninstall', ID], INSTALL_MS)
   if (result && result.code !== 0 && !/not installed/i.test(result.stderr)) {

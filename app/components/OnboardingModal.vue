@@ -61,7 +61,7 @@ const marks = computed<(Variation | null)[]>(() => [
   forge.configured.value === false ? 'warning' : forge.signedIn.value ? 'success' : null,
   plugin.state.value === 'installed'
     ? 'success'
-    : plugin.state.value === 'disabled' || plugin.state.value === 'outdated'
+    : plugin.state.value === 'disabled'
       ? 'warning'
       : null,
 ])
@@ -87,9 +87,7 @@ const status = computed<{ text: string; tint: string } | null>(() => {
 })
 
 const commands = computed(() =>
-  plugin.state.value === 'absent' || plugin.state.value === 'outdated'
-    ? (plugin.report.value?.commands ?? [])
-    : [],
+  plugin.state.value === 'absent' ? (plugin.report.value?.commands ?? []) : [],
 )
 
 const load = async () => {
@@ -259,13 +257,10 @@ onMounted(load)
           <dd class="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
             <span class="text-ink">{{ plugin.report.value.parts.id }}</span>
             <span class="text-dim">{{
-              plugin.installed.value ? plugin.report.value.installed : plugin.report.value.shipped
+              plugin.report.value.shipped
             }}</span>
             <span v-if="plugin.report.value.scope" class="text-faint"
               >· {{ plugin.report.value.scope }}</span
-            >
-            <span v-if="plugin.state.value === 'outdated'" class="text-caution"
-              >· ccwt ships {{ plugin.report.value.shipped }}</span
             >
           </dd>
 
@@ -322,15 +317,6 @@ onMounted(load)
             :disabled="plugin.busy.value"
             @click="plugin.install"
             >{{ plugin.busy.value ? 'installing…' : 'install it' }}</Button
-          >
-          <Button
-            v-else-if="plugin.state.value === 'outdated'"
-            size="sm"
-            variation="primary"
-            :outline="false"
-            :disabled="plugin.busy.value"
-            @click="plugin.install"
-            >{{ plugin.busy.value ? 'updating…' : 'update it' }}</Button
           >
           <Button
             v-else-if="plugin.state.value === 'disabled'"

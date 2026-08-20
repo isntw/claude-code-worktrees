@@ -7,7 +7,6 @@ const LOOK: Record<PluginState, Variation> = {
   absent: 'neutral',
   installed: 'success',
   disabled: 'warning',
-  outdated: 'warning',
 }
 
 const SAYS: Record<PluginState, string> = {
@@ -15,7 +14,6 @@ const SAYS: Record<PluginState, string> = {
   absent: 'not installed',
   installed: 'installed',
   disabled: 'switched off',
-  outdated: 'update available',
 }
 
 export function usePluginSetup() {
@@ -26,7 +24,7 @@ export function usePluginSetup() {
   const error = ref<string | null>(null)
 
   const state = computed<PluginState | null>(() => report.value?.state ?? null)
-  const installed = computed(() => state.value === 'installed' || state.value === 'outdated')
+  const installed = computed(() => state.value === 'installed')
   const look = computed<Variation>(() => (state.value ? LOOK[state.value] : 'neutral'))
   const says = computed(() => (state.value ? SAYS[state.value] : ''))
 

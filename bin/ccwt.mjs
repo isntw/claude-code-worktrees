@@ -19,6 +19,7 @@ const { values } = parseArgs({
     open: { type: 'boolean', default: true },
     help: { type: 'boolean', short: 'h', default: false },
     version: { type: 'boolean', short: 'v', default: false },
+    'plugin-path': { type: 'boolean', default: false },
   },
   allowNegative: true,
 })
@@ -37,16 +38,12 @@ if (values.help) {
         --no-open         do not open a browser
     -h, --help            show this
     -v, --version         show the version
+        --plugin-path     print the Claude Code plugin directory and exit
 
   The port and host are also settable in Settings, which saves them to
   ~/.ccwt/config.json. A flag here wins over what is saved there.
 
 `)
-  process.exit(0)
-}
-
-if (values.version) {
-  process.stdout.write('0.1.0\n')
   process.exit(0)
 }
 
@@ -59,6 +56,17 @@ const readJson = (path) =>
   readFile(path, 'utf8')
     .then((raw) => JSON.parse(raw))
     .catch(() => null)
+
+if (values['plugin-path']) {
+  process.stdout.write(`${join(root, 'plugin')}\n`)
+  process.exit(0)
+}
+
+if (values.version) {
+  const own = await readJson(join(root, 'package.json'))
+  process.stdout.write(`${own?.version ?? '0.0.0'}\n`)
+  process.exit(0)
+}
 
 function startNuxtDev(at, on) {
   const nuxt = join(root, 'node_modules/nuxt/bin/nuxt.mjs')

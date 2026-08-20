@@ -31,13 +31,13 @@ const TOOLS: Probe[] = [
   },
 ]
 
-function parseVersion(text: string): string | null {
+export function parseVersion(text: string): string | null {
   const line = text.split('\n', 1)[0] ?? ''
   const match = /\d+(?:\.\d+)+/.exec(line)
   return match ? match[0]! : null
 }
 
-function below(version: string, minimum: string): boolean {
+export function below(version: string, minimum: string): boolean {
   const left = version.split('.')
   const right = minimum.split('.')
   const depth = Math.max(left.length, right.length)

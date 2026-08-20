@@ -388,7 +388,7 @@ export interface ToolCheck {
   install: string
 }
 
-export type PluginState = 'unavailable' | 'absent' | 'installed' | 'disabled' | 'outdated'
+export type PluginState = 'unavailable' | 'absent' | 'installed' | 'disabled'
 
 export interface PluginCapability {
   name: string

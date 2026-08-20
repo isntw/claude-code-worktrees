@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PluginReport } from '#shared/types'
 
-withDefaults(defineProps<{ report: PluginReport; action?: 'install' | 'update' | null }>(), {
+withDefaults(defineProps<{ report: PluginReport; action?: 'install' | null }>(), {
   action: null,
 })
 
@@ -95,12 +95,13 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
         class="mt-2 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-ink"
       >{{ report.commands.join('\n') }}</pre>
       <p class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
-        The plugin is copied into <code class="font-mono">{{ report.source }}</code> first — ccwt has
-        written nothing there until you press this. Claude Code says at the end of the install
-        whether it switched the plugin on; if it did not, run
+        ccwt writes a marketplace into <code class="font-mono">{{ report.source }}</code> naming a
+        command that prints where this plugin lives — nothing is written there until you press this.
+        Claude Code copies the plugin into its own cache, then re-runs that command once a session
+        and reloads when the files have changed, so it stays current without ccwt being asked. If it
+        does not switch the plugin on now, run
         <code class="font-mono text-dim">/reload-plugins --force</code> in a session you already have
-        open. The <code class="font-mono">--force</code> is needed because this adds tools, which
-        drops the prompt cache. A new session picks it up either way.
+        open.
       </p>
     </section>
 
@@ -112,7 +113,7 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
         variation="primary"
         :outline="false"
         @click="emit('confirm')"
-        >{{ action === 'update' ? 'update it' : 'install it' }}</Button
+        >install it</Button
       >
     </template>
   </ModalPanel>
