@@ -11,6 +11,7 @@ import type {
   ServiceStatus,
   Worktree,
 } from '#shared/types'
+import { resolveKey, routeKeys } from '#shared/route-keys'
 import { REPAIR_HINT } from '../../../components/repair'
 import type { StackPart } from '#shared/compose'
 import { composeFileOf, containerFor, serviceNames } from '#shared/compose'
@@ -63,6 +64,8 @@ const git = ref<GitReport>({})
 const forge = ref<ForgeStatus | null>(null)
 const streams = ref<Record<string, LogLine[]>>({})
 const selected = ref<string | null>(null)
+
+const keys = computed(() => routeKeys(worktrees.value))
 
 const KEPT = 1000
 
@@ -148,7 +151,9 @@ const reload = async () => {
 
 const show = async (worktreeId: string) => {
   selected.value = worktreeId
-  router.replace({ query: { ...route.query, worktree: worktreeId } })
+  router.replace({
+    query: { ...route.query, worktree: keys.value.get(worktreeId) ?? worktreeId },
+  })
   streams.value = bucket(await api.logs(projectId.value, worktreeId).catch(() => []))
 }
 
@@ -317,8 +322,9 @@ onMounted(async () => {
   polling = setInterval(loadPulls, 15_000)
 
   const remembered = route.query.worktree
-  if (typeof remembered === 'string' && worktrees.value.some((w) => w.id === remembered)) {
-    await show(remembered)
+  if (typeof remembered === 'string') {
+    const found = resolveKey(worktrees.value, remembered)
+    if (found) await show(found)
   }
 })
 

@@ -9,6 +9,7 @@ import type {
   ServiceStatus,
   Worktree,
 } from '../../shared/types'
+import { slugify } from '../../shared/route-keys'
 import {
   addWorktree,
   classify,
@@ -140,14 +141,6 @@ async function missing(project: Project, worktreePath: string): Promise<boolean>
 
 async function outOfDate(project: Project, worktreePath: string): Promise<boolean> {
   return (await missing(project, worktreePath)) || (await diverged(project, worktreePath))
-}
-
-export function slugify(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
 }
 
 async function noteExposed(

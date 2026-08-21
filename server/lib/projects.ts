@@ -3,6 +3,7 @@ import type { Diagnostic, Project } from '../../shared/types'
 import { defaultBranch, idFor, repoRoot } from './git'
 import { pathExists, readJsonSafe } from './fs'
 import { parseRecipe } from '../../shared/recipe-schema'
+import { resolveKey } from '../../shared/route-keys'
 import { describeSetup } from './setup'
 import { addRecord, findRecord, listRecords, removeRecord } from './store'
 import type { ProjectRecord } from './store'
@@ -93,8 +94,18 @@ export async function list(): Promise<Project[]> {
   return Promise.all(records.map(hydrate))
 }
 
-export async function find(id: string): Promise<Project | null> {
-  const record = await findRecord(id)
+export async function find(key: string): Promise<Project | null> {
+  const direct = await findRecord(key)
+  if (direct) return hydrate(direct)
+
+  const records = await listRecords()
+  const named = await Promise.all(
+    records.map(async (record) => ({ id: record.id, name: await projectName(record.rootPath) })),
+  )
+
+  const id = resolveKey(named, key)
+  const record = id ? records.find((candidate) => candidate.id === id) : undefined
+
   return record ? hydrate(record) : null
 }
 
