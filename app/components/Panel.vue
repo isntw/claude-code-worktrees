@@ -15,9 +15,9 @@ const open = defineModel<boolean>('open', { default: true })
         :aria-expanded="open"
         @click="open = !open"
       >
-        <ChevronDown v-if="open" :size="12" aria-hidden="true" class="shrink-0 text-faint" />
-        <ChevronRight v-else :size="12" aria-hidden="true" class="shrink-0 text-faint" />
-        <span class="t-eyebrow shrink-0">{{ title }}</span>
+        <ChevronDown v-if="open" :size="12" aria-hidden="true" class="shrink-0 text-dim" />
+        <ChevronRight v-else :size="12" aria-hidden="true" class="shrink-0 text-dim" />
+        <span class="t-eyebrow shrink-0 text-ink">{{ title }}</span>
         <slot name="label" />
         <span v-if="aside" class="t-eyebrow ml-auto shrink-0 text-faint">{{ aside }}</span>
       </button>
