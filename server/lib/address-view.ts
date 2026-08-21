@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises'
-import type { Address, AddressView, LoopbackHost } from '../../shared/types'
-import { LOOPBACK, readAddress } from './address'
+import type { AddressView, LiveAddress, LoopbackHost } from '../../shared/types'
+import { readAddress } from './address'
 import { runtimePath } from './paths'
 
-async function live(): Promise<Address | null> {
+const LOOPBACK: LoopbackHost[] = ['127.0.0.1', 'localhost', '::1']
+
+async function live(): Promise<LiveAddress | null> {
   const raw = await readFile(runtimePath(), 'utf8').catch(() => null)
   if (raw === null) return null
 
@@ -29,6 +31,6 @@ export async function describeAddress(): Promise<AddressView> {
   return {
     saved,
     live: running,
-    pending: running !== null && (running.host !== saved.host || running.port !== saved.port),
+    pending: running !== null && running.port !== saved.port,
   }
 }

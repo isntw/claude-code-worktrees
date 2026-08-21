@@ -14,7 +14,7 @@ const LOOPBACK = ['127.0.0.1', 'localhost', '::1']
 const { values } = parseArgs({
   options: {
     port: { type: 'string', short: 'p' },
-    host: { type: 'string' },
+    host: { type: 'string', default: '127.0.0.1' },
     dev: { type: 'boolean', default: false },
     open: { type: 'boolean', default: true },
     help: { type: 'boolean', short: 'h', default: false },
@@ -40,8 +40,9 @@ if (values.help) {
     -v, --version         show the version
         --plugin-path     print the Claude Code plugin directory and exit
 
-  The port and host are also settable in Settings, which saves them to
-  ~/.ccwt/config.json. A flag here wins over what is saved there.
+  The port is also settable in Settings, which saves it to ~/.ccwt/config.json.
+  A flag here wins over what is saved there. The host is a flag only: ccwt binds
+  127.0.0.1 unless told otherwise, and only ever loopback.
 
 `)
   process.exit(0)
@@ -92,10 +93,9 @@ function startNuxtDev(at, on) {
 }
 
 const saved = (await readJson(configFile)) ?? {}
-const savedHost = LOOPBACK.includes(saved.host) ? saved.host : null
 const savedPort = Number.isInteger(saved.port) ? saved.port : null
 
-const host = values.host ?? savedHost ?? '127.0.0.1'
+const host = values.host
 const port = Number.parseInt(values.port ?? String(savedPort ?? (values.dev ? 5600 : 4600)), 10)
 
 if (!LOOPBACK.includes(host)) {

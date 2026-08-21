@@ -193,10 +193,10 @@ test('the dev launcher writes the handshake, so a session can reach a server run
 })
 
 
-test('a saved address supplies the port when no flag does', async () => {
+test('a saved address supplies the port when no flag does, and cannot move the bind', async () => {
   await withFakeHome(async (home, dir) => {
     const port = await freePort()
-    writeFileSync(join(dir, 'config.json'), JSON.stringify({ host: '127.0.0.1', port }))
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ host: '::1', port }))
 
     const running = start(home, ['--dev', '--no-open'])
 
@@ -204,7 +204,10 @@ test('a saved address supplies the port when no flag does', async () => {
       const path = join(dir, 'runtime.json')
       assert.ok(await until(() => existsSync(path)), `runtime.json never appeared: ${running.read().err}`)
 
-      assert.equal(JSON.parse(readFileSync(path, 'utf8')).port, port)
+      const held = JSON.parse(readFileSync(path, 'utf8'))
+
+      assert.equal(held.port, port)
+      assert.equal(held.host, '127.0.0.1', 'a saved host must not choose the family')
     } finally {
       running.stop()
       await running.closed
