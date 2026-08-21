@@ -4,7 +4,16 @@ import type { Recipe } from './types'
 const NAME = /^[a-z0-9][a-z0-9_-]*$/i
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
-export const RECIPE_REVISION = 3
+export const DEFAULT_PORT_RANGE: [number, number] = [5200, 5299]
+
+export function emptyRecipe(): Recipe {
+  return {
+    worktreesDir: '.claude/worktrees',
+    provision: { copy: [], link: [], write: [], postCreate: [], postRemove: [] },
+    services: [],
+    claude: { ownWorktreeCreation: false },
+  }
+}
 
 const RETIRED_KEYS = ['packageManager']
 const RETIRED_PROVISION_KEYS = ['dependencies']

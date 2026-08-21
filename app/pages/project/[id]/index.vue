@@ -347,10 +347,8 @@ onBeforeUnmount(() => {
     <Button
       variation="primary"
       :outline="false"
-      :disabled="!project?.recipe?.services.length"
-      :title="
-        project?.recipe?.services.length ? undefined : 'No dev script detected for this project'
-      "
+      :disabled="!project?.recipe"
+      :title="project?.recipe ? undefined : 'This project has no recipe yet'"
       @click="creating = true"
       >new worktree</Button
     >
@@ -383,7 +381,7 @@ onBeforeUnmount(() => {
       <Button size="sm" @click="forget">forget project</Button>
     </div>
 
-    <SetupPanel v-if="project" :setup="project.setup" class="mb-3" />
+    <SetupPanel v-if="project?.recipe" :setup="project.setup" class="mb-3" />
 
     <Notice
       v-for="issue in notices"
@@ -394,7 +392,25 @@ onBeforeUnmount(() => {
       >{{ issue.message }}</Notice
     >
 
-    <div v-if="visible.length" class="grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
+    <div v-if="project && !project.recipe" class="border border-line bg-surface px-4 py-6">
+      <p class="t-eyebrow">No recipe</p>
+      <p class="mt-2 max-w-prose font-sans text-xs text-dim">
+        ccwt does not know what a worktree of this project needs. Nothing is placed and nothing is
+        started until a recipe says so — ccwt reads nothing out of the repository and guesses
+        nothing.
+      </p>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <NuxtLink :to="`/project/${projectId}/recipe`">
+          <Button variation="primary" :outline="false">write the recipe</Button>
+        </NuxtLink>
+        <p class="font-sans text-xs text-faint">
+          or ask Claude, in a session inside this repository:
+          <code class="font-mono text-[0.6875rem] text-dim">/ccwt-recipe-create</code>
+        </p>
+      </div>
+    </div>
+
+    <div v-else-if="visible.length" class="grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
       <WorktreeCard
         v-for="worktree in visible"
         :key="worktree.id"
@@ -429,7 +445,7 @@ onBeforeUnmount(() => {
       </p>
     </div>
 
-    <LogViewer class="mt-4" :streams="streams" @clear="clear" />
+    <LogViewer v-if="project?.recipe" class="mt-4" :streams="streams" @clear="clear" />
   </main>
 
   <CreateWorktreeModal

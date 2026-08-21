@@ -64,7 +64,7 @@ const TOOLS = [
   {
     name: 'ccwt_recipe_read',
     description:
-      "The recipe ccwt holds for this repository, where it came from — a recipe stored in ccwt, or nothing but detection — and whether it has gone stale. Read this before writing a recipe: it says whether one already exists and whether a person wrote it.",
+      'The recipe ccwt holds for this repository and whether one is stored at all. ccwt detects nothing, so a repository with no stored recipe has none. Read this before writing a recipe: it says whether one already exists and whether a person wrote it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -233,7 +233,7 @@ const NO_SERVER =
 
 const SOURCES = {
   ccwt: 'a recipe stored in ccwt',
-  detected: 'nothing stored — this is only what detection guessed',
+  none: 'no recipe — ccwt stores none for this repository and detects nothing',
 }
 
 async function place(args) {
@@ -291,8 +291,9 @@ async function projectAdd(args) {
     [
       `Registered ${found.rootPath} with ccwt.`,
       '',
-      'It has no recipe yet, so ccwt falls back to what it can detect — which is Node-shaped and',
-      'finds nothing for most other stacks. Write one with ccwt_recipe_write.',
+      'It has no recipe, so ccwt cannot create a worktree for it yet. Nothing is detected and',
+      'nothing is assumed: read the repository, then store one with ccwt_recipe_write.',
+      'ccwt_recipe_check validates a candidate without storing it.',
     ].join('\n'),
   )
 }
@@ -315,14 +316,17 @@ async function recipeRead(args) {
     `Source: ${SOURCES[view.source] ?? view.source}${view.path ? ` (${view.path})` : ''}`,
   ]
 
-  if (view.stale) {
-    lines.push('This recipe predates the current detection, so ccwt marks it stale. It is never migrated for you.')
-  }
   if (view.issues?.length) {
-    lines.push('', 'It does not validate:', ...renderIssues(view.issues))
+    lines.push('', 'The stored recipe does not validate:', ...renderIssues(view.issues))
   }
   if (view.source === 'ccwt') {
     lines.push('', 'Something is already stored here. Replacing it needs `replace: true`.')
+  } else {
+    lines.push(
+      '',
+      'A worktree of this project gets nothing until a recipe is written. The text below is an',
+      'empty recipe to start from, not a suggestion — every field is yours to fill in.',
+    )
   }
 
   lines.push('', view.text)

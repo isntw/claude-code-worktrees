@@ -1,7 +1,7 @@
 import type {
   Address,
   AddressView,
-  Recipe,
+  RecipeCheck,
   RecipeView,
   DeviceCode,
   DeviceOutcome,
@@ -71,10 +71,8 @@ export function useApi() {
       call<RecipeView>(`/projects/${projectId}/recipe`, { method: 'PUT', body: { text } }),
     resetRecipe: (projectId: string) =>
       call<RecipeView>(`/projects/${projectId}/recipe`, { method: 'DELETE' }),
-    suggestRecipe: (projectId: string) =>
-      call<{ recipe: Recipe; text: string }>(`/projects/${projectId}/recipe/suggest`, {
-        method: 'POST',
-      }),
+    checkRecipe: (projectId: string, text: string) =>
+      call<RecipeCheck>(`/projects/${projectId}/recipe/check`, { method: 'POST', body: { text } }),
 
     getAddress: () => call<AddressView>('/address'),
     saveAddress: (address: Address) => call<AddressView>('/address', { method: 'PUT', body: address }),

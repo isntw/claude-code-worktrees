@@ -142,7 +142,6 @@ export async function build(): Promise<Overview> {
       id: project.id,
       name: project.name,
       rootPath: project.rootPath,
-      packageManager: project.packageManager,
       defaultBranch: project.defaultBranch,
       worktrees: found.length,
       live: found.filter((worktree) => worktree.services.some((s) => isLive(s.state))).length,

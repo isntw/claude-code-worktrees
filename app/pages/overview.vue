@@ -131,7 +131,7 @@ const tiles = computed<Tile[]>(() =>
     total: project.worktrees,
     errors: project.errors,
     note:
-      [project.live ? `${project.live} up` : null, project.packageManager, project.defaultBranch]
+      [project.live ? `${project.live} up` : null, project.defaultBranch]
         .filter(Boolean)
         .join(' · ') || undefined,
     inert: !project.readable,

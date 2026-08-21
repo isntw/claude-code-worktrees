@@ -9,7 +9,6 @@ export interface ProjectRecord {
   rootPath: string
   addedAt: string
   recipe?: Recipe
-  recipeRevision?: number
 }
 
 function toRecord(row: ProjectTable): ProjectRecord {
@@ -26,8 +25,6 @@ function toRecord(row: ProjectTable): ProjectRecord {
       record.recipe = undefined
     }
   }
-
-  if (row.recipe_revision !== null) record.recipeRevision = row.recipe_revision
 
   return record
 }
@@ -64,7 +61,6 @@ export async function addRecord(record: ProjectRecord): Promise<ProjectRecord> {
       root_path: record.rootPath,
       added_at: record.addedAt,
       recipe: record.recipe === undefined ? null : JSON.stringify(record.recipe),
-      recipe_revision: record.recipeRevision ?? null,
     })
     .execute()
 
@@ -85,8 +81,6 @@ export async function updateRecord(
   if ('recipe' in change) {
     patch.recipe = change.recipe === undefined ? null : JSON.stringify(change.recipe)
   }
-  if ('recipeRevision' in change) patch.recipe_revision = change.recipeRevision ?? null
-
   if (Object.keys(patch).length) {
     await db().updateTable('projects').set(patch).where('id', '=', id).execute()
   }

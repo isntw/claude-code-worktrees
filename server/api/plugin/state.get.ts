@@ -10,7 +10,6 @@ export default defineEventHandler(async () => {
       rootPath: record.rootPath,
       addedAt: record.addedAt,
       recipe: record.recipe,
-      recipeRevision: record.recipeRevision,
     })),
   }
 })
