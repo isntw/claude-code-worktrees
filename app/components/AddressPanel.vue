@@ -25,7 +25,7 @@ const changed = computed(() => !!view.value && parsed.value !== view.value.saved
 const live = computed(() => {
   const at = view.value?.live
   if (!at) return null
-  return `http://${at.host === '::1' ? '[::1]' : at.host}:${at.port}`
+  return `http://localhost:${at.port}`
 })
 
 async function load() {
