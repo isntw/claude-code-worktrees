@@ -8,7 +8,7 @@
 
 Run several branches at once. Every worktree gets its own dependencies, its own ports, its own dev
 server and its own logs — from one local dashboard. Each card carries the branch's **GitHub** pull
-request, and **seven MCP tools** let a Claude Code session set a project up, start it and read what it
+request, and **ten MCP tools** let a Claude Code session set a project up, run it and read what it
 printed.
 
 ![Every worktree, every port and every service, across all projects](docs/images/overview.png)
@@ -77,8 +77,8 @@ there is no file to commit and no branch that can carry a stale copy of it.
 
 ![The recipe form](docs/images/recipe.png)
 
-**Or ask a session to do it.** Both steps are MCP tools: `ccwt_project_add` registers the repository,
-`ccwt_recipe_check` validates a draft, `ccwt_recipe_write` stores it. That inverts the usual order —
+**Or ask a session to do it.** Both steps are MCP tools: `ccwt_add_project` registers the repository,
+`ccwt_check_recipe` validates a draft, `ccwt_write_recipe` stores it. That inverts the usual order —
 ccwt guesses nothing about your project, but a session can read it, and the `ccwt-recipe-create` skill
 turns "set this project up for ccwt" into a request it can carry out end to end.
 
@@ -112,25 +112,31 @@ Optional. A session can set a project up and run it *through* ccwt instead of ar
 recipe, start the services, read what they printed — without a dev server of its own fighting for the
 port.
 
-**Seven MCP tools.** Three read:
+**Ten MCP tools.** Three read:
 
 | Tool | Returns |
 |---|---|
-| `ccwt_status` | Every worktree, its services, the port each holds and whether that port answers. Works with the dashboard closed. |
-| `ccwt_logs` | A service's recent output, so a change can be checked without starting or building anything. |
-| `ccwt_recipe_read` | The recipe ccwt has stored for a repository, or that it holds none. |
+| `ccwt_get_status` | Every worktree, its services, the port each holds and whether that port answers. Works with the dashboard closed. |
+| `ccwt_get_logs` | A service's recent output, so a change can be checked without starting or building anything. |
+| `ccwt_read_recipe` | The recipe ccwt has stored for a repository, or that it holds none. |
 
-Four act:
+Seven act:
 
 | Tool | Does |
 |---|---|
-| `ccwt_project_add` | Registers the repository so it can hold a recipe and get worktrees. Writes nothing into it. |
-| `ccwt_recipe_check` | Validates a candidate recipe without storing it — schema errors with the path of each, plus notes on what will parse but misbehave. |
-| `ccwt_recipe_write` | Stores a recipe, validated first, so the saved one never passes through a broken state. Overwriting one already stored needs `replace`. |
-| `ccwt_worktree_start` | Starts the services the recipe declares. ccwt still allocates the port, repairs what's missing and owns the process. |
+| `ccwt_add_project` | Registers the repository so it can hold a recipe and get worktrees. Writes nothing into it. |
+| `ccwt_check_recipe` | Validates a candidate recipe without storing it — schema errors with the path of each, plus notes on what will parse but misbehave. |
+| `ccwt_write_recipe` | Stores a recipe, validated first, so the saved one never passes through a broken state. Overwriting one already stored needs `replace`. |
+| `ccwt_create_worktree` | Creates a worktree and provisions it from the recipe — files placed, `node_modules` hardlinked, `postCreate` run, a port per service. It arrives ready and stopped. |
+| `ccwt_provision_worktree` | Puts back what the recipe names and a worktree is missing. Files only: `postCreate` is never re-run on a worktree that already exists. |
+| `ccwt_start_worktree` | Starts the services the recipe declares. ccwt still allocates the port, repairs what's missing and owns the process. |
+| `ccwt_stop_worktree` | Stops them, killing the process group so nothing keeps the port. The worktree is untouched. |
 
-**Starting is the only lifecycle verb an agent gets** — stopping and restarting stay in the dashboard.
-No tool writes a file into your repository.
+**A session can run the whole loop except removal.** Write the recipe, create a worktree, start it,
+read the logs, stop it — because a recipe is read when a service *starts*, and a session that cannot
+stop one cannot prove the recipe it just wrote. Deleting a worktree stays in the dashboard, where the
+confirmation names the path, the untracked files ccwt put there and whether the branch survives. No
+tool writes a file into your repository.
 
 **Four hooks:**
 
@@ -141,8 +147,10 @@ No tool writes a file into your repository.
   and the refusal names the URL to open instead.
 - `SessionEnd` — the marker is cleared.
 
-**And one skill:** `ccwt-recipe-create`, so "set this project up for ccwt" is a request a session can
-carry out — write the recipe, check it, store it — instead of you filling in the form.
+**And two skills.** `ccwt-recipe-create`, so "set this project up for ccwt" is a request a session can
+carry out — read the project, write the recipe, check it, store it — instead of you filling in the
+form. Then `ccwt-worktree-verify`, which holds it to proving the result: a port answering is not the
+service answering, and a recipe that validates can still start the wrong thing.
 
 One button in Settings installs the plugin into Claude Code's own storage, machine-wide for every
 project. Nothing is written into any repository.

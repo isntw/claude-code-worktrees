@@ -201,8 +201,7 @@ The delta speaks once and then goes quiet. Both manifests pass `claude plugin va
 from the copied `~/.ccwt/plugin` layout.
 
 **Traps found on the way**, all one mistake wearing different clothes — trusting a value that reads
-like the truth. `docs/claude-hooks.md` §16 lists them together, because the next one will look like
-these.
+like the truth. They are worth reading together, because the next one will look like these.
 
 The guard first matched the recipe's command shape only at the start of a command, so a `cd` prefix
 or a leading environment variable walked past it, while a commit message merely mentioning the

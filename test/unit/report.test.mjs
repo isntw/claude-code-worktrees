@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { changes, overview, payloadFor, renameTo, snapshot } from '../../plugin/lib/report.mjs'
+import { changes, overview, payloadFor, renameTo, snapshot } from '../../plugin/src/lib/report.ts'
 
 const worktree = (name, services, root = false) => ({ name, root, path: `/repo/${name}`, services })
 const service = (name, port, up) => ({ name, port, up, command: 'npm run dev -- --port {{port}}' })

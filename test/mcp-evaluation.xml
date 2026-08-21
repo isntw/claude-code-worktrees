@@ -1,0 +1,42 @@
+<evaluation>
+  <qa_pair>
+    <question>I am setting up ccwt for a project whose dev environment is a container stack. Take a recipe with exactly one service named `dev`, working directory `.`, the command `docker compose up -d`, a port range of 5200 to 5299, and nothing else at all — no files placed, no install, no environment variables, no stop command, and no service kind stated. Ask ccwt to validate it without saving it. How many of the advisories it returns are the more serious kind rather than merely informational?</question>
+    <answer>3</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Two recipes are identical: one service named `dev`, working directory `.`, command `npm run dev`, no files placed and no install, and the allocated port is passed nowhere. The only difference is that the first may use any port between 5200 and 5299 while the second must always use 3000 and no other. Validate both. For the second one, how serious does ccwt consider the complaint about the port never reaching the process?</question>
+    <answer>info</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A recipe declares two services, `api` and `web`. Both use the command `a --port {{port}}` and the range 5200 to 5299, `api` waits for `web` before starting, and `web` waits for `api`. Validate it. Quote exactly the chain of service names ccwt prints to describe the problem it found.</question>
+    <answer>api → web → api</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A recipe has one service called `api`, command `a --port {{port}}`, range 5200 to 5299, and it also asks ccwt for a second port under the name `api`. Validate the recipe. It is rejected rather than merely warned about — give the exact location string ccwt reports for the offending field.</question>
+    <answer>services.0.ports.api</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Someone wrote a recipe that generates a small JSON config file inside each new worktree, and put the placeholder for the allocated port directly into that file's contents. There is also one ordinary service whose command already takes the port properly. Validate the recipe — it will not be accepted. Give the exact location string ccwt reports for the field it refuses.</question>
+    <answer>provision.write.0.content</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>This repository already has a recipe stored in ccwt. Read it, then validate a variant that leaves everything alone except the list of hardlinked paths, to which you add this project's Nuxt build-cache directory as the first entry. Exactly one advisory comes back. Which path does it name?</question>
+    <answer>.nuxt</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A Nuxt dev server's hot-reload socket can steal the very port ccwt allocated for the app, because ccwt exports that port as `PORT` and port-picking libraries prefer it for any socket. The documented workaround is to give the sidecar its own allocation by asking ccwt for a second port literally named `PORT`, ranged 24678 to 24698. Build that recipe — one service `dev`, working directory `.`, command `nuxt dev --port {{port}}`, range 5200 to 5299, `node_modules` hardlinked — and validate it. How many advisories does ccwt raise against it?</question>
+    <answer>0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Validate a recipe with a single service named `dev`, working directory `.`, command `npm run dev -- --port {{port}}`, range 5200 to 5299, that places no files and runs no commands when a worktree is created. One advisory comes back about what a new worktree would end up containing. How serious is it?</question>
+    <answer>info</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A colleague named a service `my service!` in an otherwise sound recipe — one service, working directory `.`, command `a --port {{port}}`, range 5200 to 5299. ccwt refuses it. Quote the complaint about the name exactly as ccwt words it.</question>
+    <answer>Use letters, digits, dash or underscore.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Take a recipe with one service `dev`, working directory `.`, the command `docker compose up -d`, range 5200 to 5299, an environment entry mapping `WEB_PORT` to the allocated port, and `node_modules` hardlinked — and explicitly tell ccwt this service is an ordinary command rather than a container stack. Validate it. Exactly one advisory comes back; give the exact location string it names.</question>
+    <answer>services.0.kind</answer>
+  </qa_pair>
+</evaluation>
