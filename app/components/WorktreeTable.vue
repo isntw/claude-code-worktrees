@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Lock, LockOpen, Trash2 } from 'lucide-vue-next'
 import type { OverviewRow, ServiceState, ServiceStatus, Worktree } from '#shared/types'
 import { PULL } from './pull'
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   unlock: [row: OverviewRow]
   remove: [row: OverviewRow]
   repair: [row: OverviewRow]
+  take: [row: OverviewRow, service: string]
 }>()
 
 const lockAction = (worktree: Worktree) => {
@@ -61,6 +63,39 @@ const lockHint = (worktree: Worktree) => {
 
 const problems = (worktree: Worktree) =>
   worktree.issues.filter((issue) => issue.severity === 'error')
+
+interface Contest {
+  service: string
+  label: string
+  title: string
+  variation: Variation
+}
+
+const contestOf = (row: OverviewRow): Contest | null => {
+  const [service, ...rest] = row.worktree.services
+  if (!service || rest.length) return null
+  if (!service.taken || !service.port || service.movable) return null
+
+  const held = service.heldBy
+
+  return {
+    service: service.name,
+    label: held ? 'run here' : 'start',
+    variation: held ? 'info' : 'neutral',
+    title: held
+      ? `Stop ${held.service} where it is running and start ${service.name} here on ${service.port}`
+      : `Port ${service.port} is taken and this service is pinned to it — see what is holding it`,
+  }
+}
+
+const contested = computed(() => {
+  const found: Record<string, Contest> = {}
+  for (const row of rows) {
+    const one = contestOf(row)
+    if (one) found[row.worktree.id] = one
+  }
+  return found
+})
 </script>
 
 <template>
@@ -210,6 +245,14 @@ const problems = (worktree: Worktree) =>
                 :title="`Stop every service in ${row.worktree.name}`"
                 @click.stop="emit('stop', row)"
                 >stop</Button
+              >
+              <Button
+                v-else-if="contested[row.worktree.id]"
+                size="sm"
+                :variation="contested[row.worktree.id]!.variation"
+                :title="contested[row.worktree.id]!.title"
+                @click.stop="emit('take', row, contested[row.worktree.id]!.service)"
+                >{{ contested[row.worktree.id]!.label }}</Button
               >
               <Button
                 v-else-if="row.worktree.services.length"

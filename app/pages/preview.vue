@@ -122,6 +122,13 @@ const ROWS: OverviewRow[] = CARDS.map((worktree, index) => ({
   pull: ROW_PULLS[index] ?? null,
 }))
 
+const TAKEN_ROWS: OverviewRow[] = TAKEN.map((worktree) => ({
+  projectId: 'p',
+  projectName: 'app',
+  worktree,
+  pull: null,
+}))
+
 const STATS: Stat[] = [
   { key: 'projects', label: 'Projects', value: 4 },
   { key: 'worktrees', label: 'Worktrees', value: 12, note: '5 with something up' },
@@ -427,6 +434,13 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
     <section :class="SECTION" class="min-w-0 xl:col-span-2">
       <header :class="HEAD"><p class="t-eyebrow">Worktree table</p></header>
       <WorktreeTable :rows="ROWS" />
+    </section>
+
+    <section :class="SECTION" class="min-w-0 xl:col-span-2">
+      <header :class="HEAD">
+        <p class="t-eyebrow">Worktree table — a port already taken</p>
+      </header>
+      <WorktreeTable :rows="TAKEN_ROWS" />
     </section>
 
     <section class="xl:col-span-2">
