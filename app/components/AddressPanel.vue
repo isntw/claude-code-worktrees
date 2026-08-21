@@ -1,24 +1,16 @@
 <script setup lang="ts">
-import type { AddressView, LoopbackHost } from '#shared/types'
+import type { AddressView } from '#shared/types'
 
 const api = useApi()
 
 const view = ref<AddressView | null>(null)
-const host = ref<LoopbackHost>('127.0.0.1')
 const port = ref('4600')
 const busy = ref(false)
 const error = ref('')
 const saved = ref(false)
 
-const HOSTS: { value: LoopbackHost; label: string }[] = [
-  { value: '127.0.0.1', label: '127.0.0.1' },
-  { value: 'localhost', label: 'localhost' },
-  { value: '::1', label: '::1' },
-]
-
 const adopt = (next: AddressView) => {
   view.value = next
-  host.value = next.saved.host
   port.value = String(next.saved.port)
 }
 
@@ -28,9 +20,7 @@ const invalid = computed(
   () => !Number.isInteger(parsed.value) || parsed.value < 1024 || parsed.value > 65_535,
 )
 
-const changed = computed(
-  () => !!view.value && (host.value !== view.value.saved.host || parsed.value !== view.value.saved.port),
-)
+const changed = computed(() => !!view.value && parsed.value !== view.value.saved.port)
 
 const live = computed(() => {
   const at = view.value?.live
@@ -54,7 +44,7 @@ async function save() {
   saved.value = false
 
   try {
-    adopt(await api.saveAddress({ host: host.value, port: parsed.value }))
+    adopt(await api.saveAddress({ port: parsed.value }))
     saved.value = true
   } catch (cause) {
     error.value = (cause as Error).message
@@ -70,8 +60,9 @@ onMounted(load)
   <Panel title="Address">
     <div class="px-3 py-3">
       <p class="max-w-prose font-sans text-xs text-dim">
-        Where the dashboard listens. ccwt runs git and spawns processes, so it binds loopback only —
-        the choice is which loopback name, not whether to be reachable.
+        Which port the dashboard listens on. ccwt runs git and spawns processes, so it binds loopback
+        only — the port is the whole choice, and nothing here can make it reachable from another
+        machine.
       </p>
 
       <p v-if="live" class="mt-3 flex items-center gap-2">
@@ -80,7 +71,6 @@ onMounted(load)
       </p>
 
       <div class="mt-3 flex flex-wrap items-center gap-2">
-        <Tabs v-model="host" size="md" label="Host" :options="HOSTS" />
         <Input
           v-model="port"
           label="Port"
@@ -99,7 +89,7 @@ onMounted(load)
       <Notice v-else-if="error" variation="error" class="mt-3">{{ error }}</Notice>
 
       <Notice v-else-if="view?.pending" variation="info" class="mt-3">
-        Saved. ccwt is still on {{ live }} — it takes the new address the next time it starts.
+        Saved. ccwt is still on {{ live }} — it takes the new port the next time it starts.
         <template #hint>
           A running server cannot move without dropping the page you are reading this on.
         </template>

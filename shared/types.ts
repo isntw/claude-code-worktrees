@@ -256,13 +256,17 @@ export interface Setup {
 export type LoopbackHost = '127.0.0.1' | 'localhost' | '::1'
 
 export interface Address {
+  port: number
+}
+
+export interface LiveAddress {
   host: LoopbackHost
   port: number
 }
 
 export interface AddressView {
   saved: Address
-  live: Address | null
+  live: LiveAddress | null
   pending: boolean
 }
 
