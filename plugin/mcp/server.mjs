@@ -313,7 +313,7 @@ async function recipeRead(args) {
   const view = result.body
   const lines = [
     `${found.rootPath}`,
-    `Source: ${SOURCES[view.source] ?? view.source}${view.path ? ` (${view.path})` : ''}`,
+    `Source: ${SOURCES[view.source] ?? view.source}`,
   ]
 
   if (view.issues?.length) {

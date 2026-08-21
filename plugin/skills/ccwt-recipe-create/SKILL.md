@@ -13,8 +13,10 @@ comes from the recipe you write.
 ## Where the recipe lives
 
 **In ccwt's own storage, never in the repository.** Do not create or edit `ccwt.config.json`. ccwt
-reads a committed one if a project happens to ship it, but it has no code path that writes a file
-into a registered repository, and neither do you. The recipe goes in through `ccwt_recipe_write`.
+has no code path that writes a file into a registered repository, and none that reads one either —
+a committed recipe is a file nothing will ever look at. The recipe goes in through
+`ccwt_recipe_write`, and comes back from `ccwt_recipe_read` as what is stored — or as nothing,
+since ccwt detects nothing and a repository with no stored recipe has none.
 
 Every one of these tools needs the ccwt dashboard running. If they report it is not reachable, say
 so and stop — there is no fallback path.
