@@ -9,6 +9,7 @@ import type {
   Severity,
   Worktree,
 } from '#shared/types'
+import { routeKeys } from '#shared/route-keys'
 import type { Stat } from '../components/StatBar.vue'
 import type { Tile } from '../components/TileGrid.vue'
 import type { Variation } from '../components/variation'
@@ -25,6 +26,24 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 
 const filter = ref<'all' | 'running' | 'attention'>('all')
+
+const projectKeys = computed(() => routeKeys(data.value?.projects ?? []))
+
+const worktreeKeys = computed(() => {
+  const grouped = new Map<string, Worktree[]>()
+  for (const row of data.value?.rows ?? []) {
+    const held = grouped.get(row.projectId) ?? []
+    held.push(row.worktree)
+    grouped.set(row.projectId, held)
+  }
+
+  const keys = new Map<string, string>()
+  for (const held of grouped.values()) {
+    for (const [id, key] of routeKeys(held)) keys.set(id, key)
+  }
+
+  return keys
+})
 
 const load = async () => {
   loading.value = true
@@ -135,7 +154,7 @@ const tiles = computed<Tile[]>(() =>
         .filter(Boolean)
         .join(' · ') || undefined,
     inert: !project.readable,
-    go: () => router.push(`/project/${project.id}`),
+    go: () => router.push(`/project/${projectKeys.value.get(project.id) ?? project.id}`),
   })),
 )
 
@@ -151,7 +170,10 @@ const stamp = computed(() => {
 })
 
 const drill = (projectId: string, worktreeId: string) =>
-  router.push(`/project/${projectId}?worktree=${worktreeId}`)
+  router.push({
+    path: `/project/${projectKeys.value.get(projectId) ?? projectId}`,
+    query: { worktree: worktreeKeys.value.get(worktreeId) ?? worktreeId },
+  })
 
 const open = (row: OverviewRow) => drill(row.projectId, row.worktree.id)
 const pick = (claim: PortClaim) => drill(claim.projectId, claim.worktreeId)
