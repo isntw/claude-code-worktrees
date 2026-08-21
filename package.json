@@ -20,7 +20,7 @@
   "scripts": {
     "dev": "node bin/ccwt.mjs --dev",
     "build": "nuxt build && npm run build:plugin",
-    "build:plugin": "esbuild plugin/src/mcp/server.ts plugin/src/hooks/ccwt.ts --bundle --platform=node --target=node24 --format=esm --outdir=plugin --outbase=plugin/src --out-extension:.js=.mjs --banner:js=\"#!/usr/bin/env node\" --log-level=warning",
+    "build:plugin": "node scripts/build-plugin.mjs",
     "test": "node --test",
     "prepare": "nuxt prepare",
     "prepack": "npm run build",

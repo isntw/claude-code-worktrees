@@ -33,7 +33,7 @@ import {
 } from './reach.ts'
 import type { IssueLike, RecipeNoteLike, Standing } from './reach.ts'
 
-const VERSION = '0.3.0'
+declare const VERSION: string
 const TAIL = 100
 
 const READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
