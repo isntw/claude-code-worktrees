@@ -177,8 +177,7 @@ A `WorktreeCreate` hook replaces Claude Code's git logic entirely, so `claude --
 **Important caveat:** installing a `WorktreeCreate` hook **disables `.worktreeinclude` processing**. ccwt must then do that copying itself — which it does anyway, so this is a merge of two mechanisms rather than a loss. Off by default; the UI must state this trade-off when enabling it.
 
 **As built:** not built, and gated on §5.4, which is still a stub. Installing this hook takes
-`.worktreeinclude` handling away with nothing replacing it, so §5.4 lands first. `docs/claude-hooks.md`
-§11 carries the design.
+`.worktreeinclude` handling away with nothing replacing it, so §5.4 lands first.
 
 ### 5.4 `.worktreeinclude` compatibility — *always*
 
@@ -200,7 +199,7 @@ A session working in a worktree does not know ccwt started its dev server, so it
 Nothing in §5.1–§5.5 answers that: the lock reports an agent to *us*, and says nothing back.
 
 **ccwt ships a Claude Code plugin**, installed from `/settings` by pressing a button. It carries
-three hooks and a read-only MCP server:
+four hooks, two skills and an MCP server:
 
 - `SessionStart` describes **the repository** — every worktree, its services, the port each holds,
   and whether that port answers. Not the current directory: ports live in each linked worktree's git
@@ -212,9 +211,11 @@ three hooks and a read-only MCP server:
   of frameworks.
 - Both hooks also **name the session after its worktree**, and rename it when that changes. A title
   typed by hand is never overwritten.
-- `ccwt_status` and `ccwt_logs` let a session ask what is running and read what it printed. There is
-  deliberately no start, stop or restart: the guard says ccwt owns lifecycle, and handing back a
-  restart button would blur the same line.
+- **Ten MCP tools** let a session ask what is running, read what it printed, write the recipe, and
+  create, provision, start and stop a worktree. ccwt still owns the lifecycle — it allocates every
+  port and spawns every process — but a session that cannot stop a service cannot prove the recipe it
+  just wrote, since a recipe is read when a service *starts*. **Removal is the exception** and stays
+  in the dashboard, where the confirmation names the path and what it destroys.
 
 **This is the direction §5.2 does not cover, and it does not reopen it.** §5.2 made ccwt's display
 depend on sessions reporting in; this tells sessions what ccwt already knows, and a session asking
@@ -225,7 +226,9 @@ storage — which is what makes it legal where §5.2 was not. ccwt copies the pl
 **when the button is pressed and never before**: no directory, no marketplace, no install until a
 person asks, and a newer ccwt marks an installed plugin outdated and waits.
 
-`docs/claude-hooks.md` is the full spec.
+**Its entry points are built, not committed.** `plugin/src` is TypeScript; `npm run build` bundles it
+to `plugin/mcp/server.mjs` and `plugin/hooks/ccwt.mjs`, so what ships carries the MCP SDK inside it
+and needs nothing installed at runtime.
 
 ---
 

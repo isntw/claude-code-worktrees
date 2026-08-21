@@ -106,6 +106,8 @@ const manifestPath = () => join(packageRoot(), 'plugin', '.claude-plugin', 'plug
 const SKILL_BLURBS: Record<string, string> = {
   'ccwt-recipe-create':
     'how to read a project and write the recipe for it, for plain commands and container stacks alike',
+  'ccwt-worktree-verify':
+    'how to prove a service serves the project rather than merely holding a port, and what a wrong answer means',
 }
 
 async function skills(): Promise<PluginSkill[]> {
@@ -158,7 +160,12 @@ async function parts(): Promise<PluginParts> {
 
 async function missingSource(): Promise<string[]> {
   const root = packageRoot()
-  const wanted = [join(root, 'plugin'), join(root, '.claude-plugin', 'marketplace.json')]
+  const wanted = [
+    join(root, 'plugin'),
+    join(root, '.claude-plugin', 'marketplace.json'),
+    join(root, 'plugin', 'mcp', 'server.mjs'),
+    join(root, 'plugin', 'hooks', 'ccwt.mjs'),
+  ]
   const missing: string[] = []
 
   for (const path of wanted) {
@@ -169,11 +176,15 @@ async function missingSource(): Promise<string[]> {
 }
 
 function absent(missing: string[]): Diagnostic {
+  const unbuilt = missing.some((path) => path.endsWith('.mjs'))
+
   return {
     code: 'plugin.missing-source',
     severity: 'error',
     message: `This copy of ccwt does not carry the plugin it would install — ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} not there.`,
-    hint: 'A published package must list `plugin` and `.claude-plugin` in its `files`. Reinstall ccwt, or run it from a checkout.',
+    hint: unbuilt
+      ? 'The plugin\'s entry points are built from `plugin/src` by `npm run build`. Run that, or reinstall ccwt from a published package.'
+      : 'A published package must list `plugin` and `.claude-plugin` in its `files`. Reinstall ccwt, or run it from a checkout.',
   }
 }
 

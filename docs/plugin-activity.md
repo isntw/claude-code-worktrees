@@ -1,9 +1,8 @@
 # Tracking what the plugin did
 
 Spec for a record of the ccwt plugin's own activity — every hook that fired, every tool that was
-called, what it decided and what it changed. **Not built.** `claude-hooks.md` specifies the plugin
-itself; this is the missing half: that document says what the plugin *does*, and nothing anywhere
-says what it *has done*.
+called, what it decided and what it changed. **Not built.** The plugin itself is built and shipping;
+this is the missing half — what it *does* is settled, and nothing anywhere says what it *has done*.
 
 Motivating case: a session rewrites the recipe, or the guard refuses a command, and the dashboard —
 the thing whose whole job is showing you the state of your worktrees — has no idea it happened.
@@ -83,7 +82,7 @@ part is ours to design. The two that do exist we should conform to rather than r
 
 `ask`, `tell` and `call` in `plugin/lib/discover.mjs:78-127` are the only way any hook or any tool
 reaches the server. One header added there — `x-ccwt-source: hook/SessionStart`,
-`tool/ccwt_recipe_write` — instruments the entire plugin in one edit, and cannot drift out of step
+`tool/ccwt_write_recipe` — instruments the entire plugin in one edit, and cannot drift out of step
 with a tool list it does not read.
 
 Send `session_id` and `prompt_id` alongside it where they are known. **The header is a label, never

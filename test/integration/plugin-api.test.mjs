@@ -38,7 +38,7 @@ test('a session mark can be written, read and ended over the API', { skip }, asy
   await withServer(async ({ call }) => {
     assert.deepEqual((await call('GET', '/api/plugin/session/sess-1')).body, {})
 
-    const rows = [{ worktree: 'alpha', service: 'dev', port: 5276 }]
+    const rows = { 'alpha/dev': { port: 5276, up: true } }
     assert.equal((await call('PUT', '/api/plugin/session/sess-1', { rows, title: 'alpha' })).status, 200)
 
     const stored = await call('GET', '/api/plugin/session/sess-1')
@@ -52,8 +52,8 @@ test('a session mark can be written, read and ended over the API', { skip }, asy
 
 test('two sessions do not overwrite each other', { skip }, async () => {
   await withServer(async ({ call }) => {
-    await call('PUT', '/api/plugin/session/one', { rows: [{ port: 1 }], title: 'first' })
-    await call('PUT', '/api/plugin/session/two', { rows: [{ port: 2 }], title: 'second' })
+    await call('PUT', '/api/plugin/session/one', { rows: { 'a/dev': { port: 1, up: true } }, title: 'first' })
+    await call('PUT', '/api/plugin/session/two', { rows: { 'b/dev': { port: 2, up: true } }, title: 'second' })
 
     assert.equal((await call('GET', '/api/plugin/session/one')).body.title, 'first')
     assert.equal((await call('GET', '/api/plugin/session/two')).body.title, 'second')

@@ -1,7 +1,24 @@
+import type { Seen } from './discover.ts'
+
 export const TITLE_PREFIX = 'ccwt · '
 
-export function snapshot(found) {
-  const rows = {}
+export interface Row {
+  port: number
+  up: boolean
+}
+
+export type Rows = Record<string, Row>
+
+export interface HookPayload {
+  hookSpecificOutput?: {
+    hookEventName: string
+    additionalContext?: string
+    sessionTitle?: string
+  }
+}
+
+export function snapshot(found: Seen): Rows {
+  const rows: Rows = {}
   for (const worktree of found.worktrees) {
     for (const service of worktree.services) {
       if (service.port === null) continue
@@ -11,8 +28,8 @@ export function snapshot(found) {
   return rows
 }
 
-export function changes(before, after) {
-  const lines = []
+export function changes(before: Rows, after: Rows): string[] {
+  const lines: string[] = []
 
   for (const [key, now] of Object.entries(after)) {
     const then = before[key]
@@ -40,7 +57,11 @@ export function changes(before, after) {
   return lines
 }
 
-export function renameTo(found, current, ours) {
+export function renameTo(
+  found: Seen,
+  current: string | undefined,
+  ours: string | undefined,
+): string | null {
   if (!found.here || found.here.root) return null
 
   const wanted = `${TITLE_PREFIX}${found.projectName}/${found.here.name}`
@@ -51,7 +72,7 @@ export function renameTo(found, current, ours) {
   return current === ours ? wanted : null
 }
 
-export function overview(found) {
+export function overview(found: Seen): string | null {
   const rows = found.worktrees
     .filter((worktree) => worktree.services.some((service) => service.port !== null))
     .map((worktree) => {
@@ -71,13 +92,17 @@ export function overview(found) {
     'ccwt manages this repository. It owns these services and the ports they run on:',
     ...rows,
     '',
-    'Do not start a dev server yourself — open the URL above instead. Starting, stopping and',
-    'restarting a service is ccwt’s job, from its dashboard. Call ccwt_logs to see what a running',
+    'Do not start a dev server yourself — open the URL above instead. Starting and stopping one is',
+    'ccwt’s job: ccwt_start_worktree and ccwt_stop_worktree. Call ccwt_get_logs to see what a running',
     'service has printed rather than building to find out.',
   ].join('\n')
 }
 
-export function payloadFor(event, context, title) {
+export function payloadFor(
+  event: string,
+  context: string | null,
+  title: string | null,
+): HookPayload {
   if (!context && !title) return {}
 
   return {

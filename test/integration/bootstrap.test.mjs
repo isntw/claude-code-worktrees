@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { LEGACY_PROJECTS, withHome } from '../helpers/home.mjs'
 import { NO_BUILD, built, withServer } from '../helpers/server.mjs'
-import { ask, reachServer, tell } from '../../plugin/lib/discover.mjs'
+import { ask, reachServer, tell } from '../../plugin/src/lib/discover.ts'
 
 const skip = built() ? false : NO_BUILD
 

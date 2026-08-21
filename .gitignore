@@ -1,6 +1,8 @@
 node_modules/
 .nuxt/
 .output/
+plugin/mcp/server.mjs
+plugin/hooks/ccwt.mjs
 .data/
 .tslib/
 dist/

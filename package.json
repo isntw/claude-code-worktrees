@@ -19,12 +19,14 @@
   },
   "scripts": {
     "dev": "node bin/ccwt.mjs --dev",
-    "build": "nuxt build",
+    "build": "nuxt build && npm run build:plugin",
+    "build:plugin": "esbuild plugin/src/mcp/server.ts plugin/src/hooks/ccwt.ts --bundle --platform=node --target=node24 --format=esm --outdir=plugin --outbase=plugin/src --out-extension:.js=.mjs --banner:js=\"#!/usr/bin/env node\" --log-level=warning",
     "test": "node --test",
     "prepare": "nuxt prepare",
-    "prepack": "nuxt build",
+    "prepack": "npm run build",
     "preview": "node .output/server/index.mjs",
-    "typecheck": "nuxt typecheck",
+    "typecheck": "nuxt typecheck && npm run typecheck:plugin",
+    "typecheck:plugin": "tsc6 --noEmit -p plugin/tsconfig.json",
     "start": "node bin/ccwt.mjs"
   },
   "dependencies": {
@@ -36,6 +38,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/node": "^26.2.0",
     "@typescript/native": "npm:typescript@^7.0.2",

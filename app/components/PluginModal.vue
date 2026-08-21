@@ -67,39 +67,51 @@ const shown = computed(() => !folded.value || open.value)
     <section v-if="shown && report.parts.servers.length" class="mt-4">
       <p class="t-eyebrow">Tools it adds</p>
       <dl class="mt-2 grid grid-cols-[10.5rem_1fr] gap-x-3 gap-y-1">
-        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_status</dt>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_get_status</dt>
         <dd class="font-sans text-[0.6875rem] text-faint">
           what runs for this repository, and on which ports
         </dd>
-        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_logs</dt>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_get_logs</dt>
         <dd class="font-sans text-[0.6875rem] text-faint">
           what a running service has printed, so a change can be checked without building
         </dd>
-        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_project_add</dt>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_add_project</dt>
         <dd class="font-sans text-[0.6875rem] text-faint">
           registers the repository the session is in, so it can hold a recipe
         </dd>
-        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_recipe_read</dt>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_read_recipe</dt>
         <dd class="font-sans text-[0.6875rem] text-faint">
           the recipe you have, where it came from, and whether it has gone stale
         </dd>
-        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_recipe_check</dt>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_check_recipe</dt>
         <dd class="font-sans text-[0.6875rem] text-faint">
           validates a recipe and stores nothing, so a session can get it right before saving
         </dd>
-        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_recipe_write</dt>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_write_recipe</dt>
         <dd class="font-sans text-[0.6875rem] text-faint">
           saves the recipe into ccwt, never into your repository
         </dd>
-        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_worktree_start</dt>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_create_worktree</dt>
+        <dd class="font-sans text-[0.6875rem] text-faint">
+          makes a worktree and provisions it from the recipe, ready and stopped
+        </dd>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_provision_worktree</dt>
+        <dd class="font-sans text-[0.6875rem] text-faint">
+          puts back what the recipe names and a worktree is missing, files only
+        </dd>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_start_worktree</dt>
         <dd class="font-sans text-[0.6875rem] text-faint">
           asks ccwt to start a worktree's services, rather than the session starting its own
         </dd>
+        <dt class="font-mono text-[0.6875rem] text-ink">ccwt_stop_worktree</dt>
+        <dd class="font-sans text-[0.6875rem] text-faint">
+          stops them and frees the port, so a changed recipe can be tried
+        </dd>
       </dl>
       <p class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
-        A session can ask ccwt to start a worktree, and can write the recipe that says what starting
-        one means. ccwt still allocates every port and owns every process, and nothing a session
-        calls will stop or restart a service — that stays yours, from this dashboard.
+        A session can write the recipe, make a worktree from it, start it, read what it printed and
+        stop it again. ccwt still allocates every port and owns every process. Removing a worktree is
+        the one thing no tool does — that stays yours, from this dashboard.
       </p>
     </section>
 
