@@ -61,8 +61,17 @@ const parts = computed(() => {
 const worktrees = ref<Worktree[]>([])
 const git = ref<GitReport>({})
 const forge = ref<ForgeStatus | null>(null)
-const lines = ref<LogLine[]>([])
+const streams = ref<Record<string, LogLine[]>>({})
 const selected = ref<string | null>(null)
+
+const KEPT = 1000
+
+const bucket = (rows: LogLine[]): Record<string, LogLine[]> => {
+  const held: Record<string, LogLine[]> = {}
+  for (const row of rows) (held[row.service] ??= []).push(row)
+
+  return held
+}
 
 const pullFor = (worktree: Worktree) =>
   worktree.branch ? (forge.value?.pulls[worktree.branch] ?? null) : null
@@ -140,12 +149,12 @@ const reload = async () => {
 const show = async (worktreeId: string) => {
   selected.value = worktreeId
   router.replace({ query: { ...route.query, worktree: worktreeId } })
-  lines.value = await api.logs(projectId.value, worktreeId).catch(() => [])
+  streams.value = bucket(await api.logs(projectId.value, worktreeId).catch(() => []))
 }
 
 const hide = () => {
   selected.value = null
-  lines.value = []
+  streams.value = {}
   const { worktree: _dropped, ...rest } = route.query
   router.replace({ query: rest })
 }
@@ -158,11 +167,14 @@ const select = async (worktree: Worktree) => {
   await show(worktree.id)
 }
 
-const clear = async () => {
+const clear = async (service: string) => {
   const target = selected.value
   if (!target) return
-  await api.clearLogs(projectId.value, target).catch(() => undefined)
-  lines.value = []
+
+  await api.clearLogs(projectId.value, target, service || undefined).catch(() => undefined)
+
+  if (service) delete streams.value[service]
+  else streams.value = {}
 }
 
 const watching = async (worktree: Worktree, run: () => Promise<unknown>) => {
@@ -286,7 +298,9 @@ onMounted(async () => {
   disconnect = api.connect((message) => {
     if (message.type === 'log') {
       if (message.line.worktreeId === selected.value) {
-        lines.value = [...lines.value.slice(-999), message.line]
+        const held = (streams.value[message.line.service] ??= [])
+        held.push(message.line)
+        if (held.length > KEPT) held.splice(0, held.length - KEPT)
       }
       return
     }
@@ -415,7 +429,7 @@ onBeforeUnmount(() => {
       </p>
     </div>
 
-    <LogViewer class="mt-4" :lines="lines" @clear="clear" />
+    <LogViewer class="mt-4" :streams="streams" @clear="clear" />
   </main>
 
   <CreateWorktreeModal

@@ -181,11 +181,70 @@ async function bothSides(
   return { shared: here.filter((name) => !perWorktree(entry, name)), have: new Set(there) }
 }
 
+const PROBE_DIRS = 32
+const PROBE_FILES = 8
+
+async function filesBeneath(
+  path: string,
+  found: string[],
+  budget: { dirs: number },
+  base = '',
+): Promise<void> {
+  if (found.length >= PROBE_FILES || budget.dirs <= 0) return
+  budget.dirs -= 1
+
+  const entries = await readdir(path, { withFileTypes: true }).catch(() => null)
+  if (!entries) return
+
+  for (const entry of entries.sort((one, other) => one.name.localeCompare(other.name))) {
+    if (found.length >= PROBE_FILES) return
+
+    if (entry.isFile()) found.push(`${base}${entry.name}`)
+    else if (entry.isDirectory())
+      await filesBeneath(join(path, entry.name), found, budget, `${base}${entry.name}/`)
+  }
+}
+
+async function probe(path: string): Promise<string[]> {
+  const found: string[] = []
+  await filesBeneath(path, found, { dirs: PROBE_DIRS })
+
+  return found
+}
+
+async function holdsContent(path: string): Promise<boolean> {
+  if (!(await isDirectory(path))) return true
+
+  return (await probe(path)).length > 0
+}
+
+async function relinked(here: string, there: string): Promise<boolean | null> {
+  if (!(await isDirectory(here)) || !(await isDirectory(there))) return sameFile(here, there)
+
+  let judged = false
+
+  for (const relative of await probe(here)) {
+    const mine = join(here, relative)
+    const theirs = join(there, relative)
+    if (!(await pathExists(theirs))) continue
+
+    judged = true
+    if (!(await sameFile(mine, theirs))) return false
+  }
+
+  return judged ? true : null
+}
+
 export async function missingBeneath(entry: string, source: string, target: string): Promise<boolean> {
   const sides = await bothSides(entry, source, target)
   if (typeof sides === 'string') return sides === 'absent'
 
-  return sides.shared.some((name) => !sides.have.has(name))
+  for (const name of sides.shared) {
+    if (sides.have.has(name)) continue
+    if (await holdsContent(join(source, name))) return true
+  }
+
+  return false
 }
 
 export async function divergedBeneath(
@@ -199,12 +258,13 @@ export async function divergedBeneath(
   for (const name of sides.shared) {
     if (!sides.have.has(name)) continue
 
-    const [mine, theirs] = await Promise.all([
-      modifiedAt(join(source, name)),
-      modifiedAt(join(target, name)),
-    ])
+    const here = join(source, name)
+    const there = join(target, name)
 
-    if (mine === null || theirs === null || mine !== theirs) return true
+    const [mine, theirs] = await Promise.all([modifiedAt(here), modifiedAt(there)])
+    if (mine !== null && theirs !== null && mine === theirs) continue
+
+    if ((await relinked(here, there)) === false) return true
   }
 
   return false

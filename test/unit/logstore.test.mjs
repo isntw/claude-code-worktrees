@@ -96,6 +96,65 @@ test('a worktree with several services reads back merged in time order', () => {
   })
 })
 
+test('a chatty service cannot push a quiet one out of the merged tail', () => {
+  withHome(() => {
+    logstore.append(line('server listening', 'server'))
+    logstore.append(line('server ready', 'server'))
+    for (let index = 0; index < 2_000; index += 1) logstore.append(line(`hmr ${index}`, 'web'))
+
+    const all = logstore.tailAll(WORKTREE, 100)
+    const server = all.filter((entry) => entry.service === 'server')
+
+    assert.equal(all.length, 100)
+    assert.deepEqual(
+      server.map((entry) => entry.text),
+      ['server listening', 'server ready'],
+    )
+  })
+})
+
+test('budget a service cannot use goes to one that can', () => {
+  withHome(() => {
+    for (let index = 0; index < 5; index += 1) logstore.append(line(`api ${index}`, 'api'))
+    for (let index = 0; index < 500; index += 1) logstore.append(line(`web ${index}`, 'web'))
+
+    const all = logstore.tailAll(WORKTREE, 100)
+    const counts = new Map()
+    for (const entry of all) counts.set(entry.service, (counts.get(entry.service) ?? 0) + 1)
+
+    assert.equal(counts.get('api'), 5)
+    assert.equal(counts.get('web'), 95)
+  })
+})
+
+test('every service keeps a share of the budget, however many there are', () => {
+  withHome(() => {
+    for (const service of ['api', 'db', 'web', 'worker']) {
+      for (let index = 0; index < 1_000; index += 1) logstore.append(line(`${service} ${index}`, service))
+    }
+
+    const all = logstore.tailAll(WORKTREE, 100)
+    const counts = new Map()
+    for (const entry of all) counts.set(entry.service, (counts.get(entry.service) ?? 0) + 1)
+
+    assert.equal(all.length, 100)
+    assert.deepEqual([...counts.values()], [25, 25, 25, 25])
+  })
+})
+
+test('a merged tail still ends with the newest line of each service', () => {
+  withHome(() => {
+    for (let index = 0; index < 40; index += 1) logstore.append(line(`api ${index}`, 'api'))
+    for (let index = 0; index < 40; index += 1) logstore.append(line(`web ${index}`, 'web'))
+
+    const all = logstore.tailAll(WORKTREE, 20)
+    const newest = (service) => all.filter((entry) => entry.service === service).at(-1).text
+
+    assert.equal(newest('api'), 'api 39')
+    assert.equal(newest('web'), 'web 39')
+  })
+})
+
 test('growth is bounded by rotation, and the file stays readable across it', () => {
   withHome((home) => {
     const path = join(home, 'logs', WORKTREE, 'dev.log')

@@ -132,6 +132,30 @@ export function tail(worktreeId: string, service: string, limit: number): LogLin
   return limit > 0 && lines.length > limit ? lines.slice(-limit) : lines
 }
 
+function shareOut(groups: LogLine[][], limit: number): LogLine[] {
+  const held = groups.map(() => 0)
+  let spare = limit
+
+  while (spare > 0) {
+    const hungry = groups.filter((lines, index) => lines.length > held[index]!).length
+    if (!hungry) break
+
+    const slice = Math.max(1, Math.floor(spare / hungry))
+
+    for (const [index, lines] of groups.entries()) {
+      if (spare <= 0) break
+
+      const give = Math.min(slice, lines.length - held[index]!, spare)
+      if (give <= 0) continue
+
+      held[index] = held[index]! + give
+      spare -= give
+    }
+  }
+
+  return groups.flatMap((lines, index) => (held[index] ? lines.slice(-held[index]!) : []))
+}
+
 export function tailAll(worktreeId: string, limit: number): LogLine[] {
   let names: string[]
   try {
@@ -140,16 +164,19 @@ export function tailAll(worktreeId: string, limit: number): LogLine[] {
     return []
   }
 
-  const out: LogLine[] = []
+  const groups: LogLine[][] = []
 
-  for (const name of names) {
+  for (const name of names.sort()) {
     if (!name.endsWith('.log')) continue
     const service = name.slice(0, -'.log'.length)
-    out.push(...readOne(worktreeId, service, join(dirFor(worktreeId), name)))
+    const lines = readOne(worktreeId, service, join(dirFor(worktreeId), name))
+    if (lines.length) groups.push(lines)
   }
 
+  const out = limit > 0 ? shareOut(groups, limit) : groups.flat()
   out.sort((a, b) => a.at.localeCompare(b.at))
-  return limit > 0 && out.length > limit ? out.slice(-limit) : out
+
+  return out
 }
 
 export function closeService(worktreeId: string, service: string): void {

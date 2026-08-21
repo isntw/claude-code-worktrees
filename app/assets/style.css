@@ -246,6 +246,42 @@
     text-box: trim-both cap alphabetic;
   }
 
+  .t-rail {
+    display: flex;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding-inline: 0.75rem;
+    border-block-end: 1px solid var(--ccwt-line);
+  }
+
+  .t-rail-item {
+    display: grid;
+    grid-auto-flow: column;
+    place-items: center;
+    gap: 0.75rem;
+    block-size: 1.5rem;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--ccwt-faint);
+    transition: color 100ms linear;
+  }
+
+  .t-rail-item + .t-rail-item::before {
+    content: '';
+    inline-size: 1px;
+    block-size: 0.75rem;
+    background: var(--ccwt-line);
+  }
+
+  .t-rail-item:hover {
+    color: var(--ccwt-dim);
+  }
+
+  .t-rail-item[aria-selected='true'] {
+    color: var(--ccwt-ink);
+  }
+
   .t-button {
     display: inline-grid;
     grid-auto-flow: column;

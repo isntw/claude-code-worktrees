@@ -234,6 +234,10 @@ export function forgetScrollback(worktreeId: string): void {
   logstore.forget(worktreeId)
 }
 
+export function forgetService(worktreeId: string, service: string): void {
+  logstore.forgetService(worktreeId, service)
+}
+
 export function scrollbackFor(worktreeId: string): LogLine[] {
   return logstore.tailAll(worktreeId, MAX_LINES)
 }
