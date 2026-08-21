@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Recipe } from './types'
+import type { Recipe, RecipeIssue } from './types'
 
 const NAME = /^[a-z0-9][a-z0-9_-]*$/i
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -125,6 +125,7 @@ const configObject = z
       ctx.addIssue({
         code: 'custom',
         path: ['services'],
+        params: { cycle },
         message: `These services depend on each other in a loop: ${cycle.join(' → ')}.`,
       })
     }
@@ -215,14 +216,25 @@ export function findCycle(services: Dependant[]): string[] | null {
   return null
 }
 
-export interface RecipeIssue {
-  path: string
-  message: string
-}
-
 export type ParseResult =
   | { ok: true; recipe: Recipe }
   | { ok: false; issues: RecipeIssue[] }
+
+function cycleOf(issue: z.core.$ZodIssue): string[] | undefined {
+  if (issue.code !== 'custom') return undefined
+
+  const found: unknown = issue.params?.cycle
+  if (!Array.isArray(found)) return undefined
+
+  const names = found.filter((name): name is string => typeof name === 'string')
+  return names.length === found.length ? names : undefined
+}
+
+function shapeIssue(issue: z.core.$ZodIssue): RecipeIssue {
+  const path = issue.path.length ? issue.path.join('.') : '(root)'
+  const cycle = cycleOf(issue)
+  return cycle ? { path, message: issue.message, cycle } : { path, message: issue.message }
+}
 
 export function parseRecipe(value: unknown): ParseResult {
   const result = configSchema.safeParse(value)
@@ -231,13 +243,7 @@ export function parseRecipe(value: unknown): ParseResult {
     return { ok: true, recipe: result.data as Recipe }
   }
 
-  return {
-    ok: false,
-    issues: result.error.issues.map((issue) => ({
-      path: issue.path.length ? issue.path.join('.') : '(root)',
-      message: issue.message,
-    })),
-  }
+  return { ok: false, issues: result.error.issues.map(shapeIssue) }
 }
 
 export function parseRecipeText(text: string): ParseResult {

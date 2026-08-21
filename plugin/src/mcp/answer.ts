@@ -28,7 +28,16 @@ export const NOTE = z.object({
   hint: z.string().optional(),
 })
 
-export const ISSUE = z.object({ path: z.string(), message: z.string() })
+export const ISSUE = z.object({
+  path: z.string(),
+  message: z.string(),
+  cycle: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Only on the issue that reports a `dependsOn` loop: the services in the loop in order, the first repeated at the end. The same chain the message spells out, as data — do not parse the message for it.',
+    ),
+})
 
 export const PATH_ARG = z
   .string()

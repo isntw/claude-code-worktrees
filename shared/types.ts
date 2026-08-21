@@ -279,9 +279,15 @@ export interface RecipeNote {
   hint?: string
 }
 
+export interface RecipeIssue {
+  path: string
+  message: string
+  cycle?: string[]
+}
+
 export interface RecipeCheck {
   ok: boolean
-  issues: { path: string; message: string }[]
+  issues: RecipeIssue[]
   notes: RecipeNote[]
 }
 
@@ -289,7 +295,7 @@ export interface RecipeView {
   source: RecipeSourceKind
   text: string
   recipe: Recipe | null
-  issues: { path: string; message: string }[]
+  issues: RecipeIssue[]
 }
 
 export interface DirEntry {
@@ -389,7 +395,16 @@ export interface ToolCheck {
   install: string
 }
 
-export type PluginState = 'unavailable' | 'absent' | 'installed' | 'disabled'
+export type PluginState = 'unavailable' | 'absent' | 'installed' | 'disabled' | 'outdated'
+
+export type PluginOrigin = 'installed' | 'shipped'
+
+export interface PluginApproval {
+  command: string
+  accepted: string | null
+  granted: boolean
+  askable: boolean
+}
 
 export interface PluginCapability {
   name: string
@@ -409,6 +424,8 @@ export interface PluginSkill {
 }
 
 export interface PluginParts {
+  origin: PluginOrigin
+  from: string
   marketplace: string
   id: string
   hooks: PluginHook[]
@@ -421,6 +438,8 @@ export interface PluginReport {
   state: PluginState
   installed: string | null
   shipped: string
+  available: string | null
+  approval: PluginApproval
   scope: string | null
   installedAt: string | null
   source: string

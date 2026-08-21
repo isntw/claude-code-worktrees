@@ -59,7 +59,7 @@ const rows = computed(() =>
 const marks = computed<(Variation | null)[]>(() => [
   tools.value ? (ok.value ? 'success' : 'error') : null,
   forge.configured.value === false ? 'warning' : forge.signedIn.value ? 'success' : null,
-  plugin.state.value === 'installed'
+  plugin.installed.value
     ? 'success'
     : plugin.state.value === 'disabled'
       ? 'warning'

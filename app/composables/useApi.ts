@@ -85,6 +85,8 @@ export function useApi() {
     installPlugin: () => call<PluginReport>('/plugin', { method: 'POST', body: {} }),
     enablePlugin: () =>
       call<PluginReport>('/plugin', { method: 'POST', body: { action: 'enable' } }),
+    refreshPlugin: () =>
+      call<PluginReport>('/plugin', { method: 'POST', body: { action: 'refresh' } }),
     removePlugin: () => call<PluginReport>('/plugin', { method: 'DELETE' }),
 
     getForgeSession: () => call<ForgeSession>('/forge/session'),

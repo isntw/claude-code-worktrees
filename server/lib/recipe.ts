@@ -1,5 +1,4 @@
-import type { Project, Recipe, RecipeCheck, RecipeView } from '../../shared/types'
-import type { RecipeIssue } from '../../shared/recipe-schema'
+import type { Project, Recipe, RecipeCheck, RecipeIssue, RecipeView } from '../../shared/types'
 import { emptyRecipe, parseRecipe } from '../../shared/recipe-schema'
 import { noteRecipe } from './lint'
 import { findRecord, updateRecord } from './store'

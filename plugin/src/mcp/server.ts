@@ -326,10 +326,12 @@ server.registerTool(
   },
 )
 
+type RecipeIssueLike = IssueLike & { cycle?: string[] }
+
 interface RecipeView {
   source: string
   text: string
-  issues?: IssueLike[]
+  issues?: RecipeIssueLike[]
 }
 
 server.registerTool(
@@ -393,7 +395,7 @@ server.registerTool(
 
 interface CheckView {
   ok: boolean
-  issues?: IssueLike[]
+  issues?: RecipeIssueLike[]
   notes?: RecipeNoteLike[]
 }
 

@@ -1,10 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
-const { report, busy, error, state, installed, look, says, events, install, enable, remove } =
-  usePluginSetup()
+const {
+  report,
+  busy,
+  error,
+  state,
+  installed,
+  stale,
+  look,
+  says,
+  events,
+  install,
+  enable,
+  refresh,
+  remove,
+} = usePluginSetup()
 
 const asking = ref<'install' | 'about' | null>(null)
+
+const version = computed(() => {
+  const said = report.value
+  if (!said) return ''
+  if (stale.value) return `${said.installed} → ${said.available}`
+  return said.installed ?? said.available ?? said.shipped
+})
 
 const confirm = async () => {
   if (await install()) asking.value = null
@@ -25,7 +45,9 @@ const confirm = async () => {
       </p>
 
       <div v-if="report" class="mt-3 border border-line px-3 py-2">
-        <p class="t-eyebrow">{{ installed ? 'Installed' : 'What gets installed' }}</p>
+        <p class="t-eyebrow">
+          {{ report.parts.origin === 'installed' ? 'Installed' : 'What gets installed' }}
+        </p>
 
         <dl
           class="mt-1.5 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-1 font-mono text-[0.6875rem] leading-snug"
@@ -33,12 +55,15 @@ const confirm = async () => {
           <dt class="text-faint">plugin</dt>
           <dd class="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
             <span class="text-ink">{{ report.parts.id }}</span>
-            <span class="text-dim">{{ report.shipped }}</span>
+            <span class="text-dim">{{ version }}</span>
             <span v-if="report.scope" class="text-faint">· {{ report.scope }}</span>
           </dd>
 
           <dt class="text-faint">from</dt>
           <dd class="min-w-0 truncate text-dim">{{ report.source }}</dd>
+
+          <dt class="text-faint">read at</dt>
+          <dd class="min-w-0 truncate text-dim">{{ report.parts.from }}</dd>
 
           <dt class="text-faint">hooks</dt>
           <dd class="min-w-0 text-ink">{{ events }}</dd>
@@ -53,6 +78,14 @@ const confirm = async () => {
             {{ report.parts.skills.map((skill) => skill.name).join(' · ') }}
           </dd>
         </dl>
+
+        <p class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
+          {{
+            report.parts.origin === 'installed'
+              ? 'Those hooks, tools and skills are read out of the copy Claude Code installed, so they are what a session has.'
+              : 'Those hooks, tools and skills are read out of the copy this ccwt ships. Nothing is installed, so no session has them yet.'
+          }}
+        </p>
       </div>
 
       <Notice
@@ -73,6 +106,14 @@ const confirm = async () => {
         <Button v-if="state === 'disabled'" size="sm" :disabled="busy" @click="enable">{{
           busy ? 'working…' : 'switch it on'
         }}</Button>
+        <Button
+          v-if="stale"
+          size="sm"
+          :disabled="busy"
+          title="Hand Claude Code the copy of the plugin this ccwt carries, replacing the one it installed."
+          @click="refresh"
+          >{{ busy ? 'working…' : 'refresh it' }}</Button
+        >
 
         <Button v-if="report" size="sm" :disabled="busy" @click="asking = 'about'"
           >what it does</Button

@@ -1,9 +1,23 @@
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { createHash } from 'node:crypto'
+import {
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  readlink,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join, relative, sep } from 'node:path'
 import type {
   Diagnostic,
+  PluginApproval,
   PluginCapability,
   PluginHook,
+  PluginOrigin,
   PluginParts,
   PluginReport,
   PluginSkill,
@@ -19,6 +33,7 @@ const PROBE_MS = 20_000
 const INSTALL_MS = 120_000
 const CLAUDE_MIN = '2.1.229'
 const COMMAND_MAX = 500
+const HASH_ENTRIES = 20_000
 
 interface Installed {
   id: string
@@ -26,11 +41,16 @@ interface Installed {
   scope?: string
   enabled?: boolean
   installedAt?: string
+  installPath?: string
 }
 
 export const sourceDir = (): string => join(stateDir(), 'plugin')
 
 const packageRoot = (): string => process.env.CCWT_ROOT ?? process.cwd()
+
+const producerDir = (): string => join(packageRoot(), 'plugin')
+
+const claudeDir = (): string => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
 
 export const CAPABILITIES: PluginCapability[] = [
   {
@@ -101,7 +121,7 @@ async function readJson<T>(path: string): Promise<T | null> {
   }
 }
 
-const manifestPath = () => join(packageRoot(), 'plugin', '.claude-plugin', 'plugin.json')
+const manifestPath = (root: string) => join(root, '.claude-plugin', 'plugin.json')
 
 const SKILL_BLURBS: Record<string, string> = {
   'ccwt-recipe-create':
@@ -110,23 +130,23 @@ const SKILL_BLURBS: Record<string, string> = {
     'how to prove a service serves the project rather than merely holding a port, and what a wrong answer means',
 }
 
-async function skills(): Promise<PluginSkill[]> {
-  const root = join(packageRoot(), 'plugin', 'skills')
-  const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
+async function skills(root: string): Promise<PluginSkill[]> {
+  const dir = join(root, 'skills')
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
 
   const found: PluginSkill[] = []
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
-    if (!(await stat(join(root, entry.name, 'SKILL.md')).catch(() => null))) continue
+    if (!(await stat(join(dir, entry.name, 'SKILL.md')).catch(() => null))) continue
     found.push({ name: entry.name, blurb: SKILL_BLURBS[entry.name] ?? '' })
   }
 
   return found
 }
 
-async function parts(): Promise<PluginParts> {
-  const declared = await readJson<HooksFile>(join(packageRoot(), 'plugin', 'hooks', 'hooks.json'))
-  const manifest = await readJson<Manifest>(manifestPath())
+async function partsOf(root: string, origin: PluginOrigin): Promise<PluginParts> {
+  const declared = await readJson<HooksFile>(join(root, 'hooks', 'hooks.json'))
+  const manifest = await readJson<Manifest>(manifestPath(root))
 
   const hooks: PluginHook[] = []
   for (const [event, matchers] of Object.entries(declared?.hooks ?? {})) {
@@ -135,7 +155,7 @@ async function parts(): Promise<PluginParts> {
     }
   }
 
-  const listed = await exec('node', [join(packageRoot(), 'plugin', 'mcp', 'server.mjs'), '--tools'], {
+  const listed = await exec('node', [join(root, 'mcp', 'server.mjs'), '--tools'], {
     timeoutMs: PROBE_MS,
   }).catch(() => null)
 
@@ -149,13 +169,24 @@ async function parts(): Promise<PluginParts> {
   }
 
   return {
+    origin,
+    from: root,
     marketplace: NAME,
     id: ID,
     hooks,
     servers: Object.keys(manifest?.mcpServers ?? {}),
     tools,
-    skills: await skills(),
+    skills: await skills(root),
   }
+}
+
+export async function parts(found: Installed | null): Promise<PluginParts> {
+  const installedAt = found?.installPath
+  if (installedAt && (await stat(manifestPath(installedAt)).catch(() => null))) {
+    return partsOf(installedAt, 'installed')
+  }
+
+  return partsOf(producerDir(), 'shipped')
 }
 
 async function missingSource(): Promise<string[]> {
@@ -201,6 +232,112 @@ async function shippedVersion(): Promise<string> {
   return own?.version ?? '0.0.0'
 }
 
+interface Tree {
+  files: string[]
+  links: string[]
+  sizes: Map<string, number>
+  seen: number
+}
+
+async function collect(root: string, dir: string, tree: Tree): Promise<void> {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (dir === root && entry.name === '.git') continue
+
+    tree.seen += 1
+    if (tree.seen > HASH_ENTRIES) throw new Error('too many entries to hash')
+
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) await collect(root, path, tree)
+    else if (entry.isSymbolicLink()) tree.links.push(path)
+    else if (entry.isFile()) {
+      tree.sizes.set(path, (await lstat(path)).size)
+      tree.files.push(path)
+    }
+  }
+}
+
+const posixPath = (root: string, path: string) => relative(root, path).split(sep).join('/')
+
+export async function contentHash(root: string): Promise<string | null> {
+  const tree: Tree = { files: [], links: [], sizes: new Map(), seen: 0 }
+
+  try {
+    await collect(root, root, tree)
+    tree.files.sort()
+    tree.links.sort()
+
+    const digest = createHash('sha256')
+
+    for (const path of tree.files) {
+      const size = tree.sizes.get(path) ?? 0
+      digest.update(`f ${posixPath(root, path)}\0${size}\0`)
+
+      let left = size
+      if (size > 0) {
+        const handle = await open(path, 'r')
+        try {
+          for await (const chunk of handle.createReadStream({ start: 0, end: size - 1 })) {
+            digest.update(chunk)
+            left -= chunk.length
+          }
+        } finally {
+          await handle.close()
+        }
+      }
+      if (left > 0) digest.update(Buffer.alloc(left))
+    }
+
+    for (const path of tree.links) {
+      const target = await readlink(path)
+      digest.update(`l ${posixPath(root, path)}\0`)
+      digest.update(`${Buffer.byteLength(target)}\0${target}`)
+    }
+
+    return digest.digest('hex').toLowerCase().slice(0, 12)
+  } catch {
+    return null
+  }
+}
+
+export async function availableVersion(): Promise<string | null> {
+  const hash = await contentHash(producerDir())
+  if (hash === null) return null
+
+  const manifest = await readJson<Manifest>(manifestPath(producerDir()))
+  return manifest?.version ? `${manifest.version}-${hash}` : hash
+}
+
+interface Consented {
+  sourceCommand?: string
+}
+
+interface ConsentFile {
+  plugins?: Record<string, Consented[]>
+}
+
+async function acceptedCommand(): Promise<string | null> {
+  const file = await readJson<ConsentFile>(
+    join(claudeDir(), 'plugins', 'installed_plugins.json'),
+  )
+
+  for (const entry of file?.plugins?.[ID] ?? []) {
+    if (typeof entry.sourceCommand === 'string') return entry.sourceCommand
+  }
+
+  return null
+}
+
+function inSession(): boolean {
+  return Boolean(process.env.CLAUDECODE || process.env.CLAUDE_CODE_CHILD_SESSION)
+}
+
+export async function approval(): Promise<PluginApproval> {
+  const command = pluginCommand()
+  const accepted = await acceptedCommand()
+
+  return { command, accepted, granted: accepted === command, askable: !inSession() }
+}
+
 async function claude(args: string[], timeoutMs = PROBE_MS) {
   return exec('claude', args, { timeoutMs }).catch(() => null)
 }
@@ -238,13 +375,56 @@ async function installed(): Promise<Installed | null> {
   }
 }
 
-function stateOf(found: Installed | null): PluginState {
+export function stateOf(found: Installed | null, available: string | null): PluginState {
   if (!found) return 'absent'
   if (found.enabled === false) return 'disabled'
+  if (available !== null && found.version !== undefined && found.version !== available) {
+    return 'outdated'
+  }
   return 'installed'
 }
 
-function issuesFor(state: PluginState, version: string | null): Diagnostic[] {
+export interface Situation {
+  state: PluginState
+  version: string | null
+  consent: PluginApproval
+  installed: string | null
+  available: string | null
+}
+
+function unreviewed(consent: PluginApproval): Diagnostic {
+  const cannot = `ccwt cannot answer for you: \`-y\` is ignored inside a Claude Code session, and this ccwt is running in one.`
+
+  if (consent.accepted === null) {
+    return {
+      code: 'plugin.needs-approval',
+      severity: 'warning',
+      message:
+        'Claude Code has never been shown the command that prints this plugin, and it will not run a command it has not been shown.',
+      hint: `Accept it once — from this plugin’s pane in \`/plugin\`, or by running \`claude plugin install ${ID} --scope user -y\` in your own terminal. ${cannot}`,
+    }
+  }
+
+  return {
+    code: 'plugin.needs-approval',
+    severity: 'warning',
+    message: `Claude Code accepted a different command for this plugin (\`${consent.accepted}\`) and will not run the new one until it has been reviewed.`,
+    hint: `Review it once with \`claude plugin update ${ID}\` in your own terminal, or from this plugin’s pane in \`/plugin\`. ${cannot}`,
+  }
+}
+
+function stale(now: Situation): Diagnostic {
+  return {
+    code: 'plugin.outdated',
+    severity: 'info',
+    message: `Claude Code installed ${now.installed} of this plugin; the copy this ccwt would hand it hashes to ${now.available}.`,
+    hint: 'Refresh it here, or run `claude plugin update ccwt@ccwt`. Claude Code also re-runs the command once a session and reloads when what it printed has changed, so a session opened after this may already have caught up.',
+  }
+}
+
+export function issuesFor(now: Situation): Diagnostic[] {
+  const { state, version, consent } = now
+
   if (state === 'unavailable') {
     return [
       {
@@ -290,47 +470,56 @@ function issuesFor(state: PluginState, version: string | null): Diagnostic[] {
     ]
   }
 
+  if (!consent.granted && !consent.askable) return [unreviewed(consent)]
+
+  if (state === 'outdated') return [stale(now)]
+
   return []
 }
 
 export async function report(extra: Diagnostic[] = []): Promise<PluginReport> {
   const shipped = await shippedVersion()
+  const available = await availableVersion()
+  const consent = await approval()
   const version = await claudeVersion()
 
   if (version === null) {
+    const now: Situation = { state: 'unavailable', version, consent, installed: null, available }
+
     return {
       state: 'unavailable',
       installed: null,
       shipped,
+      available,
+      approval: consent,
       scope: null,
       installedAt: null,
       source: sourceDir(),
       commands: commands(),
       capabilities: CAPABILITIES,
-      parts: await parts(),
-      issues: [...issuesFor('unavailable', version), ...extra],
+      parts: await parts(null),
+      issues: [...issuesFor(now), ...extra],
     }
   }
 
   const found = await installed()
-  const state = stateOf(found)
+  const state = stateOf(found, available)
   const missing = state === 'absent' ? await missingSource() : []
+  const now: Situation = { state, version, consent, installed: found?.version ?? null, available }
 
   return {
     state,
     installed: found?.version ?? null,
     shipped,
+    available,
+    approval: consent,
     scope: found?.scope ?? null,
     installedAt: found?.installedAt ?? null,
     source: sourceDir(),
     commands: commands(),
     capabilities: CAPABILITIES,
-    parts: await parts(),
-    issues: [
-      ...(missing.length ? [absent(missing)] : []),
-      ...issuesFor(state, version),
-      ...extra,
-    ],
+    parts: await parts(found),
+    issues: [...(missing.length ? [absent(missing)] : []), ...issuesFor(now), ...extra],
   }
 }
 
@@ -386,6 +575,9 @@ export async function install(): Promise<PluginReport> {
 
   await claude(['plugin', 'marketplace', 'update', NAME], INSTALL_MS)
 
+  const consent = await approval()
+  if (!consent.granted && !consent.askable) return report()
+
   const put = await claude(['plugin', 'install', ID, '--scope', 'user', '-y'], INSTALL_MS)
   if (!put) {
     return report([failed('claude plugin install', -1, 'the command did not finish')])
@@ -402,6 +594,45 @@ export async function install(): Promise<PluginReport> {
       severity: 'info',
       message: said || 'Claude Code installed the plugin without saying anything.',
       hint: 'From here Claude Code keeps it current on its own: it runs ccwt once a session to find the plugin, and reloads when the files change. If it did not switch the plugin on, run `/reload-plugins --force` in a session you already have open.',
+    },
+  ])
+}
+
+export async function refresh(): Promise<PluginReport> {
+  const version = await claudeVersion()
+  if (version === null || tooOld(version)) return report()
+
+  const found = await installed()
+  if (!found) return report()
+
+  const missing = await missingSource()
+  if (missing.length) return report([absent(missing)])
+
+  await materialise()
+  await claude(['plugin', 'marketplace', 'update', NAME], INSTALL_MS)
+
+  const consent = await approval()
+  if (!consent.granted && !consent.askable) return report()
+
+  const put = await claude(
+    ['plugin', 'update', ID, '--scope', found.scope ?? 'user', '-y'],
+    INSTALL_MS,
+  )
+  if (!put) {
+    return report([failed('claude plugin update', -1, 'the command did not finish')])
+  }
+  if (put.code !== 0) {
+    return report([failed('claude plugin update', put.code, put.stderr)])
+  }
+
+  const said = put.stdout.trim().split('\n').slice(-4).join('\n')
+
+  return report([
+    {
+      code: 'plugin.refreshed',
+      severity: 'info',
+      message: said || 'Claude Code refreshed the plugin without saying anything.',
+      hint: 'A session already open is still running the copy it loaded at start; `/reload-plugins --force` picks the new one up without restarting it.',
     },
   ])
 }

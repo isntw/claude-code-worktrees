@@ -6,6 +6,7 @@ const LOOK: Record<PluginState, Variation> = {
   unavailable: 'neutral',
   absent: 'neutral',
   installed: 'success',
+  outdated: 'info',
   disabled: 'warning',
 }
 
@@ -13,6 +14,7 @@ const SAYS: Record<PluginState, string> = {
   unavailable: 'claude code not found',
   absent: 'not installed',
   installed: 'installed',
+  outdated: 'older copy installed',
   disabled: 'switched off',
 }
 
@@ -24,7 +26,8 @@ export function usePluginSetup() {
   const error = ref<string | null>(null)
 
   const state = computed<PluginState | null>(() => report.value?.state ?? null)
-  const installed = computed(() => state.value === 'installed')
+  const installed = computed(() => state.value === 'installed' || state.value === 'outdated')
+  const stale = computed(() => state.value === 'outdated')
   const look = computed<Variation>(() => (state.value ? LOOK[state.value] : 'neutral'))
   const says = computed(() => (state.value ? SAYS[state.value] : ''))
 
@@ -60,6 +63,7 @@ export function usePluginSetup() {
     error,
     state,
     installed,
+    stale,
     look,
     says,
     events,
@@ -67,6 +71,7 @@ export function usePluginSetup() {
     act,
     install: () => act(api.installPlugin),
     enable: () => act(api.enablePlugin),
+    refresh: () => act(api.refreshPlugin),
     remove: () => act(api.removePlugin),
   }
 }
