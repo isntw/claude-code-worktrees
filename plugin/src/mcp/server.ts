@@ -19,7 +19,7 @@ import {
   shapeWorktree,
   told,
 } from './answer.ts'
-import type { ServiceLike, WorktreeLike } from './answer.ts'
+import type { ServiceLike, Told, WorktreeLike } from './answer.ts'
 import {
   SOURCES,
   answered,
@@ -40,7 +40,7 @@ const READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true
 const ACTS = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 
 const server = new McpServer(
-  { name: 'ccwt', version: VERSION },
+  { name: 'ccwt-mcp-server', version: VERSION },
   { capabilities: { tools: {} } },
 )
 
@@ -96,7 +96,7 @@ server.registerTool(
     },
     annotations: READS,
   },
-  async ({ path }) => {
+  async ({ path }): Promise<Told> => {
     const found = await describe(path ?? process.cwd()).catch(() => null)
     if (!found) return nope('This directory is not inside a repository ccwt manages.')
 
@@ -198,7 +198,7 @@ server.registerTool(
     },
     annotations: READS,
   },
-  async ({ service, worktree: wantedName, path, limit, offset }) => {
+  async ({ service, worktree: wantedName, path, limit, offset }): Promise<Told> => {
     const asked = path ?? process.cwd()
 
     let found: Seen | null = await describe(asked).catch(() => null)
@@ -309,7 +309,7 @@ server.registerTool(
     },
     annotations: ACTS,
   },
-  async ({ path }) => {
+  async ({ path }): Promise<Told> => {
     const found = await standing(path)
     if ('error' in found) return nope(found.error)
 
@@ -360,7 +360,7 @@ server.registerTool(
     },
     annotations: READS,
   },
-  async ({ path }) => {
+  async ({ path }): Promise<Told> => {
     const found = await standing(path)
     const missing = needsProject(found)
     if (missing) return nope(missing)
@@ -422,7 +422,7 @@ server.registerTool(
     },
     annotations: READS,
   },
-  async ({ recipe, path }) => {
+  async ({ recipe, path }): Promise<Told> => {
     const found = await standing(path)
     const missing = needsProject(found)
     if (missing) return nope(missing)
@@ -482,7 +482,7 @@ server.registerTool(
     },
     annotations: { ...ACTS, destructiveHint: true },
   },
-  async ({ recipe, replace, path }) => {
+  async ({ recipe, replace, path }): Promise<Told> => {
     const found = await standing(path)
     const missing = needsProject(found)
     if (missing) return nope(missing)
@@ -562,7 +562,7 @@ server.registerTool(
     },
     annotations: { ...ACTS, idempotentHint: false },
   },
-  async ({ name, branch, start, path }) => {
+  async ({ name, branch, start, path }): Promise<Told> => {
     if (!name.trim()) return broke('`name` cannot be blank.')
 
     const found = await standing(path)
@@ -620,7 +620,7 @@ server.registerTool(
     outputSchema: { ...ANSWER, ...WORKTREE, refreshed: z.boolean().optional() },
     annotations: ACTS,
   },
-  async ({ worktree, refresh, path }) => {
+  async ({ worktree, refresh, path }): Promise<Told> => {
     const found = await standing(path)
     const missing = needsProject(found)
     if (missing) return nope(missing)
@@ -685,7 +685,7 @@ server.registerTool(
     },
     annotations: ACTS,
   },
-  async ({ service, worktree, path }) => {
+  async ({ service, worktree, path }): Promise<Told> => {
     const found = await standing(path)
     const missing = needsProject(found)
     if (missing) return nope(missing)
@@ -766,7 +766,7 @@ server.registerTool(
     },
     annotations: ACTS,
   },
-  async ({ service, worktree, path }) => {
+  async ({ service, worktree, path }): Promise<Told> => {
     const found = await standing(path)
     const missing = needsProject(found)
     if (missing) return nope(missing)
