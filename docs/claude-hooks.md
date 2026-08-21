@@ -215,8 +215,9 @@ say nothing at all if there are none.
 
 ### `UserPromptSubmit` carries the delta
 
-Fires every turn with the current `cwd`. Build the same table, fingerprint it, compare against
-`~/.ccwt/sessions/<session_id>.json`, and **emit only when it changed**:
+Fires every turn with the current `cwd`. Build the same table, fingerprint it, compare against the
+marker — one row per session in `~/.ccwt/ccwt.db`, reached through `/api/plugin/session/<id>` — and
+**emit only when it changed**:
 
 ```
 ccwt: `dev` moved to port 5312 (was 5270) and is running at http://localhost:5312
@@ -225,8 +226,14 @@ ccwt: `dev` moved to port 5312 (was 5270) and is running at http://localhost:531
 `session_id` arrives in every hook's input, so the marker costs nothing. When nothing moved the hook
 prints nothing and spends a few git reads and TCP probes.
 
-`SessionEnd` deletes that marker. It does not fire on a crash, so prune the directory by mtime as a
-backstop. That is the only thing `SessionEnd` is used for — see §17.
+**The snapshot is an object keyed `<worktree>/<service>`, and every layer it passes through must
+agree.** `snapshot()` has always produced one; the route, the store and their tests all typed it as
+an array, so each write landed as `[]` and each turn re-reported the whole machine as new. Nothing
+failed — an array is valid JSON. `asRows` is now the single gate, and a legacy `[]` reads as no rows
+rather than as rows.
+
+`SessionEnd` deletes that marker. It does not fire on a crash, so sweep rows by `at` as a backstop.
+That is the only thing `SessionEnd` is used for — see §17.
 
 ### `PreToolUse` cannot go stale
 
@@ -240,14 +247,21 @@ matter: the reason the model gets always names the current port. §8.
 Three `claude` processes were running while this was written, and nothing distinguished them. The
 same hooks fix it, at the cost of one extra field.
 
-Hook output carries a top-level **`sessionTitle`**, in the same family as `watchPaths` and
-`systemMessage` (2.1.234):
+**`sessionTitle` lives inside `hookSpecificOutput`, not at the top level** (2.1.238). The top level
+admits only `continue`, `stopReason`, `decision`, `reason`, `systemMessage` and `terminalSequence`;
+the normaliser reads the title from the event variant and nowhere else:
 
 ```js
-if (m.sessionTitle) d = m.sessionTitle
+case "UserPromptSubmit":
+  u.sessionTitle = e.hookSpecificOutput.sessionTitle
 …
 "Hook sessionTitle applied"    → applied with source "hook"
 ```
+
+A title sent beside those top-level keys is parsed, dropped, and the hook still exits 0. **There is
+no error and no log** — which is how ccwt shipped a rename that never once took effect, from the
+plugin's first commit until this was found. `payloadFor` in `plugin/lib/report.mjs` is now the only
+thing that builds the envelope, and a test asserts the key is not at the top level.
 
 And both `SessionStart` and `UserPromptSubmit` receive **`session_title`** on stdin — the current
 name. So the hook always knows what the session is called before deciding to rename it.
@@ -256,9 +270,14 @@ That covers all three cases:
 
 | when | how |
 |---|---|
-| session opens in a worktree | `SessionStart` returns `sessionTitle` beside `additionalContext` |
+| session opens in a worktree | `UserPromptSubmit` sets it on the first turn |
 | a worktree is created mid-session | `UserPromptSubmit` sets it on the next turn |
 | the same session moves to another worktree | `UserPromptSubmit` compares `cwd` and re-titles |
+
+**Only `UserPromptSubmit` can name a session.** `SessionStart` accepts `sessionTitle` in its schema,
+but the apply call sits on the prompt path alone; what `SessionStart` returns is cached in memory and
+never written. The hook sends it on both events anyway — the cost is nothing and the schema allows
+it — but the name lands on the first prompt, not when the session opens.
 
 The apply step already no-ops when the title is unchanged, so re-emitting the same name every turn
 costs nothing.
@@ -609,12 +628,19 @@ The last two guard rows matter as much as the denials: a stopped service is not 
 and a repository ccwt has never seen must be untouched.
 
 Since proven in live sessions, not only by hand: both MCP tools called by a session; the guard
-denying a real duplicate and no longer refusing a commit message that merely mentions one; the delta
-reporting a port move from one session into another; and a name claimed over an auto-generated title
-and then left alone once renamed by hand.
+denying a real duplicate and no longer refusing a commit message that merely mentions one; and the
+delta reporting a port move from one session into another.
 
-Still to prove: a session renamed **again** when it moves from one worktree to another, which is
-unit-tested but never watched happen.
+**The renaming row is withdrawn — it was never true.** What that observation read was the marker,
+which records the name the hook *decided on*; the title itself left in the wrong field and Claude
+Code discarded every one. No transcript on this machine carries a `ccwt · …` title, while worktree
+sessions carry auto-generated ones. Watching the marker is watching the decision, not the effect,
+and here the two came apart for the whole life of the feature.
+
+The delta then broke separately when the marker moved into the database, which stored its snapshot as
+`[]` — so every service read as new on every turn. Both are fixed; neither is proven live yet.
+
+Still to prove: any rename at all, watched happen, and a delta that reports only what moved.
 
 ---
 

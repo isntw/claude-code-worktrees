@@ -1,4 +1,4 @@
-import { forgetMark, writeMark } from '~~/server/lib/sessions'
+import { asRows, forgetMark, writeMark } from '~~/server/lib/sessions'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
 
   await writeMark(
     id,
-    Array.isArray(body?.rows) ? body.rows : [],
+    asRows(body?.rows) ?? {},
     typeof body?.title === 'string' ? body.title : undefined,
   )
 

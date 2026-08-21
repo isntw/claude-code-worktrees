@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { changes, overview, renameTo, snapshot } from '../../plugin/lib/report.mjs'
+import { changes, overview, payloadFor, renameTo, snapshot } from '../../plugin/lib/report.mjs'
 
 const worktree = (name, services, root = false) => ({ name, root, path: `/repo/${name}`, services })
 const service = (name, port, up) => ({ name, port, up, command: 'npm run dev -- --port {{port}}' })
@@ -129,4 +129,43 @@ test('a repository with no allocated ports produces no context at all', () => {
   const found = repo([worktree('demo', [service('dev', null, false)], true)])
 
   assert.equal(overview(found), null)
+})
+
+test('a title travels inside hookSpecificOutput, never at the top level', () => {
+  const payload = payloadFor('UserPromptSubmit', null, 'ccwt · demo/feature')
+
+  assert.equal(payload.sessionTitle, undefined)
+  assert.deepEqual(payload, {
+    hookSpecificOutput: {
+      hookEventName: 'UserPromptSubmit',
+      sessionTitle: 'ccwt · demo/feature',
+    },
+  })
+})
+
+test('a title rides beside the context it was decided with', () => {
+  const payload = payloadFor('SessionStart', 'ccwt manages this repository.', 'ccwt · demo/feature')
+
+  assert.deepEqual(payload, {
+    hookSpecificOutput: {
+      hookEventName: 'SessionStart',
+      additionalContext: 'ccwt manages this repository.',
+      sessionTitle: 'ccwt · demo/feature',
+    },
+  })
+})
+
+test('context with no rename carries no title key', () => {
+  const payload = payloadFor('UserPromptSubmit', 'ccwt: one/dev has stopped', null)
+
+  assert.deepEqual(payload, {
+    hookSpecificOutput: {
+      hookEventName: 'UserPromptSubmit',
+      additionalContext: 'ccwt: one/dev has stopped',
+    },
+  })
+})
+
+test('nothing to say emits nothing at all', () => {
+  assert.deepEqual(payloadFor('UserPromptSubmit', null, null), {})
 })

@@ -76,3 +76,15 @@ export function overview(found) {
     'service has printed rather than building to find out.',
   ].join('\n')
 }
+
+export function payloadFor(event, context, title) {
+  if (!context && !title) return {}
+
+  return {
+    hookSpecificOutput: {
+      hookEventName: event,
+      ...(context ? { additionalContext: context } : {}),
+      ...(title ? { sessionTitle: title } : {}),
+    },
+  }
+}

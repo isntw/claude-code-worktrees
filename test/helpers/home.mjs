@@ -61,6 +61,6 @@ export const LEGACY_CREDENTIAL = {
 
 export const LEGACY_SESSION = {
   at: '2026-01-01T00:00:00.000Z',
-  rows: [{ worktree: 'alpha', service: 'dev', port: 5276 }],
+  rows: { 'alpha/dev': { port: 5276, up: true } },
   title: 'alpha',
 }
