@@ -1,6 +1,5 @@
 {
   "name": "ccwt",
-  "version": "0.2.1",
   "description": "Tells a Claude Code session which services ccwt already runs for the current repository, stops it starting a second copy of one, lets it write the recipe that says what running the project means, and names the session after its worktree.",
   "author": {
     "name": "ccwt"

@@ -36,9 +36,6 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     token: '',
-    public: {
-      version: '0.1.0',
-    },
   },
 
   typescript: {
