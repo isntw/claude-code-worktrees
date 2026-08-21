@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ProbeResult, Project } from '#shared/types'
+import { routeKeys } from '#shared/route-keys'
 import type { Tile } from '../components/TileGrid.vue'
 import { NAV } from '../nav'
 
@@ -75,6 +76,10 @@ const load = async () => {
   }
 }
 
+const keys = computed(() => routeKeys(projects.value))
+
+const open = (id: string) => router.push(`/project/${keys.value.get(id) ?? id}`)
+
 const add = async () => {
   addBusy.value = true
   addError.value = null
@@ -83,7 +88,7 @@ const add = async () => {
     adding.value = false
     rootPath.value = ''
     await load()
-    router.push(`/project/${project.id}`)
+    open(project.id)
   } catch (cause) {
     addError.value = (cause as Error).message
   } finally {
@@ -101,7 +106,7 @@ const tiles = computed<Tile[]>(() =>
       [project.recipe ? null : 'no recipe', project.defaultBranch].filter(Boolean).join(' · ') ||
       undefined,
     inert: project.issues.some((issue) => issue.code === 'project.missing'),
-    go: () => router.push(`/project/${project.id}`),
+    go: () => open(project.id),
   })),
 )
 

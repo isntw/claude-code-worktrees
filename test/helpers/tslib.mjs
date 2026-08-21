@@ -52,6 +52,11 @@ export async function importLib(name) {
   return import(pathToFileURL(target).href)
 }
 
+export async function importShared(name) {
+  const target = join(stage(), 'shared', `${name}.ts`)
+  return import(pathToFileURL(target).href)
+}
+
 export function sourceOf(relativePath) {
   return readFileSync(join(root, relativePath), 'utf8')
 }

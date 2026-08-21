@@ -124,9 +124,8 @@ const alive = (pid) => {
 const running = await readJson(runtimeFile)
 
 if (running && alive(running.pid) && !(await isFree(running.port, running.host ?? '127.0.0.1'))) {
-  const at = running.host === '::1' ? '[::1]' : (running.host ?? '127.0.0.1')
   process.stderr.write(
-    `\n  ccwt is already running on http://${at}:${running.port} (pid ${running.pid}).\n  One ccwt per machine: a second would supervise the same worktrees\n  and hand out the same ports. Open that one, or stop it first.\n\n`,
+    `\n  ccwt is already running on http://localhost:${running.port} (pid ${running.pid}).\n  One ccwt per machine: a second would supervise the same worktrees\n  and hand out the same ports. Open that one, or stop it first.\n\n`,
   )
   process.exit(1)
 }
@@ -162,7 +161,7 @@ process.env.HOST = host
 process.env.NUXT_TOKEN = token
 process.env.CCWT_ROOT = root
 
-const url = `http://${host === '::1' ? '[::1]' : host}:${port}/`
+const url = `http://localhost:${port}/`
 
 if (values.dev) {
   startNuxtDev(port, host)
