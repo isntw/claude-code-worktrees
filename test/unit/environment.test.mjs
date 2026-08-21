@@ -26,18 +26,31 @@ const vars = (over = {}) => ({
 
 const ccwt = (env) => Object.fromEntries(Object.entries(env).filter(([key]) => key.startsWith('CCWT_')))
 
-test('a service is given its own port and every service’s URL', () => {
-  const env = environmentFor(service(), 5201, vars())
+test('a service is given every service’s URL', () => {
+  const env = environmentFor(service(), vars())
 
-  assert.equal(env.PORT, '5201')
   assert.deepEqual(ccwt(env), {
     CCWT_URL_WEB: 'http://localhost:5201',
     CCWT_URL_API: 'http://localhost:5301',
   })
 })
 
+test('no PORT is exported unless the recipe names it', () => {
+  const env = environmentFor(service(), vars())
+
+  assert.equal(env.PORT, undefined)
+})
+
+test('a recipe that maps PORT gets it, and nothing else does', () => {
+  const named = environmentFor(service({ env: { PORT: '{{port}}' } }), vars())
+  assert.equal(named.PORT, '5201')
+
+  const sidecar = environmentFor(service(), vars({ named: { PORT: 24678 } }))
+  assert.equal(sidecar.PORT, '24678')
+})
+
 test('no port is exported under a CCWT_PORT name', () => {
-  const env = environmentFor(service(), 5201, vars({ named: { DB_PORT: 33061 } }))
+  const env = environmentFor(service(), vars({ named: { DB_PORT: 33061 } }))
 
   assert.deepEqual(
     Object.keys(env).filter((key) => key.startsWith('CCWT_PORT')),
@@ -46,14 +59,14 @@ test('no port is exported under a CCWT_PORT name', () => {
 })
 
 test('a recipe-named port arrives under its own name', () => {
-  const env = environmentFor(service(), 5201, vars({ named: { DB_PORT: 33061 } }))
+  const env = environmentFor(service(), vars({ named: { DB_PORT: 33061 } }))
 
   assert.equal(env.DB_PORT, '33061')
   assert.equal(env.CCWT_URL_DB_PORT, 'http://localhost:33061')
 })
 
 test('a name with a dash becomes one underscored key', () => {
-  const env = environmentFor(service({ name: 'web-api' }), 5201, vars({ ports: { 'web-api': 5201 } }))
+  const env = environmentFor(service({ name: 'web-api' }), vars({ ports: { 'web-api': 5201 } }))
 
   assert.equal(env.CCWT_URL_WEB_API, 'http://localhost:5201')
 })
@@ -61,7 +74,6 @@ test('a name with a dash becomes one underscored key', () => {
 test('the recipe’s own env is rendered and wins', () => {
   const env = environmentFor(
     service({ env: { WEB_PORT: '{{port}}', CCWT_URL_WEB: 'mine' } }),
-    5201,
     vars(),
   )
 

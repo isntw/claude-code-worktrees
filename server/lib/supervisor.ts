@@ -252,11 +252,7 @@ export function subscribeStatus(listener: StatusListener): () => void {
   return () => statusListeners.delete(listener)
 }
 
-export function environmentFor(
-  service: Service,
-  port: number,
-  vars: Vars,
-): NodeJS.ProcessEnv {
+export function environmentFor(service: Service, vars: Vars): NodeJS.ProcessEnv {
   const declared: Record<string, string> = {}
 
   for (const [name, allocated] of Object.entries(vars.ports)) {
@@ -274,7 +270,6 @@ export function environmentFor(
 
   return {
     ...process.env,
-    PORT: String(port),
     FORCE_COLOR: '0',
     BROWSER: 'none',
     ...declared,
@@ -299,7 +294,7 @@ export async function start(
   const head = parts[0]
   if (!head) throw new Error(`Service \`${service.name}\` has no command`)
 
-  const env = environmentFor(service, port, vars)
+  const env = environmentFor(service, vars)
 
   const entry: Entry = {
     worktreeId,

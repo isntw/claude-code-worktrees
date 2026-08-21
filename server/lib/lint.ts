@@ -4,9 +4,14 @@ import { ALWAYS_PER_WORKTREE } from './provision'
 
 const PORT_TOKEN = '{{port}}'
 
-function portReaches(service: Service): boolean {
-  if (service.command.includes(PORT_TOKEN)) return true
-  return Object.values(service.env ?? {}).some((value) => value.includes(PORT_TOKEN))
+function portSites(service: Service): string[] {
+  const sites = service.command.includes(PORT_TOKEN) ? ['command'] : []
+
+  for (const [name, value] of Object.entries(service.env ?? {})) {
+    if (value.includes(PORT_TOKEN)) sites.push(`env.${name}`)
+  }
+
+  return sites
 }
 
 function stackNotes(service: Service, where: string): RecipeNote[] {
@@ -56,13 +61,22 @@ function serviceNotes(service: Service, index: number): RecipeNote[] {
     })
   }
 
-  if (!portReaches(service)) {
+  const sites = portSites(service)
+
+  if (!sites.length) {
     const pinned = service.portRange[0] === service.portRange[1]
     notes.push({
       path: `${where}.command`,
       severity: pinned ? 'info' : 'warning',
       message: `ccwt allocates a port for \`${service.name}\` but nothing passes it on, so the service will not hear about it.`,
       hint: `Put ${PORT_TOKEN} in the command, or map it to a variable under \`env\`.`,
+    })
+  } else if (sites.length > 1) {
+    notes.push({
+      path: `${where}.env`,
+      severity: 'warning',
+      message: `The port reaches \`${service.name}\` ${sites.length} ways — ${sites.join(', ')}. Set it once.`,
+      hint: 'A second copy is not free: a port-picking library reads a variable like `PORT` as the preferred port for any socket it allocates, so a sidecar can take the port the app was given.',
     })
   }
 

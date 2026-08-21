@@ -159,8 +159,11 @@ project. Nothing is written into any repository.
 
 ## Good to know
 
-- **Ports reach your app through the environment** — `PORT`, plus `CCWT_URL_<SERVICE>` so services
-  can find each other. Nothing to import.
+- **The port reaches your app where the recipe says**, and nowhere else — `{{port}}` in the command,
+  or mapped to whatever variable your app already reads. ccwt exports no `PORT` of its own: a variable
+  by that name is the preferred port for *any* socket a port-picking library allocates, so injecting it
+  behind your back lets a dev server's own sidecar steal the port the app was given.
+- **`CCWT_URL_<SERVICE>` is exported** so services can find each other. Nothing to import.
 - **A worktree keeps its port.** If something else takes it, the card says so and the next start moves.
 - **Removal names the path first**, keeps your branch unless you tick the box, and won't delete a
   worktree you made yourself if it has anything to lose.

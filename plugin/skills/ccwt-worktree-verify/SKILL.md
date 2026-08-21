@@ -36,19 +36,22 @@ Say which of these you did. "The recipe validates and the service is running" is
 
 ## Why a sidecar takes the app's own port
 
-ccwt exports `PORT` to every service it spawns, set to that service's allocated port. Port-picking
-libraries — `get-port-please`, `portfinder`, `detect-app-port` — read `process.env.PORT` as the
-*preferred* port for **whatever they are asked to allocate**, not only for the app's own listener. A
-dev server that allocates a second socket while resolving its config finds the app's port still free,
-because the app has not bound yet, and takes it. Two listeners on one number, one pid: the app on one
-address family, the sidecar on the other.
+Port-picking libraries — `get-port-please`, `portfinder`, `detect-app-port` — read `process.env.PORT`
+as the *preferred* port for **whatever they are asked to allocate**, not only for the app's own
+listener. A dev server that allocates a second socket while resolving its config finds the app's port
+still free, because the app has not bound yet, and takes it. Two listeners on one number, one pid: the
+app on one address family, the sidecar on the other.
+
+ccwt exports no `PORT` of its own, so this needs `PORT` to be set by the recipe or by something the
+project loads — a copied `.env` is the usual culprit. `ccwt_read_recipe` says whether the recipe sets
+it; a `.env` under `provision.copy` is worth reading too.
 
 Vite's HMR WebSocket is the usual culprit, and `426 Upgrade Required` in a browser is what it looks
 like.
 
 **Give the sidecar a port of its own.** Declare `PORT` under the service's `ports` with the range the
-sidecar documents for itself. A named port is allocated per worktree, reserved against every other
-service, and overrides the `PORT` ccwt would otherwise export — so the sidecar takes a port intended
+sidecar documents for itself. A named port is allocated per worktree and reserved against every other
+service, and it wins over anything the project's own `.env` set — so the sidecar takes a port intended
 for it, and the app keeps the one the command was told:
 
 ```json
@@ -60,8 +63,9 @@ for it, and the app keeps the one the command was told:
 }
 ```
 
-Only do this when the app's own port arrives another way — a flag, or a variable the project reads. A
-command that takes its port from `PORT` and nothing else needs `PORT` left as ccwt set it.
+Only do this when the app's own port arrives another way — a flag, or a variable the project reads. An
+app that takes its port from `PORT` and nothing else needs the recipe to map `PORT` to `{{port}}`, and
+then the sidecar has to be pinned from the project's own config instead.
 
 ## Testing a change
 

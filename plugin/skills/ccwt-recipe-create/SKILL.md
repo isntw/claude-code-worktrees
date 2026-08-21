@@ -107,20 +107,22 @@ ccwt allocates a port per service per worktree out of `portRange`, and it must r
 - or as an environment variable the project already reads — `"env": { "NUXT_PORT": "{{port}}" }`
 
 **Set it once, by the most specific knob the project has.** A flag on the command beats a variable,
-and the project's own variable beats a generic one. ccwt already exports **`PORT`** for every service
-it spawns, set to that service's allocated port, plus `CCWT_URL_<SERVICE>` so services can find each
-other — so `"env": { "PORT": "{{port}}" }` adds nothing while reading as though it did.
+and the project's own variable beats a generic one. ccwt exports nothing but `CCWT_URL_<SERVICE>` and
+whatever the recipe names, so the port reaches the process exactly where you put it — and
+`ccwt_check_recipe` warns when you put it in more than one place.
 
-**And `PORT` reaches the whole process tree, where a port-picking library will prefer it for any
-socket.** `get-port-please`, `portfinder` and friends read `process.env.PORT` as the preferred port
-for whatever they are asked to allocate, not only for the app's listener. A dev server that allocates
-a second socket while resolving its config finds the app's port still free — the app has not bound yet
-— and takes it. The port then answers, ccwt reports `running`, and the URL serves the wrong server;
-`426 Upgrade Required` is a Vite HMR socket sitting where the app should be.
+**Be wary of `PORT` specifically.** A port-picking library — `get-port-please`, `portfinder` and
+friends — reads `process.env.PORT` as the preferred port for **whatever it is asked to allocate**, not
+only for the app's own listener. A dev server that opens a second socket while resolving its config
+finds that port still free, because the app has not bound yet, and takes it. The port then answers,
+ccwt reports `running`, and the URL serves the wrong server: `426 Upgrade Required` is a Vite HMR
+socket sitting where the app should be. Prefer the project's own variable, and reach for `PORT` only
+when the app reads nothing else.
 
-Where a service has a sidecar like that, give the sidecar a port of its own by declaring `PORT` under
-the service's `ports` with the range that sidecar documents. A named port is allocated per worktree,
-reserved against every other service, and overrides the `PORT` ccwt would otherwise export:
+If a project sets `PORT` itself — a copied `.env` is the usual way — give the sidecar a port of its own
+by declaring `PORT` under the service's `ports` with the range that sidecar documents. A named port is
+allocated per worktree and reserved against every other service, so the sidecar takes a port meant for
+it and the app keeps the one the command was told:
 
 ```json
 {
@@ -130,9 +132,6 @@ reserved against every other service, and overrides the `PORT` ccwt would otherw
   "ports": { "PORT": [24678, 24698] }
 }
 ```
-
-Only do that when the app's own port arrives another way. A command that reads `PORT` and nothing else
-needs it left as ccwt set it.
 
 A service needing more than one port declares them under `ports`, each with its own range; they
 arrive as environment variables of that name. `{{port.other}}` and `{{url.other}}` interpolate

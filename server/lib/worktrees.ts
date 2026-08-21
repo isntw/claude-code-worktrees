@@ -757,7 +757,7 @@ export async function remove(
     await runPostRemove(
       resolve(worktree.path, service.cwd || '.'),
       rendered,
-      supervisor.environmentFor(service, port, vars),
+      supervisor.environmentFor(service, vars),
     ).catch(() => undefined)
   }
 
