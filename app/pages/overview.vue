@@ -5,6 +5,7 @@ import type {
   OverviewRow,
   PortClaim,
   PullRequest,
+  ServiceStatus,
   Severity,
   Worktree,
 } from '#shared/types'
@@ -15,6 +16,7 @@ import { NAV } from '../nav'
 
 const api = useApi()
 const router = useRouter()
+const { asksHandoff } = useConfirm()
 
 const page = NAV.find((item) => item.name === 'overview')!
 
@@ -167,6 +169,34 @@ const act = async (run: () => Promise<unknown>) => {
 
 const start = (row: OverviewRow) => act(() => api.startAll(row.projectId, row.worktree.id))
 const stop = (row: OverviewRow) => act(() => api.stopAll(row.projectId, row.worktree.id))
+
+const taking = ref<{ projectId: string; worktree: Worktree; service: ServiceStatus } | null>(null)
+
+const take = async (row: OverviewRow, name: string) => {
+  const service = row.worktree.services.find((candidate) => candidate.name === name)
+  if (!service || service.port === null) return
+
+  const held = service.heldBy
+  if (held && !asksHandoff(row.projectId)) {
+    await act(async () => {
+      const outcome = await api.freePort(service.port!, {
+        pids: [],
+        services: [{ worktreeId: held.worktreeId, service: held.service }],
+      })
+      if (!outcome.freed) throw new Error(outcome.why ?? `Port ${service.port} is still held.`)
+      await api.startService(row.projectId, row.worktree.id, name)
+    })
+    return
+  }
+
+  taking.value = { projectId: row.projectId, worktree: row.worktree, service }
+}
+
+const took = async () => {
+  taking.value = null
+  await load()
+}
+
 const repairing = ref<string | null>(null)
 
 const repair = async (row: OverviewRow) => {
@@ -281,6 +311,7 @@ const PANEL = 'border border-line bg-surface'
           @open="open"
           @start="start"
           @stop="stop"
+          @take="take"
           @merge="merge"
           @lock="lock"
           @unlock="unlock"
@@ -351,6 +382,15 @@ const PANEL = 'border border-line bg-surface'
     :pull="merging.pull"
     @close="merging = null"
     @merged="merged"
+  />
+
+  <PortModal
+    v-if="taking"
+    :project-id="taking.projectId"
+    :worktree="taking.worktree"
+    :service="taking.service"
+    @close="taking = null"
+    @done="took"
   />
 
   <RemoveModal
