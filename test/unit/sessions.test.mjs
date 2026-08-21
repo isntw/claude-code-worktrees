@@ -29,7 +29,7 @@ test('a session ccwt has not seen has no mark', async () => {
 
 test('a mark round trips with its snapshot and the title ccwt set', async () => {
   await withStore(async () => {
-    const rows = [{ worktree: 'alpha', service: 'dev', port: 5276 }]
+    const rows = { 'alpha/dev': { port: 5276, up: true } }
     await sessions.writeMark('sess-1', rows, 'alpha')
 
     const held = await sessions.readMark('sess-1')
@@ -42,31 +42,42 @@ test('a mark round trips with its snapshot and the title ccwt set', async () => 
 
 test('writing the same session again replaces the mark rather than failing', async () => {
   await withStore(async () => {
-    await sessions.writeMark('sess-1', [{ port: 1 }], 'first')
-    await sessions.writeMark('sess-1', [{ port: 2 }], 'second')
+    await sessions.writeMark('sess-1', { 'a/dev': { port: 1, up: false } }, 'first')
+    await sessions.writeMark('sess-1', { 'a/dev': { port: 2, up: true } }, 'second')
 
     const held = await sessions.readMark('sess-1')
 
-    assert.deepEqual(held.rows, [{ port: 2 }])
+    assert.deepEqual(held.rows, { 'a/dev': { port: 2, up: true } })
     assert.equal(held.title, 'second')
   })
 })
 
 test('a mark with no title is stored, so ccwt can tell "no name set" from "name set"', async () => {
   await withStore(async () => {
-    await sessions.writeMark('sess-1', [], undefined)
+    await sessions.writeMark('sess-1', {}, undefined)
 
     const held = await sessions.readMark('sess-1')
 
     assert.equal(held.title, undefined)
-    assert.deepEqual(held.rows, [])
+    assert.deepEqual(held.rows, {})
+  })
+})
+
+test('a snapshot left behind as an array reads back empty rather than as rows', async () => {
+  await withStore(async () => {
+    await sessions.writeMark('sess-1', [], 'ccwt · demo/feature')
+
+    const held = await sessions.readMark('sess-1')
+
+    assert.deepEqual(held.rows, {})
+    assert.equal(held.title, 'ccwt · demo/feature')
   })
 })
 
 test('sessions do not read each other', async () => {
   await withStore(async () => {
-    await sessions.writeMark('sess-1', [{ port: 1 }], 'one')
-    await sessions.writeMark('sess-2', [{ port: 2 }], 'two')
+    await sessions.writeMark('sess-1', { 'a/dev': { port: 1, up: false } }, 'one')
+    await sessions.writeMark('sess-2', { 'b/dev': { port: 2, up: false } }, 'two')
 
     assert.equal((await sessions.readMark('sess-1')).title, 'one')
     assert.equal((await sessions.readMark('sess-2')).title, 'two')
@@ -75,7 +86,7 @@ test('sessions do not read each other', async () => {
 
 test('a session that ends is forgotten', async () => {
   await withStore(async () => {
-    await sessions.writeMark('sess-1', [{ port: 1 }], 'one')
+    await sessions.writeMark('sess-1', { 'a/dev': { port: 1, up: false } }, 'one')
     await sessions.forgetMark('sess-1')
 
     assert.equal(await sessions.readMark('sess-1'), null)

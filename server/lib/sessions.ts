@@ -1,9 +1,16 @@
 import { db } from './db'
 
+export type SessionRows = Record<string, unknown>
+
 export interface SessionMark {
   at: string
-  rows: unknown[]
+  rows: SessionRows
   title?: string
+}
+
+export function asRows(value: unknown): SessionRows | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as SessionRows
 }
 
 export async function readMark(sessionId: string): Promise<SessionMark | null> {
@@ -15,12 +22,11 @@ export async function readMark(sessionId: string): Promise<SessionMark | null> {
 
   if (!row) return null
 
-  let rows: unknown[] = []
+  let rows: SessionRows = {}
   try {
-    const parsed = JSON.parse(row.snapshot) as unknown
-    if (Array.isArray(parsed)) rows = parsed
+    rows = asRows(JSON.parse(row.snapshot) as unknown) ?? {}
   } catch {
-    rows = []
+    rows = {}
   }
 
   return { at: row.at, rows, title: row.title ?? undefined }
@@ -28,7 +34,7 @@ export async function readMark(sessionId: string): Promise<SessionMark | null> {
 
 export async function writeMark(
   sessionId: string,
-  rows: unknown[],
+  rows: SessionRows,
   title: string | undefined,
 ): Promise<void> {
   const values = {

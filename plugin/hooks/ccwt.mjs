@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path'
 import { ask, describe, duplicates, targetOf, tell } from '../lib/discover.mjs'
-import { changes, overview, renameTo, snapshot } from '../lib/report.mjs'
+import { changes, overview, payloadFor, renameTo, snapshot } from '../lib/report.mjs'
 
 const markerId = (sessionId) => encodeURIComponent(sessionId.replace(/[^A-Za-z0-9_-]/g, ''))
 
@@ -42,46 +42,24 @@ const read = () =>
     process.stdin.on('error', () => done(null))
   })
 
+const noticed = (lines) => (lines.length ? `ccwt: ${lines.join('\nccwt: ')}` : null)
+
 async function sessionStart(input, found) {
-  const context = overview(found)
   const marker = await readMarker(input?.session_id)
   const title = renameTo(found, input?.session_title, marker?.title)
-  const payload = {}
-
-  if (context) {
-    payload.hookSpecificOutput = { hookEventName: 'SessionStart', additionalContext: context }
-  }
-  if (title) payload.sessionTitle = title
 
   await writeMarker(input?.session_id, snapshot(found), title ?? marker?.title)
-  emit(payload)
+  emit(payloadFor('SessionStart', overview(found), title))
 }
 
 async function prompt(input, found) {
   const rows = snapshot(found)
   const marker = await readMarker(input?.session_id)
   const title = renameTo(found, input?.session_title, marker?.title)
-  const payload = {}
-
-  if (!marker) {
-    const context = overview(found)
-    if (context) {
-      payload.hookSpecificOutput = { hookEventName: 'UserPromptSubmit', additionalContext: context }
-    }
-  } else {
-    const lines = changes(marker.rows ?? {}, rows)
-    if (lines.length) {
-      payload.hookSpecificOutput = {
-        hookEventName: 'UserPromptSubmit',
-        additionalContext: `ccwt: ${lines.join('\nccwt: ')}`,
-      }
-    }
-  }
-
-  if (title) payload.sessionTitle = title
+  const context = marker ? noticed(changes(marker.rows ?? {}, rows)) : overview(found)
 
   await writeMarker(input?.session_id, rows, title ?? marker?.title)
-  emit(payload)
+  emit(payloadFor('UserPromptSubmit', context, title))
 }
 
 function guard(input, found) {

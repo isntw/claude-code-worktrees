@@ -159,7 +159,9 @@ function adoptSessions(open: DatabaseSync): boolean {
     insert.run({
       id: name.slice(0, -'.json'.length),
       title: typeof held.title === 'string' ? held.title : null,
-      snapshot: JSON.stringify(Array.isArray(held.rows) ? held.rows : []),
+      snapshot: JSON.stringify(
+        held.rows && typeof held.rows === 'object' && !Array.isArray(held.rows) ? held.rows : {},
+      ),
       at: typeof held.at === 'string' ? held.at : new Date().toISOString(),
     })
   }
