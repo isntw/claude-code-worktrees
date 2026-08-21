@@ -106,7 +106,7 @@ ccwt's *own* server still binds `127.0.0.1` explicitly. The rule is: bind narrow
   start does no work. There is no provision button.
 - **Provisioning does only what the recipe names.** There is no dependency strategy and no built-in
   `node_modules` handling: a worktree gets dependencies because the recipe lists `node_modules` under
-  `link` and an install under `postCreate`. Detection prefills both; nothing acts behind the form.
+  `link` and an install under `postCreate`. Nothing is prefilled and nothing acts behind the form.
 - **`placeFiles` and `provision` are two different jobs and must stay apart.** `placeFiles` puts the
   declared files there — copy, link, write, prune. `provision` is that plus `postCreate`, and it runs
   **only from `create()`**, on a worktree ccwt has just made. Everything later — a gap found at start,
@@ -143,15 +143,22 @@ schedule; releasing a port and reaping a process must tolerate the directory bei
 `writeRecipe` stores it on the project record in `~/.ccwt/ccwt.db`. **There is no code path that
 writes a file into a registered repository, and there must not be one.**
 
-`readRecipe` order: the stored recipe → detection. `resetRecipe` drops the stored recipe, which is
-the only way back from a bad edit.
+**Nothing is detected.** `readRecipe` returns the stored recipe or `source: 'none'` — ccwt reads
+nothing out of a repository to guess one, and a project without a stored recipe **has none**.
+`Project.recipe` is `null` there, `project.no-recipe` is an error, `create()` refuses, and the
+dashboard says so instead of offering a guess. `resetRecipe` drops the stored recipe, which is the
+only way back from a bad edit, and leaves the project with nothing.
 
-`store.ts` holds `{id, rootPath, addedAt}` plus the recipe once edited. Everything else on `Project`
+A stored recipe that stops validating is `project.recipe-invalid` with `recipe: null` — never
+silently replaced, and never stood in for.
+
+`store.ts` holds `{id, rootPath, addedAt}` plus the recipe once written. Everything else on `Project`
 is **re-derived on every read** by `projects.hydrate()`.
 
-`RECIPE_REVISION` is bumped when detection learns to produce a new field, raising
-`project.recipe-stale`. A stale recipe is **never** migrated or overwritten. Do not bump it for a
-field detection cannot produce.
+**There is no recipe revision.** `RECIPE_REVISION` and `project.recipe-stale` existed to say a
+stored recipe predated what detection could produce; with nothing detected there is nothing to bring
+across. If the schema ever changes incompatibly, the version belongs inside the recipe where
+`parseRecipe` can act on it, not in a column beside it.
 
 ### Security
 
@@ -235,9 +242,9 @@ renders every primitive in every state; its sample data must never leak into rea
 - **ccwt must stay versatile, and the projects on this machine are not the test.** It ships to
   whatever anyone points it at — any language, any package manager, any runtime, any layout, stacks
   nobody here has heard of. Never build for what happens to be registered locally. Everything a
-  worktree needs is declared in the recipe, by the user, and detection only prefills it; a convenience
-  wired in behind the form silently does the wrong thing for every project that is not the one it was
-  written for.
+  worktree needs is declared in the recipe, by the user, and nothing fills it in for them; a
+  convenience wired in behind the form silently does the wrong thing for every project that is not
+  the one it was written for.
 - **New work goes in a worktree** — a feature, a bug fix, anything with a shape to it. Not for very
   small tasks: a one-line change, a typo, a version bump.
 - **Creating the worktree is the whole job.** Do not install dependencies, copy `.env` files or

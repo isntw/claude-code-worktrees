@@ -38,8 +38,8 @@ Three copies of one project, each on its own ports, logs streaming into one pane
 
 ![Three worktrees running side by side](docs/images/worktrees.png)
 
-What to copy, what to hardlink, what to run, what your services are. Detected when you register the
-project; corrected here. `node_modules` is hardlinked — milliseconds, no extra disk.
+What to copy, what to hardlink, what to run, what your services are. Written here, by you or by a
+session — ccwt guesses nothing. `node_modules` is hardlinked — milliseconds, no extra disk.
 
 ![The recipe form](docs/images/recipe.png)
 
@@ -72,7 +72,7 @@ A session can then set a project up and run it *through* ccwt instead of around 
 |---|---|
 | `ccwt_status` | Every worktree, its services, the port each holds and whether that port answers. Works with the dashboard closed. |
 | `ccwt_logs` | A service's recent output, so a change can be checked without starting or building anything. |
-| `ccwt_recipe_read` | The recipe, where it came from — ccwt's own storage, or nothing but detection — and whether it has gone stale. |
+| `ccwt_recipe_read` | The recipe ccwt has stored for a repository, or that it holds none. |
 
 Four act:
 
@@ -121,8 +121,6 @@ or make the address configurable:
 
 ## Not yet
 
-- Service detection is Node-shaped — other stacks register and provision fine, but you write the run
-  command yourself.
 - No `.env` comparison between a worktree and the root checkout.
 
 ## License

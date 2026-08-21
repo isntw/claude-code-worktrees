@@ -4,7 +4,7 @@ Where `ccwt` is against `SPEC.md` §10, and what was added along the way that th
 anticipate. Everything marked **done** was verified by running it, not by reading the code — the
 verification is named in each case.
 
-Last updated 2026-08-18.
+Last updated 2026-08-21.
 
 | Milestone | State |
 |---|---|
@@ -23,7 +23,7 @@ Last updated 2026-08-18.
 Register → create → provision → serve → logs → open → remove.
 
 - `git worktree add/list/remove` over `--porcelain`, lock detection, per-worktree git config
-- package manager and dev-script detection
+- package manager and dev-script detection (**removed** — see *Recipe detection and staleness*)
 - provisioning: copy, hardlink, install, `postCreate`
 - deterministic port allocation, persisted in `git config --worktree`
 - supervisor: spawn detached, capture logs, kill the process group, TCP reachability probe
@@ -62,8 +62,7 @@ Delivered past what the spec asked for.
 
 - **zod schema** shared by loader, write endpoint and editor; strict objects, so `"service"` for
   `"services"` is an error naming the key rather than a silently ignored block
-- **recipe editor** at `/project/:id/recipe` — form ⇄ JSON, line-diff before saving, `detect` button
-- **multi-service detection** — parses `concurrently` / `npm-run-all`, walks pnpm and npm workspaces
+- **recipe editor** at `/project/:id/recipe` — form ⇄ JSON, line-diff before saving
 - **`dependsOn`** with reachability-based ordering; cycles and unknown names refused at validation
 - **`postRemove`** teardown that can never block a removal
 - **copy and link** as separate lists, because a hardlink is the same inode
@@ -71,12 +70,9 @@ Delivered past what the spec asked for.
 **Reversed from the spec**: §6 called for a committed `ccwt.config.json`. Recipes live in
 `~/.ccwt/ccwt.db` instead and ccwt has **no code path that writes into a repository**. The read
 path for a committed file was dropped too: nothing produced one, so nobody could ship one. The
-sharing it bought is a team feature §2 puts out of scope, and detection reconstructs the recipe
-anyway.
+sharing it bought is a team feature §2 puts out of scope.
 
-**Verified**: detection produced `claude-code-manager`'s two services from its `concurrently` script
-exactly, so the hand-written config could be deleted; a dependency taking four seconds to listen
-delayed its dependent by exactly that.
+**Verified**: a dependency taking four seconds to listen delayed its dependent by exactly that.
 
 ## Milestone 4 — polish 🟡
 
@@ -120,7 +116,7 @@ Starting one is your terminal's.
 **One shim was needed.** `claude` in the recipe schema is a `strictObject`, and detection used to emit
 both `trackSessions` and `launchCommand`, so every recipe already stored in `~/.ccwt/state.json`
 carries them — deleting the fields alone would turn a valid stored recipe into a hard validation error
-naming the key. `RETIRED_CLAUDE_KEYS` in `config-schema.ts` strips both before the strict parse, so an
+naming the key. `RETIRED_CLAUDE_KEYS` in `recipe-schema.ts` strips both before the strict parse, so an
 old recipe loads and sheds them on its next save. Unknown keys still error, which is what the
 strictness is for. `ClaudeConfig` is down to one field, `ownWorktreeCreation`, which Milestone 5 owns.
 
@@ -161,11 +157,26 @@ in plain language what ccwt will do and what the optional change would be.
 carries its own loopback-only gate on top of the Host check and token, because it is deliberately
 outside §9's containment rule. `POST /api/projects/probe` validates a typed path as you type.
 
-### Recipe staleness ✅
+### Recipe detection and staleness ❌ **dropped**
 
-`RECIPE_REVISION` stamps a stored recipe. One saved under an older revision raises
-`project.recipe-stale` telling you to press detect. It is **not** migrated — the stored recipe is
-the user's, and guessing at intent is worse than saying so.
+Registering a project used to fill a recipe in from `package.json` and a lockfile: an npm command
+with `--port {{port}}` appended, `node_modules` under `link`, gitignored `.env*` files under `copy`.
+It was accurate for a single-package Node repo whose dev server takes `--port`, and for everything
+else it prefilled a guess nobody had agreed to — no services at all for any non-Node project, and
+a `--port` flag the command might reject for several Node ones. A recipe is the one place a project
+says what it needs, so it is now written, never inferred: `readRecipe` returns what is stored or
+`source: 'none'`, and a project with none is blocked, loudly, rather than served a guess.
+
+`RECIPE_REVISION` and `project.recipe-stale` went with it. They existed to say a stored recipe
+predated what detection could produce and to send you to a **detect** button; with nothing detected
+there is nothing to bring across and nothing to clear. The `recipe_revision` column is dropped on
+open. Nothing was lost from validation — a stored recipe that stops parsing is still
+`project.recipe-invalid`, and it is still never migrated or overwritten.
+
+**Verified**: on a server run from source, a project with nothing stored shows `project.no-recipe`
+and the NO RECIPE panel where its worktree table would be. The states behind it — nothing stored,
+the empty skeleton a read returns, write and reset, and a stored recipe that stopped validating —
+are covered by `test/unit/recipe.test.mjs`.
 
 ### A Claude Code session knows what ccwt runs ✅
 
@@ -221,13 +232,17 @@ prefix, worktree parsing, the delta, and the rule that a session name you typed 
 
 1. **Barely any tests.** The plugin's pure helpers are covered; `server/lib` is not. Every bug
    outside `plugin/` is still found by running the thing.
-2. **Detection is Node-shaped.** A Django, Rails or Laravel project registers, provisions and
-   removes fine, but detects no service. Agreed and unbuilt: replace the filename list in
-   `inspect.ts` with a search over git-tracked files, infer a container's role from its port rather
-   than its image name, add an ask-once fallback, and mark detected services with their provenance.
-3. **`.worktreeinclude`** (§5.4) — `provision.copy` must *merge* with it, not replace it. It is now
+2. **Writing a recipe is unassisted, by design and at a cost.** The form and the
+   `ccwt-recipe-create` skill are all there is — nothing reads the project for you. That is correct
+   for a tool that ships to any stack, but it means a first recipe is only as good as what the
+   person or the session writing it knows to declare. `noteRecipe` catching a command with no
+   `{{port}}` in it is the whole safety net.
+3. **The Setup panel's address scan is still a filename list.** `CANDIDATES` in `inspect.ts` names
+   config files by hand, so a project that keeps its inter-service address anywhere else is told
+   nothing. A search over git-tracked files would replace it.
+4. **`.worktreeinclude`** (§5.4) — `provision.copy` must *merge* with it, not replace it. It is now
    the only stub left in the codebase.
-4. **Milestone 4's remaining items** — per-worktree git status, `.env` diff, drift repair.
+5. **Milestone 4's remaining items** — per-worktree git status, `.env` diff, drift repair.
 
 ## Verifying a claim in this document
 

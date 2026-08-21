@@ -91,8 +91,9 @@ why it cannot be "widely available", and why the recipe has to carry it instead.
 - **No field is named after a runtime.** Nothing called `compose`, `docker`, `image`, `container` or
   `stack`. A field that only makes sense for one runtime is that runtime's support wearing a
   disguise, which is how both previous attempts began.
-- **Detection is not extended.** It stays Node-shaped and keeps proposing what it can see. Guiding a
-  user from a bad suggestion to a written recipe is a UI problem, not a detection problem.
+- **Nothing is detected.** A recipe is written, never proposed. Guiding a user to one they wrote is
+  a UI problem, and inferring one was worse than saying there is none — which is why detection was
+  removed rather than extended.
 - **No inference of readiness, roles, or which file to run.** The user says.
 
 Each addition below must pass one test: *is it equally useful to a project with no containers?* If
@@ -247,10 +248,11 @@ this is the single most likely first failure for a new user.
 `ports` is the same name and shape as the field removed in the Docker rollback. A recipe stored
 before that rollback will therefore have its `ports` accepted — which is correct, it meant the same
 thing — while `primary` still fails `strictObject`. That surfaces as `project.recipe-invalid`
-naming the field, and detection is offered. Nothing is migrated silently.
+naming the field, and the stored text stays on screen to be fixed. Nothing is migrated silently.
 
-`RECIPE_REVISION` is **not** bumped. It signals that detection learned to produce a new field; these
-three fields are user-authored and detection will never emit them.
+There is **no revision to bump**: `RECIPE_REVISION` existed to mark a recipe as older than what
+detection could produce, and went with detection. These three fields are user-authored, like every
+other field now.
 
 ---
 
