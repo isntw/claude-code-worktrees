@@ -119,9 +119,8 @@ reachability, the one the card links to. `ports` adds further ranges, each alloc
 and persisted exactly like the primary.
 
 Each is exported **under its own literal name** — `DB_PORT=33061` — because the user does not choose
-what their file reads; `${DB_PORT}` is already written in it. That is the one thing `CCWT_PORT_*`
-cannot do. Both forms are exported, so `CCWT_PORT_DB_PORT` is also present for consistency with
-cross-service variables.
+what their file reads; `${DB_PORT}` is already written in it. `CCWT_URL_DB_PORT` is exported beside
+it, for consistency with cross-service variables.
 
 Allocation, persistence and collision handling are unchanged: `allocate()` hashes into the range and
 linear-probes, and `ports.ts:KEY()` already lowercases and collapses non-alphanumerics, which is

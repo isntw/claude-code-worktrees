@@ -146,9 +146,8 @@ running.
 
 ### Ports reach a worktree as environment ✅
 
-Every service is spawned with its own port and every other service's `CCWT_PORT_*` / `CCWT_URL_*`,
-and ccwt writes the same values into a marker-delimited block in `.env.local`, which Vite, Next and
-Nuxt all load. Where a project hardcodes an inter-service address, `inspect.ts` finds it and the **Setup** panel explains
+Every service is spawned with its own port and every other service's `CCWT_URL_*`. Where a project
+hardcodes an inter-service address, `inspect.ts` finds it and the **Setup** panel explains
 in plain language what ccwt will do and what the optional change would be.
 
 ### Browse for a project ✅
