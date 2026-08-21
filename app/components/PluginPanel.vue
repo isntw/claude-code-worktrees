@@ -19,11 +19,24 @@ const {
 
 const asking = ref<'install' | 'about' | null>(null)
 
+const stamped = (value: string) => {
+  const at = value.indexOf('-')
+  return at === -1 ? { version: '', hash: value } : { version: value.slice(0, at), hash: value.slice(at + 1) }
+}
+
 const version = computed(() => {
   const said = report.value
   if (!said) return ''
-  if (stale.value) return `${said.installed} → ${said.available}`
-  return said.installed ?? said.available ?? said.shipped
+  if (!stale.value) return said.installed ?? said.available ?? said.shipped
+
+  const was = stamped(said.installed ?? '')
+  const now = stamped(said.available ?? '')
+
+  if (was.version && was.version === now.version) {
+    return `${was.version} · ${was.hash} → ${now.hash}`
+  }
+
+  return `${said.installed} → ${said.available}`
 })
 
 const confirm = async () => {
@@ -59,33 +72,29 @@ const confirm = async () => {
             <span v-if="report.scope" class="text-faint">· {{ report.scope }}</span>
           </dd>
 
-          <dt class="text-faint">from</dt>
-          <dd class="min-w-0 truncate text-dim">{{ report.source }}</dd>
-
-          <dt class="text-faint">read at</dt>
-          <dd class="min-w-0 truncate text-dim">{{ report.parts.from }}</dd>
-
           <dt class="text-faint">hooks</dt>
           <dd class="min-w-0 text-ink">{{ events }}</dd>
 
           <dt v-if="report.parts.tools.length" class="text-faint">tools</dt>
-          <dd v-if="report.parts.tools.length" class="min-w-0 text-ink">
-            {{ report.parts.tools.join(' · ') }}
+          <dd v-if="report.parts.tools.length" class="min-w-0">
+            <ul
+              class="grid grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))] gap-x-4 gap-y-0.5 text-ink"
+            >
+              <li v-for="tool in report.parts.tools" :key="tool" class="truncate">{{ tool }}</li>
+            </ul>
           </dd>
 
           <dt v-if="report.parts.skills.length" class="text-faint">skills</dt>
-          <dd v-if="report.parts.skills.length" class="min-w-0 text-ink">
-            {{ report.parts.skills.map((skill) => skill.name).join(' · ') }}
+          <dd v-if="report.parts.skills.length" class="min-w-0">
+            <ul
+              class="grid grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))] gap-x-4 gap-y-0.5 text-ink"
+            >
+              <li v-for="skill in report.parts.skills" :key="skill.name" class="truncate">
+                {{ skill.name }}
+              </li>
+            </ul>
           </dd>
         </dl>
-
-        <p class="mt-2 max-w-prose font-sans text-[0.6875rem] text-faint">
-          {{
-            report.parts.origin === 'installed'
-              ? 'Those hooks, tools and skills are read out of the copy Claude Code installed, so they are what a session has.'
-              : 'Those hooks, tools and skills are read out of the copy this ccwt ships. Nothing is installed, so no session has them yet.'
-          }}
-        </p>
       </div>
 
       <Notice
