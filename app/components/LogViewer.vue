@@ -3,11 +3,11 @@ import { computed, nextTick, ref, watch } from 'vue'
 import type { LogLine } from '#shared/types'
 import { segments, type Segment, type Tone } from '../ansi'
 
-const props = withDefaults(defineProps<{ lines: LogLine[]; max?: string }>(), {
+const props = withDefaults(defineProps<{ streams: Record<string, LogLine[]>; max?: string }>(), {
   max: '18rem',
 })
 
-const emit = defineEmits<{ clear: [] }>()
+const emit = defineEmits<{ clear: [service: string] }>()
 
 const TEXT: Record<Tone, string> = {
   ink: 'text-ink',
@@ -45,7 +45,24 @@ const paint = (part: Segment) => [
   part.strike ? 'line-through' : '',
 ]
 
-const mixed = computed(() => new Set(props.lines.map((line) => line.service)).size > 1)
+const chosen = ref('')
+
+const named = computed(() =>
+  Object.keys(props.streams)
+    .filter((name) => props.streams[name]?.length)
+    .sort(),
+)
+
+const lines = computed(() => props.streams[chosen.value] ?? [])
+
+watch(
+  named,
+  (names) => {
+    if (!names.length) chosen.value = ''
+    else if (!names.includes(chosen.value)) chosen.value = names[0]!
+  },
+  { immediate: true },
+)
 
 const scroller = ref<HTMLElement | null>(null)
 const follow = ref(true)
@@ -108,7 +125,7 @@ const onScroll = () => {
 }
 
 watch(
-  () => props.lines.length,
+  () => lines.value.length,
   async () => {
     if (!follow.value) return
     await nextTick()
@@ -131,11 +148,29 @@ watch(
       <Button
         size="sm"
         :disabled="!lines.length"
-        title="Forget everything ccwt has kept for this worktree"
-        @click="emit('clear')"
+        :title="
+          chosen
+            ? `Forget what ccwt has kept for ${chosen}`
+            : 'Forget everything ccwt has kept for this worktree'
+        "
+        @click="emit('clear', chosen)"
         >clear</Button
       >
     </header>
+
+    <div v-if="named.length > 1" class="t-rail shrink-0" role="tablist" aria-label="Service">
+      <button
+        v-for="name in named"
+        :key="name"
+        type="button"
+        role="tab"
+        :aria-selected="chosen === name"
+        class="t-rail-item"
+        @click="chosen = name"
+      >
+        <span class="t-tab-label">{{ name }}</span>
+      </button>
+    </div>
 
     <div
       ref="scroller"
@@ -144,17 +179,14 @@ watch(
       @scroll="onScroll"
     >
       <p v-if="!lines.length" class="font-sans text-[0.6875rem] text-faint">
-        Nothing yet. Start a service and its output lands here.
+        {{
+          chosen
+            ? `Nothing from ${chosen} yet.`
+            : 'Nothing yet. Start a service and its output lands here.'
+        }}
       </p>
-      <div v-for="(line, index) in lines" :key="index" class="flex min-h-[1.55em] gap-2">
-        <span v-if="mixed" class="w-16 shrink-0 truncate select-none text-faint">{{
-          line.service
-        }}</span>
-        <span class="min-w-0 flex-1"
-          ><span v-for="(part, at) in parse(line)" :key="at" :class="paint(part)">{{
-            part.text
-          }}</span></span
-        >
+      <div v-for="(line, index) in lines" :key="index" class="min-h-[1.55em]">
+        <span v-for="(part, at) in parse(line)" :key="at" :class="paint(part)">{{ part.text }}</span>
       </div>
     </div>
 

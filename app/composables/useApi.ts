@@ -140,8 +140,11 @@ export function useApi() {
 
     logs: (projectId: string, worktreeId: string) =>
       call<LogLine[]>(`${worktree(projectId, worktreeId)}/logs`),
-    clearLogs: (projectId: string, worktreeId: string) =>
-      call<void>(`${worktree(projectId, worktreeId)}/logs`, { method: 'DELETE' }),
+    clearLogs: (projectId: string, worktreeId: string, service?: string) =>
+      call<void>(
+        `${worktree(projectId, worktreeId)}/logs${service ? `?service=${encodeURIComponent(service)}` : ''}`,
+        { method: 'DELETE' },
+      ),
 
     connect(onMessage: (message: SocketMessage) => void): () => void {
       const url = new URL('/_ws', window.location.href)

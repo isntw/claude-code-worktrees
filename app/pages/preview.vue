@@ -187,6 +187,11 @@ const LOGS: LogLine[] = [
   said('web', 'stderr', "ENOENT: no such file or directory, open '.env.local'"),
 ]
 
+const STREAMS: Record<string, LogLine[]> = {
+  web: LOGS.filter((line) => line.service === 'web'),
+  api: LOGS.filter((line) => line.service === 'api'),
+}
+
 const gitOf = (over: Partial<GitStatus>): GitStatus => ({
   branch: 'worktree-preview',
   upstream: 'origin/worktree-preview',
@@ -446,7 +451,7 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
 
     <section class="xl:col-span-2">
       <p class="t-eyebrow mb-2">Log viewer</p>
-      <LogViewer max="10rem" :lines="LOGS" />
+      <LogViewer max="10rem" :streams="STREAMS" />
     </section>
   </main>
 
