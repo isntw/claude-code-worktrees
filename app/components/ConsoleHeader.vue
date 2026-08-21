@@ -11,10 +11,10 @@ withDefaults(
 
 <template>
   <header
-    class="relative shrink-0 border-b border-line bg-surface px-4 py-3"
+    class="relative flex min-h-[4.125rem] shrink-0 items-center border-b border-line bg-surface px-4 py-3"
     :class="{ sweep: loading }"
   >
-    <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
+    <div class="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
       <div class="min-w-0">
         <h1 class="font-mono text-sm font-semibold text-ink">{{ title }}</h1>
         <p class="mt-0.5 font-sans text-[0.6875rem] text-faint">{{ blurb }}</p>
