@@ -18,17 +18,23 @@ up by hand. **ccwt does that part.**
 
 ## Start
 
-Needs macOS, git 2.20+ and Node 24+. Linux and Windows are not supported yet.
+> [!IMPORTANT]
+> **macOS only for now.** Linux and Windows are not supported yet.
+
+Needs git 2.20+ and Node 24+.
 
 ```bash
 npm i -g claude-code-worktrees
 ccwt               # opens http://127.0.0.1:4600
 ```
 
-1. **Register project** — point it at a repository. ccwt reads it and fills in the setup.
-2. **New worktree** — a name is enough; its services can start as soon as it's ready.
-3. Click its port. Work.
-4. **Remove** it when you're done. The branch stays.
+1. **Register project** — point it at a repository root. Registering reads nothing out of it and
+   writes nothing into it.
+2. **Write its recipe** — what a worktree of this project needs, in your words. A session can do it
+   for you.
+3. **New worktree** — a name is enough; its services can start as soon as it's ready.
+4. Click its port. Work.
+5. **Remove** it when you're done. The branch stays.
 
 Nothing is added to your project. No file to commit, no script to change.
 
@@ -101,23 +107,19 @@ carry out — write the recipe, check it, store it — instead of you filling in
 ## Good to know
 
 - **Ports reach your app through the environment** — `PORT`, plus `CCWT_URL_<SERVICE>` so services
-  can find each other. Nothing to import.
+  can find each other. Nothing to import. An address written into a file as a literal is the one
+  thing that defeats this — every worktree then points at the same place:
+
+  ```diff
+  - '/api': 'http://127.0.0.1:4599',
+  + '/api': process.env.CCWT_URL_API ?? 'http://127.0.0.1:4599',
+  ```
+
 - **A worktree keeps its port.** If something else takes it, the card says so and the next start moves.
 - **Removal names the path first**, keeps your branch unless you tick the box, and won't delete a
   worktree you made yourself if it has anything to lose.
 - **Local only** — binds `127.0.0.1`, new token every run, nothing leaves your machine. Settings
   moves it off 4600, and it stays moved.
-
-## Hardcoded addresses
-
-If a file has another service's address written in as a literal, every worktree points at the same
-place. ccwt names the file and line, and keeps working — run one worktree of that project at a time,
-or make the address configurable:
-
-```diff
-- '/api': 'http://127.0.0.1:4599',
-+ '/api': process.env.CCWT_URL_API ?? 'http://127.0.0.1:4599',
-```
 
 ## Not yet
 
