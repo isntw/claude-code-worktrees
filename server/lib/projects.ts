@@ -1,11 +1,21 @@
+import { join } from 'node:path'
 import type { Diagnostic, Project } from '../../shared/types'
-import { detectPackageManager, projectName, suggestRecipe } from './detect'
 import { defaultBranch, idFor, repoRoot } from './git'
-import { pathExists } from './fs'
-import { RECIPE_REVISION, parseRecipe } from '../../shared/recipe-schema'
+import { pathExists, readJsonSafe } from './fs'
+import { parseRecipe } from '../../shared/recipe-schema'
 import { describeSetup } from './setup'
 import { addRecord, findRecord, listRecords, removeRecord } from './store'
 import type { ProjectRecord } from './store'
+
+function nameOf(rootPath: string): string {
+  return rootPath.split('/').filter(Boolean).pop() ?? rootPath
+}
+
+export async function projectName(rootPath: string): Promise<string> {
+  const manifest = await readJsonSafe<{ name?: string }>(join(rootPath, 'package.json'))
+  const declared = manifest?.name?.split('/').pop()
+  return declared || nameOf(rootPath)
+}
 
 export async function hydrate(record: ProjectRecord): Promise<Project> {
   const issues: Diagnostic[] = []
@@ -20,9 +30,8 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
 
     return {
       id: record.id,
-      name: record.rootPath.split('/').filter(Boolean).pop() ?? record.rootPath,
+      name: nameOf(record.rootPath),
       rootPath: record.rootPath,
-      packageManager: null,
       defaultBranch: null,
       recipe: null,
       addedAt: record.addedAt,
@@ -32,7 +41,7 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
   }
 
   const stored = record.recipe ? parseRecipe(record.recipe) : null
-  const recipe = (stored?.ok ? stored.recipe : undefined) ?? (await suggestRecipe(record.rootPath))
+  const recipe = stored?.ok ? stored.recipe : null
 
   if (stored && !stored.ok) {
     for (const issue of stored.issues.slice(0, 5)) {
@@ -40,30 +49,21 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
         code: 'project.recipe-invalid',
         severity: 'error',
         message: `The saved recipe no longer validates — ${issue.path}: ${issue.message}`,
-        hint: 'Open the recipe and press detect, or forget customisations to return to detection.',
+        hint: 'Fix it on the recipe page, or forget it and write another.',
       })
     }
   }
 
-  if (stored?.ok && (record.recipeRevision ?? 0) < RECIPE_REVISION) {
+  if (!recipe) {
     issues.push({
-      code: 'project.recipe-stale',
-      severity: 'warning',
-      message: 'This recipe predates a change in what ccwt detects.',
-      hint: 'Open the recipe and press detect — you pick what to bring across, and nothing you wrote is removed. Saving clears this even if you bring nothing.',
+      code: 'project.no-recipe',
+      severity: 'error',
+      message: 'This project has no recipe, so ccwt cannot make a worktree for it.',
+      hint: 'Write one on the recipe page, or ask Claude to.',
     })
   }
 
-  if (recipe.services.length === 0) {
-    issues.push({
-      code: 'project.no-dev-script',
-      severity: 'warning',
-      message: 'No dev script found, so worktrees get no service.',
-      hint: 'Add a `dev` script, or declare the services in the recipe.',
-    })
-  }
-
-  for (const service of recipe.services) {
+  for (const service of recipe?.services ?? []) {
     if (service.command.includes('{{port}}')) continue
     if (Object.values(service.env ?? {}).some((value) => value.includes('{{port}}'))) continue
     if (service.portRange[0] === service.portRange[1]) continue
@@ -80,7 +80,6 @@ export async function hydrate(record: ProjectRecord): Promise<Project> {
     id: record.id,
     name: await projectName(record.rootPath),
     rootPath: record.rootPath,
-    packageManager: await detectPackageManager(record.rootPath),
     defaultBranch: await defaultBranch(record.rootPath),
     recipe,
     addedAt: record.addedAt,

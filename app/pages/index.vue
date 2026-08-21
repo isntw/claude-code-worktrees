@@ -97,7 +97,9 @@ const tiles = computed<Tile[]>(() =>
     label: project.name,
     total: counts.value[project.id] ?? 0,
     errors: project.issues.filter((issue) => issue.severity === 'error').length,
-    note: [project.packageManager, project.defaultBranch].filter(Boolean).join(' · ') || undefined,
+    note:
+      [project.recipe ? null : 'no recipe', project.defaultBranch].filter(Boolean).join(' · ') ||
+      undefined,
     inert: project.issues.some((issue) => issue.code === 'project.missing'),
     go: () => router.push(`/project/${project.id}`),
   })),
@@ -132,9 +134,9 @@ onMounted(load)
     <div v-else class="border border-line bg-surface px-4 py-6">
       <p class="t-eyebrow">No projects yet</p>
       <p class="mt-2 max-w-prose font-sans text-xs text-dim">
-        Register a repository root and ccwt learns its package manager and dev script, then every
-        worktree you make from it gets its files, its dependencies, its own port and its own dev
-        server.
+        Register a repository root, then write its recipe — the files a worktree of it needs and the
+        commands to run. From then on every worktree you make gets those files, its own port and its
+        own dev server.
       </p>
       <Button class="mt-4" variation="primary" :outline="false" @click="adding = true"
         >register project</Button
@@ -169,6 +171,11 @@ onMounted(load)
         >
       </form>
 
+      <p class="max-w-prose font-sans text-[0.6875rem] text-faint">
+        Registering reads nothing out of the repository and writes nothing into it. The next step is
+        the recipe: what a worktree of this project needs, in your words.
+      </p>
+
       <p v-if="addError" class="font-sans text-[0.6875rem] text-alarm">{{ addError }}</p>
     </div>
 
@@ -180,7 +187,7 @@ onMounted(load)
         :outline="false"
         :disabled="!ready || addBusy"
         @click="add"
-        >{{ addBusy ? 'reading…' : 'register' }}</Button
+        >{{ addBusy ? 'registering…' : 'register' }}</Button
       >
     </template>
   </ModalPanel>

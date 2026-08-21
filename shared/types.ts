@@ -1,5 +1,3 @@
-export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
-
 export type WorktreeOrigin = 'manual' | 'ccwt' | 'claude'
 
 export type ServiceKind = 'command' | 'stack'
@@ -59,7 +57,6 @@ export interface Project {
   id: string
   name: string
   rootPath: string
-  packageManager: PackageManager | null
   defaultBranch: string | null
   recipe: Recipe | null
   addedAt: string
@@ -270,7 +267,7 @@ export interface AddressView {
   pending: boolean
 }
 
-export type RecipeSourceKind = 'ccwt' | 'detected'
+export type RecipeSourceKind = 'ccwt' | 'none'
 
 export interface RecipeNote {
   path: string
@@ -288,10 +285,8 @@ export interface RecipeCheck {
 export interface RecipeView {
   source: RecipeSourceKind
   text: string
-  recipe: Recipe
+  recipe: Recipe | null
   issues: { path: string; message: string }[]
-  detected: boolean
-  stale: boolean
 }
 
 export interface DirEntry {
@@ -345,7 +340,6 @@ export interface OverviewProject {
   id: string
   name: string
   rootPath: string
-  packageManager: PackageManager | null
   defaultBranch: string | null
   worktrees: number
   live: number

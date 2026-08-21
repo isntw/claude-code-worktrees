@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, Plus } from 'lucide-vue-next'
-import type { Recipe, RecipeView, Service, WriteEntry } from '#shared/types'
+import type { Recipe, RecipeNote, RecipeView, Service, WriteEntry } from '#shared/types'
+import { DEFAULT_PORT_RANGE, emptyRecipe } from '#shared/recipe-schema'
 import { changed, collapse, diffLines } from '../../../diff'
 import { composeFileOf, isStack, teardownCommand } from '#shared/compose'
 
@@ -11,7 +12,7 @@ const projectId = computed(() => String(route.params.id))
 
 const view = ref<RecipeView | null>(null)
 const draft = ref<Recipe | null>(null)
-const suggested = ref<Recipe | null>(null)
+const notes = ref<RecipeNote[]>([])
 const raw = ref('')
 const mode = ref<'form' | 'json'>('form')
 
@@ -29,18 +30,32 @@ const payload = computed(() => (mode.value === 'json' ? raw.value : draft.value 
 const diff = computed(() => diffLines(view.value?.text ?? '', payload.value))
 const dirty = computed(() => Boolean(view.value) && changed(diff.value))
 const stored = computed(() => view.value?.source === 'ccwt')
-const stale = computed(() => Boolean(view.value?.stale))
-const savable = computed(() => dirty.value || stale.value)
+const savable = computed(() => dirty.value || view.value?.source === 'none')
 const preview = computed(() => collapse(diff.value))
+
+const review = async (text: string) => {
+  try {
+    const check = await api.checkRecipe(projectId.value, text)
+    notes.value = check.ok ? check.notes : []
+  } catch {
+    notes.value = []
+  }
+}
+
+const adopt = (next: RecipeView) => {
+  view.value = next
+  draft.value = structuredClone(next.recipe) ?? emptyRecipe()
+  raw.value = next.text
+}
 
 const load = async () => {
   loading.value = true
   error.value = null
   try {
     const next = await api.getRecipe(projectId.value)
-    view.value = next
-    draft.value = structuredClone(next.recipe)
-    raw.value = next.text
+    adopt(next)
+    if (next.recipe) await review(next.text)
+    else notes.value = []
   } catch (cause) {
     error.value = (cause as Error).message
   } finally {
@@ -70,9 +85,8 @@ const reset = async () => {
   error.value = null
   try {
     const next = await api.resetRecipe(projectId.value)
-    view.value = next
-    draft.value = structuredClone(next.recipe)
-    raw.value = next.text
+    adopt(next)
+    notes.value = []
     forgetting.value = false
   } catch (cause) {
     error.value = (cause as Error).message
@@ -80,29 +94,9 @@ const reset = async () => {
   }
 }
 
-const detect = async () => {
-  error.value = null
-
-  if (mode.value === 'json') {
-    try {
-      draft.value = JSON.parse(raw.value) as Recipe
-    } catch (cause) {
-      parseError.value = (cause as Error).message
-      return
-    }
-  }
-
-  try {
-    suggested.value = (await api.suggestRecipe(projectId.value)).recipe
-  } catch (cause) {
-    error.value = (cause as Error).message
-  }
-}
-
-const bring = (recipe: Recipe) => {
-  draft.value = recipe
-  raw.value = serialise(recipe)
-  suggested.value = null
+const askSave = async () => {
+  confirming.value = true
+  await review(payload.value)
 }
 
 const save = async () => {
@@ -110,9 +104,8 @@ const save = async () => {
   error.value = null
   try {
     const next = await api.saveRecipe(projectId.value, payload.value)
-    view.value = next
-    draft.value = structuredClone(next.recipe)
-    raw.value = next.text
+    adopt(next)
+    await review(next.text)
     confirming.value = false
   } catch (cause) {
     error.value = (cause as Error).message
@@ -146,7 +139,7 @@ const addService = () => {
     ...draft.value,
     services: [
       ...draft.value.services,
-      { name: 'service', cwd: '.', command: 'npm run dev -- --port {{port}}', portRange: [5200, 5299] },
+      { name: 'service', cwd: '.', command: '', portRange: [...DEFAULT_PORT_RANGE] },
     ],
   }
 }
@@ -242,12 +235,11 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
       ]"
       label="Editing mode"
     />
-    <Button :disabled="loading" @click="detect">detect</Button>
     <Button
       variation="primary"
       :outline="false"
       :disabled="!savable || saving"
-      @click="confirming = true"
+      @click="askSave"
       >{{ saving ? 'saving…' : 'save' }}</Button
     >
   </ConsoleHeader>
@@ -268,7 +260,7 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
         <ArrowLeft :size="12" aria-hidden="true" />
         worktrees
       </NuxtLink>
-      <Badge v-if="view?.source === 'detected'" variation="info">detected</Badge>
+      <Badge v-if="view?.source === 'none'" variation="info">no recipe</Badge>
       <Badge v-else-if="stored" variation="neutral">saved in ccwt</Badge>
       <Badge v-if="dirty" variation="warning">unsaved</Badge>
       <Button v-if="stored" size="sm" class="ml-auto" @click="forgetting = true"
@@ -284,6 +276,16 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
       <p v-for="issue in view.issues" :key="issue.path" class="font-sans text-[0.6875rem] text-alarm">
         {{ issue.path }} — {{ issue.message }}
       </p>
+    </div>
+
+    <div v-if="notes.length" class="mb-3 flex flex-col gap-2">
+      <Notice
+        v-for="note in notes"
+        :key="`${note.path}-${note.message}`"
+        :variation="note.severity"
+        :hint="note.hint"
+        >{{ note.path }} — {{ note.message }}</Notice
+      >
     </div>
 
     <div v-if="mode === 'json'" class="flex flex-col gap-2">
@@ -455,8 +457,8 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
   <ModalPanel v-if="forgetting" title="Forget customisations" @close="forgetting = false">
     <p class="max-w-prose font-sans text-xs text-dim">
       Drops the recipe ccwt has stored for this project. It is not kept anywhere else, so what you
-      wrote is gone — ccwt goes back to what it can detect. Worktrees that already exist are
-      untouched.
+      wrote is gone, and this project has no recipe until you write another. Worktrees that already
+      exist are untouched.
     </p>
 
     <template #footer>
@@ -465,22 +467,14 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
     </template>
   </ModalPanel>
 
-  <DetectPicker
-    v-if="suggested && draft"
-    :current="draft"
-    :suggested="suggested"
-    @apply="bring"
-    @close="suggested = null"
-  />
-
   <ModalPanel v-if="confirming" title="Save recipe" @close="confirming = false">
     <p class="mb-3 max-w-prose font-sans text-xs text-dim">
       Kept in ccwt's own storage — your repository is not touched.
     </p>
 
     <p v-if="!dirty" class="mb-3 max-w-prose font-sans text-xs text-dim">
-      The recipe itself does not change. Saving records that you have seen what detection produces
-      now, which is what clears the warning on this project.
+      Nothing on screen has changed, so this stores the recipe as it stands — which is what gives
+      this project one at all.
     </p>
 
     <pre v-else class="ccwt-log overflow-x-auto border border-line bg-canvas px-2 py-2"><span

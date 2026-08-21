@@ -10,8 +10,7 @@ CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   root_path TEXT NOT NULL UNIQUE,
   added_at TEXT NOT NULL,
-  recipe TEXT,
-  recipe_revision INTEGER
+  recipe TEXT
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS credentials (
@@ -42,7 +41,6 @@ export interface ProjectTable {
   root_path: string
   added_at: string
   recipe: string | null
-  recipe_revision: number | null
 }
 
 export interface CredentialTable {
@@ -69,7 +67,7 @@ export interface Database {
   sessions: SessionTable
 }
 
-function renameLegacyColumns(open: DatabaseSync): void {
+function reshapeLegacyColumns(open: DatabaseSync): void {
   const columns = open.prepare('PRAGMA table_info(projects)').all() as unknown as { name: string }[]
   const has = (name: string) => columns.some((column) => column.name === name)
 
@@ -77,8 +75,12 @@ function renameLegacyColumns(open: DatabaseSync): void {
     open.exec('ALTER TABLE projects RENAME COLUMN config TO recipe')
   }
 
-  if (has('config_revision') && !has('recipe_revision')) {
-    open.exec('ALTER TABLE projects RENAME COLUMN config_revision TO recipe_revision')
+  if (has('config_revision')) {
+    open.exec('ALTER TABLE projects DROP COLUMN config_revision')
+  }
+
+  if (has('recipe_revision')) {
+    open.exec('ALTER TABLE projects DROP COLUMN recipe_revision')
   }
 }
 
@@ -88,5 +90,5 @@ export function apply(open: DatabaseSync): void {
   open.exec('PRAGMA synchronous = NORMAL')
   open.exec('PRAGMA foreign_keys = ON')
   open.exec(SCHEMA)
-  renameLegacyColumns(open)
+  reshapeLegacyColumns(open)
 }

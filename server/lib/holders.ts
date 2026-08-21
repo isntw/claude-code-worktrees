@@ -6,7 +6,7 @@ import type {
   PortHolders,
   ServiceHolder,
 } from '../../shared/types'
-import { projectName } from './detect'
+import { projectName } from './projects'
 import { exec } from './exec'
 import { isListening } from './ports'
 import * as supervisor from './supervisor'

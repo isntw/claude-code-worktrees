@@ -3,24 +3,44 @@ import { envKey } from './env'
 
 import { findHardcodedAddresses } from './inspect'
 
-export async function describeSetup(rootPath: string, recipe: Recipe): Promise<Setup> {
+export async function describeSetup(rootPath: string, recipe: Recipe | null): Promise<Setup> {
   const notes: SetupNote[] = []
+
+  if (!recipe) {
+    return {
+      portMode: 'none',
+      headline: 'No recipe yet.',
+      notes: [
+        {
+          tone: 'info',
+          title: 'Nothing is assumed about this project',
+          body: 'ccwt reads nothing out of the repository and guesses nothing. Until a recipe says what a worktree of it needs, there is nothing to place and nothing to start.',
+        },
+        {
+          tone: 'info',
+          title: 'Write one, or ask Claude to',
+          body: 'The recipe page takes it field by field. A session with the ccwt plugin can read the project and write it for you.',
+        },
+      ],
+    }
+  }
+
   const names = recipe.services.map((service) => service.name)
 
   if (names.length === 0) {
     return {
       portMode: 'none',
-      headline: 'No dev server detected.',
+      headline: 'A recipe with no services.',
       notes: [
         {
           tone: 'info',
           title: 'Worktrees still work',
-          body: 'ccwt can create, provision and remove worktrees for this project. It just has nothing to run in them yet.',
+          body: 'ccwt places the files this recipe names and runs what it says on creation. It just has nothing to keep running afterwards.',
         },
         {
           tone: 'info',
           title: 'To get a dev server',
-          body: 'Add a `dev`, `start` or `serve` script to package.json, or describe the command yourself in the recipe.',
+          body: 'Add a service to the recipe: the command to run, and the port range to run it on.',
         },
       ],
     }

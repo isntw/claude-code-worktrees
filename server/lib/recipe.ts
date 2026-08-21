@@ -1,7 +1,6 @@
 import type { Project, Recipe, RecipeCheck, RecipeView } from '../../shared/types'
 import type { RecipeIssue } from '../../shared/recipe-schema'
-import { RECIPE_REVISION, parseRecipe } from '../../shared/recipe-schema'
-import { suggestRecipe } from './detect'
+import { emptyRecipe, parseRecipe } from '../../shared/recipe-schema'
 import { noteRecipe } from './lint'
 import { findRecord, updateRecord } from './store'
 
@@ -11,43 +10,30 @@ export function serialise(recipe: Recipe): string {
   return `${JSON.stringify(recipe, null, 2)}\n`
 }
 
+function blank(): RecipeView {
+  return { source: 'none', text: serialise(emptyRecipe()), recipe: null, issues: [] }
+}
+
 export async function readRecipe(project: Project): Promise<RecipeView> {
   const record = await findRecord(project.id)
+  if (!record?.recipe) return blank()
 
-  if (record?.recipe) {
-    const stored = parseRecipe(record.recipe)
-    const stale = (record.recipeRevision ?? 0) < RECIPE_REVISION
+  const stored = parseRecipe(record.recipe)
 
-    if (stored.ok) {
-      return {
-        source: 'ccwt',
-        text: serialise(stored.recipe),
-        recipe: stored.recipe,
-        issues: [],
-        detected: false,
-        stale,
-      }
-    }
-
+  if (stored.ok) {
     return {
       source: 'ccwt',
-      text: serialise(record.recipe),
-      recipe: await suggestRecipe(project.rootPath),
-      issues: stored.issues,
-      detected: false,
-      stale,
+      text: serialise(stored.recipe),
+      recipe: stored.recipe,
+      issues: [],
     }
   }
 
-  const suggested = await suggestRecipe(project.rootPath)
-
   return {
-    source: 'detected',
-    text: serialise(suggested),
-    recipe: suggested,
-    issues: [],
-    detected: true,
-    stale: false,
+    source: 'ccwt',
+    text: serialise(record.recipe),
+    recipe: null,
+    issues: stored.issues,
   }
 }
 
@@ -103,7 +89,7 @@ export async function writeRecipe(project: Project, text: string): Promise<Recip
   const parsed = parseRecipe(value)
   if (!parsed.ok) throw new RecipeInvalid(parsed.issues)
 
-  if (!(await updateRecord(project.id, { recipe: parsed.recipe, recipeRevision: RECIPE_REVISION }))) {
+  if (!(await updateRecord(project.id, { recipe: parsed.recipe }))) {
     throw new Error('No such project.')
   }
 
@@ -111,6 +97,6 @@ export async function writeRecipe(project: Project, text: string): Promise<Recip
 }
 
 export async function resetRecipe(project: Project): Promise<RecipeView> {
-  await updateRecord(project.id, { recipe: undefined, recipeRevision: undefined })
+  await updateRecord(project.id, { recipe: undefined })
   return readRecipe(project)
 }

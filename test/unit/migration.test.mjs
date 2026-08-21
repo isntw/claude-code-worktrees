@@ -49,12 +49,10 @@ test('every registered repository and its recipe crosses into the database', asy
     assert.equal(rows.length, 2)
     assert.equal(rows[0].id, 'aaa111')
     assert.equal(rows[0].root_path, '/repo/alpha')
-    assert.equal(rows[0].recipe_revision, 3)
     assert.deepEqual(JSON.parse(rows[0].recipe), LEGACY_PROJECTS.projects[0].config)
 
     assert.equal(rows[1].id, 'bbb222')
     assert.equal(rows[1].recipe, null)
-    assert.equal(rows[1].recipe_revision, null)
   })
 })
 

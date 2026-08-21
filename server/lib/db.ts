@@ -59,7 +59,6 @@ interface LegacyRecord {
   rootPath?: unknown
   addedAt?: unknown
   config?: unknown
-  recipeRevision?: unknown
 }
 
 function adoptLegacy(open: DatabaseSync): void {
@@ -91,8 +90,8 @@ function adoptProjects(open: DatabaseSync): boolean {
   )
 
   const insert = open.prepare(
-    `INSERT OR IGNORE INTO projects (id, root_path, added_at, recipe, recipe_revision)
-     VALUES (:id, :rootPath, :addedAt, :recipe, :revision)`,
+    `INSERT OR IGNORE INTO projects (id, root_path, added_at, recipe)
+     VALUES (:id, :rootPath, :addedAt, :recipe)`,
   )
 
   for (const entry of wanted) {
@@ -101,7 +100,6 @@ function adoptProjects(open: DatabaseSync): boolean {
       rootPath: entry.rootPath as string,
       addedAt: typeof entry.addedAt === 'string' ? entry.addedAt : new Date(0).toISOString(),
       recipe: entry.config === undefined ? null : JSON.stringify(entry.config),
-      revision: typeof entry.recipeRevision === 'number' ? entry.recipeRevision : null,
     })
   }
 
