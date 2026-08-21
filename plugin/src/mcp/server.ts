@@ -11,6 +11,7 @@ import {
   SERVICE,
   WORKTREE,
   broke,
+  pageOf,
   describeService,
   describeWorktree,
   nope,
@@ -164,7 +165,7 @@ server.registerTool(
         .describe(
           'A directory inside the worktree, as an alternative to naming it. Take the path from ccwt_get_status rather than assembling one — ccwt nests a worktree under a directory named for the project.',
         ),
-      limit: z.number().int().positive().optional().describe(`How many lines to return. Defaults to ${TAIL}.`),
+      limit: z.number().int().positive().optional().describe(`How many lines to return. Defaults to ${TAIL}. A page is also cut to fit one response, and says so.`),
       offset: z
         .number()
         .int()
@@ -187,6 +188,10 @@ server.registerTool(
         .nullable()
         .optional()
         .describe('Pass as `offset` for the lines before these.'),
+      capped: z
+        .boolean()
+        .optional()
+        .describe('True when the page was cut to fit one response rather than by `limit`.'),
       lines: z
         .array(z.object({ service: z.string(), stream: z.string(), text: z.string() }))
         .optional(),
@@ -245,11 +250,8 @@ server.registerTool(
       )
     }
 
-    const take = limit ?? TAIL
     const from = offset ?? 0
-    const end = Math.max(0, wanted.length - from)
-    const start = Math.max(0, end - take)
-    const page = wanted.slice(start, end)
+    const { lines: page, older, capped } = pageOf(wanted, limit ?? TAIL, from)
 
     if (!page.length) {
       return nope(
@@ -257,14 +259,16 @@ server.registerTool(
       )
     }
 
-    const older = start > 0
+    const more = older > 0
 
     return told(
       [
         `${worktree.name} — ${page.length} of ${wanted.length} lines, ending ${from ? `${from} from the newest` : 'at the newest'}`,
-        older
-          ? `${start} older line${start === 1 ? '' : 's'} not shown — pass \`offset: ${from + page.length}\` for the ones before these.`
-          : 'This is the whole scrollback ccwt holds.',
+        capped
+          ? `Cut to fit one response: ${older} older line${older === 1 ? '' : 's'} not shown, fewer than \`limit\` asked for. Pass \`offset: ${from + page.length}\` for the ones before these.`
+          : more
+            ? `${older} older line${older === 1 ? '' : 's'} not shown — pass \`offset: ${from + page.length}\` for the ones before these.`
+            : 'This is the whole scrollback ccwt holds.',
         '',
         ...page.map((line) => `${line.service} ${line.stream === 'stderr' ? '!' : '|'} ${line.text}`),
       ],
@@ -274,8 +278,9 @@ server.registerTool(
         total: wanted.length,
         count: page.length,
         offset: from,
-        hasMore: older,
-        nextOffset: older ? from + page.length : null,
+        hasMore: more,
+        nextOffset: more ? from + page.length : null,
+        capped,
         lines: page.map((line) => ({ service: line.service, stream: line.stream, text: line.text })),
       },
     )

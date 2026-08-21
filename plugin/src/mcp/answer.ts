@@ -65,6 +65,45 @@ export const nope = (body: string | string[]): Told => ({
 
 export const broke = (body: string | string[]): Told => ({ ...nope(body), isError: true })
 
+export const CHARACTER_LIMIT = 30_000
+
+export interface Printed {
+  service: string
+  stream: string
+  text: string
+}
+
+export interface Page<T> {
+  lines: T[]
+  older: number
+  capped: boolean
+}
+
+export function pageOf<T extends Printed>(
+  all: T[],
+  limit: number,
+  offset: number,
+  budget = CHARACTER_LIMIT,
+): Page<T> {
+  const end = Math.max(0, all.length - offset)
+  const wanted = Math.max(0, end - limit)
+
+  let spent = 0
+  let start = end
+
+  for (let at = end - 1; at >= wanted; at -= 1) {
+    const line = all[at]!
+    const cost = 2 * (line.text.length + line.service.length) + 50
+
+    if (start < end && spent + cost > budget) break
+
+    spent += cost
+    start = at
+  }
+
+  return { lines: all.slice(start, end), older: start, capped: start > wanted }
+}
+
 export interface ServiceLike {
   name: string
   state: string
