@@ -13,11 +13,14 @@ const {
   events,
   install,
   enable,
-  refresh,
+  disable,
+  update,
   remove,
 } = usePluginSetup()
 
 const asking = ref<'install' | 'about' | null>(null)
+
+const present = computed(() => installed.value || state.value === 'disabled')
 
 const stamped = (value: string) => {
   const at = value.indexOf('-')
@@ -47,7 +50,21 @@ const confirm = async () => {
 <template>
   <Panel title="Claude Code">
     <template #label>
-      <Badge v-if="state" :variation="look" size="sm">{{ says }}</Badge>
+      <Badge v-if="state" :variation="look" size="md">{{ says }}</Badge>
+    </template>
+
+    <template v-if="present" #actions>
+      <Toggle
+        :model-value="state !== 'disabled'"
+        :disabled="busy"
+        :title="
+          state === 'disabled'
+            ? 'Switch the plugin back on in Claude Code.'
+            : 'Switch the plugin off in Claude Code. It stays installed, and sessions stop being told what ccwt runs.'
+        "
+        @update:model-value="(on: boolean) => (on ? enable() : disable())"
+        >{{ state === 'disabled' ? 'off' : 'on' }}</Toggle
+      >
     </template>
 
     <div class="px-3 py-3">
@@ -112,16 +129,13 @@ const confirm = async () => {
         <Button v-if="state === 'absent'" size="sm" :disabled="busy" @click="asking = 'install'"
           >install…</Button
         >
-        <Button v-if="state === 'disabled'" size="sm" :disabled="busy" @click="enable">{{
-          busy ? 'working…' : 'switch it on'
-        }}</Button>
         <Button
           v-if="stale"
           size="sm"
           :disabled="busy"
           title="Hand Claude Code the copy of the plugin this ccwt carries, replacing the one it installed."
-          @click="refresh"
-          >{{ busy ? 'working…' : 'refresh it' }}</Button
+          @click="update"
+          >{{ busy ? 'working…' : 'update' }}</Button
         >
 
         <Button v-if="report" size="sm" :disabled="busy" @click="asking = 'about'"

@@ -6,7 +6,8 @@ export default defineEventHandler(async (event) => {
 
   return guard(() => {
     if (action === 'enable') return plugin.enable()
-    if (action === 'refresh') return plugin.refresh()
+    if (action === 'disable') return plugin.disable()
+    if (action === 'update') return plugin.update()
     return plugin.install()
   })
 })

@@ -413,12 +413,12 @@ function unreviewed(consent: PluginApproval): Diagnostic {
   }
 }
 
-function stale(now: Situation): Diagnostic {
+function stale(): Diagnostic {
   return {
     code: 'plugin.outdated',
     severity: 'info',
-    message: `Claude Code installed ${now.installed} of this plugin; the copy this ccwt would hand it hashes to ${now.available}.`,
-    hint: 'Refresh it here, or run `claude plugin update ccwt@ccwt`. Claude Code also re-runs the command once a session and reloads when what it printed has changed, so a session opened after this may already have caught up.',
+    message: 'Your sessions are running an older copy of this plugin than the one this ccwt carries.',
+    hint: `Update it here, or run \`claude plugin update ${ID}\` yourself. Claude Code also re-runs the command once a session, so a session opened after that may have caught up already.`,
   }
 }
 
@@ -472,7 +472,7 @@ export function issuesFor(now: Situation): Diagnostic[] {
 
   if (!consent.granted && !consent.askable) return [unreviewed(consent)]
 
-  if (state === 'outdated') return [stale(now)]
+  if (state === 'outdated') return [stale()]
 
   return []
 }
@@ -598,7 +598,7 @@ export async function install(): Promise<PluginReport> {
   ])
 }
 
-export async function refresh(): Promise<PluginReport> {
+export async function update(): Promise<PluginReport> {
   const version = await claudeVersion()
   if (version === null || tooOld(version)) return report()
 
@@ -629,9 +629,9 @@ export async function refresh(): Promise<PluginReport> {
 
   return report([
     {
-      code: 'plugin.refreshed',
+      code: 'plugin.updated',
       severity: 'info',
-      message: said || 'Claude Code refreshed the plugin without saying anything.',
+      message: said || 'Claude Code updated the plugin without saying anything.',
       hint: 'A session already open is still running the copy it loaded at start; `/reload-plugins --force` picks the new one up without restarting it.',
     },
   ])
@@ -643,6 +643,17 @@ export async function enable(): Promise<PluginReport> {
   const result = await claude(['plugin', 'enable', ID], INSTALL_MS)
   if (result && result.code !== 0) {
     return report([failed('claude plugin enable', result.code, result.stderr)])
+  }
+
+  return report()
+}
+
+export async function disable(): Promise<PluginReport> {
+  if ((await claudeVersion()) === null) return report()
+
+  const result = await claude(['plugin', 'disable', ID], INSTALL_MS)
+  if (result && result.code !== 0) {
+    return report([failed('claude plugin disable', result.code, result.stderr)])
   }
 
   return report()

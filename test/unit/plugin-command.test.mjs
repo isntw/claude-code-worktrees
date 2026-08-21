@@ -300,7 +300,7 @@ test('a command ccwt can accept itself is not reported as needing approval', () 
   assert.deepEqual(said, [])
 })
 
-test('a stale install says which hash is installed and which one it would be handed', () => {
+test('a stale install says what it means for a session, and leaves the hashes to the panel', () => {
   const said = plugin.issuesFor({
     state: 'outdated',
     version: '2.1.238',
@@ -312,11 +312,15 @@ test('a stale install says which hash is installed and which one it would be han
   assert.equal(said.length, 1)
   assert.equal(said[0].code, 'plugin.outdated')
   assert.equal(said[0].severity, 'info')
-  assert.match(said[0].message, /52cf4cda628b/)
-  assert.match(said[0].message, /1ab8e81d8848/)
+  assert.match(said[0].message, /older copy/)
+
+  assert.doesNotMatch(said[0].message, /52cf4cda628b/)
+  assert.doesNotMatch(said[0].message, /1ab8e81d8848/)
+
+  assert.match(said[0].hint, /claude plugin update ccwt@ccwt/)
 })
 
-test('an approval that is still owed outranks a stale install, because the refresh needs it first', () => {
+test('an approval that is still owed outranks a stale install, because the update needs it first', () => {
   const said = plugin.issuesFor({
     state: 'outdated',
     version: '2.1.238',

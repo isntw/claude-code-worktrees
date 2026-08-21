@@ -6,7 +6,7 @@ const LOOK: Record<PluginState, Variation> = {
   unavailable: 'neutral',
   absent: 'neutral',
   installed: 'success',
-  outdated: 'info',
+  outdated: 'warning',
   disabled: 'warning',
 }
 
@@ -14,7 +14,7 @@ const SAYS: Record<PluginState, string> = {
   unavailable: 'claude code not found',
   absent: 'not installed',
   installed: 'installed',
-  outdated: 'older copy installed',
+  outdated: 'needs update',
   disabled: 'switched off',
 }
 
@@ -71,7 +71,8 @@ export function usePluginSetup() {
     act,
     install: () => act(api.installPlugin),
     enable: () => act(api.enablePlugin),
-    refresh: () => act(api.refreshPlugin),
+    update: () => act(api.updatePlugin),
+    disable: () => act(api.disablePlugin),
     remove: () => act(api.removePlugin),
   }
 }
