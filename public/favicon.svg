@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<style>
+@media(prefers-color-scheme:dark){.l{fill:#edebe5}.a{fill:#d97757}}
+</style>
+<g class="l" fill="#1a1917"><rect x="0" y="0" width="15" height="3"/><rect x="0" y="3" width="3" height="3"/><rect x="0" y="6" width="3" height="3"/><rect x="0" y="9" width="3" height="3"/><rect x="0" y="12" width="15" height="3"/><rect x="17" y="0" width="15" height="3"/><rect x="17" y="3" width="3" height="3"/><rect x="17" y="6" width="3" height="3"/><rect x="17" y="9" width="3" height="3"/><rect x="17" y="12" width="15" height="3"/></g>
+<g class="a" fill="#c2603f"><rect x="0" y="17" width="3" height="3"/><rect x="12" y="17" width="3" height="3"/><rect x="0" y="20" width="3" height="3"/><rect x="12" y="20" width="3" height="3"/><rect x="0" y="23" width="3" height="3"/><rect x="6" y="23" width="3" height="3"/><rect x="12" y="23" width="3" height="3"/><rect x="0" y="26" width="6" height="3"/><rect x="9" y="26" width="6" height="3"/><rect x="0" y="29" width="3" height="3"/><rect x="12" y="29" width="3" height="3"/><rect x="17" y="17" width="15" height="3"/><rect x="23" y="20" width="3" height="3"/><rect x="23" y="23" width="3" height="3"/><rect x="23" y="26" width="3" height="3"/><rect x="23" y="29" width="3" height="3"/></g>
+</svg>

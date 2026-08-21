@@ -243,6 +243,15 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
     </section>
 
     <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Mark</p></header>
+      <div :class="BODY">
+        <Mark v-for="size in [16, 20, 26, 38, 64]" :key="size" :size="size" class="text-ink" />
+        <Mark :size="38" :accent="false" class="text-ink" />
+        <Mark :size="38" :accent="false" class="text-dim" />
+      </div>
+    </section>
+
+    <section :class="SECTION">
       <header :class="HEAD"><p class="t-eyebrow">Palette</p></header>
       <div class="grid grid-cols-4 gap-2 px-3 py-3 sm:grid-cols-6">
         <div

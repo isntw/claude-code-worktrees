@@ -28,12 +28,15 @@ const hint = (label: string) => (sidebarCollapsed.value ? label : undefined)
     :class="sidebarCollapsed ? 'w-14' : 'w-56'"
   >
     <div
-      class="flex items-center border-b border-line py-3"
+      class="flex h-[4.125rem] items-center border-b border-line"
       :class="sidebarCollapsed ? 'justify-center px-0' : 'px-4'"
     >
-      <div v-if="!sidebarCollapsed" class="min-w-0 flex-1">
-        <p class="font-mono text-sm font-bold tracking-[0.18em] text-ink">ccwt</p>
-        <p class="t-eyebrow mt-1">claude code worktrees</p>
+      <div v-if="!sidebarCollapsed" class="flex min-w-0 flex-1 items-center gap-2.5">
+        <Mark :size="22" class="text-ink" />
+        <div class="flex h-[22px] min-w-0 flex-col justify-between">
+          <span class="t-eyebrow block [text-box:trim-both_cap_alphabetic]">claude code</span>
+          <span class="t-eyebrow block [text-box:trim-both_cap_alphabetic]">worktrees</span>
+        </div>
       </div>
       <button
         type="button"
