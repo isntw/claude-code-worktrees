@@ -18,7 +18,7 @@ up by hand. **ccwt does that part.**
 
 ## Start
 
-Needs git 2.20+ and Node 24+.
+Needs macOS, git 2.20+ and Node 24+. Linux and Windows are not supported yet.
 
 ```bash
 npm i -g claude-code-worktrees
