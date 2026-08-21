@@ -260,13 +260,11 @@ export function environmentFor(
   const declared: Record<string, string> = {}
 
   for (const [name, allocated] of Object.entries(vars.ports)) {
-    declared[envKey('CCWT_PORT', name)] = String(allocated)
     declared[envKey('CCWT_URL', name)] = urlFor(allocated)
   }
 
   for (const [variable, allocated] of Object.entries(vars.named)) {
     declared[variable] = String(allocated)
-    declared[envKey('CCWT_PORT', variable)] = String(allocated)
     declared[envKey('CCWT_URL', variable)] = urlFor(allocated)
   }
 

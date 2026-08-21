@@ -237,10 +237,13 @@ export interface LogLine {
 
 export type PortMode = 'allocated' | 'fixed' | 'none'
 
+export type SetupTopic = 'files' | 'services' | 'together' | 'problems'
+
 export interface SetupNote {
+  topic: SetupTopic
   tone: 'good' | 'info' | 'caution'
   title: string
-  body: string
+  body?: string
   snippet?: string
 }
 

@@ -100,8 +100,8 @@ carry out — write the recipe, check it, store it — instead of you filling in
 
 ## Good to know
 
-- **Ports reach your app through the environment** — `PORT`, plus `CCWT_PORT_<SERVICE>` and
-  `CCWT_URL_<SERVICE>` so services can find each other. Nothing to import.
+- **Ports reach your app through the environment** — `PORT`, plus `CCWT_URL_<SERVICE>` so services
+  can find each other. Nothing to import.
 - **A worktree keeps its port.** If something else takes it, the card says so and the next start moves.
 - **Removal names the path first**, keeps your branch unless you tick the box, and won't delete a
   worktree you made yourself if it has anything to lose.
