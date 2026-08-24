@@ -163,11 +163,11 @@ const mergeable = computed(
         <Badge v-if="live" variation="success" title="A service here is up and answering on its port"
           >running</Badge
         >
-        <Tooltip
+        <Badge
           v-if="worktree.prunable"
-          class="shrink-0"
-          text="The directory is gone from disk — only the lock is keeping git's entry alive. Releasing the lock drops it; the branch is kept."
-          ><Badge variation="warning">directory missing</Badge></Tooltip
+          variation="warning"
+          tooltip="The directory is gone from disk — only the lock is keeping git's entry alive. Releasing the lock drops it; the branch is kept."
+          >directory missing</Badge
         >
         <Badge
           v-if="!worktree.provisioned"
