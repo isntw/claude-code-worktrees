@@ -15,6 +15,7 @@ import type {
   Worktree,
 } from '#shared/types'
 import type { BadgeSize } from '../components/Badge.vue'
+import type { Placement } from '../components/Tooltip.vue'
 import type { Stat } from '../components/StatBar.vue'
 import { VARIATIONS } from '../components/variation'
 import { NAV } from '../nav'
@@ -225,9 +226,16 @@ const GITS: { label: string; status: GitStatus; pull: PullRequest | null }[] = [
   { label: 'closed unmerged', status: gitOf({ ahead: 2 }), pull: pullOf(11, 'closed') },
 ]
 
+const PLACEMENTS: Placement[] = ['top', 'right', 'bottom', 'left']
+
+const CARD_GITS = [0, 3, 5, 2].map((at) => GITS[at])
+
 const SECTION = 'border border-line bg-surface'
 const HEAD = 'border-b border-line px-3 py-2'
 const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
+
+const TIP =
+  'A worktree ccwt made, provisioned from the recipe.\n\nIts port lives in `git config --worktree ccwt.port.dev`.'
 </script>
 
 <template>
@@ -306,6 +314,40 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
         <Badge v-for="s in SIZES" :key="`${s}-fill`" :size="s" variation="success" :outline="false">{{
           s
         }}</Badge>
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Tooltip</p></header>
+      <div class="grid grid-cols-4 place-items-center gap-3 px-3 py-10">
+        <Tooltip
+          v-for="side in PLACEMENTS"
+          :key="side"
+          :text="`Placed to the ${side}. It flips to the opposite side when there is no room.`"
+          :placement="side"
+          ><Badge>{{ side }}</Badge></Tooltip
+        >
+      </div>
+      <div :class="`${BODY} border-t border-line`">
+        <Tooltip :text="TIP"><Badge variation="info">two paragraphs, with code</Badge></Tooltip>
+        <Tooltip text="Typed in a quarter of a second, rather than at the default pace." :duration="250"
+          ><Badge variation="merged">quick to type</Badge></Tooltip
+        >
+        <Tooltip text="No typing at all — the whole hint at once." :duration="0"
+          ><Badge variation="merged">no typing</Badge></Tooltip
+        >
+        <Tooltip
+          text="A long one, to show the caret staying on the trigger while the bubble is clamped against the edge of the viewport rather than centred on me."
+          ><Badge variation="warning">clamped</Badge></Tooltip
+        >
+      </div>
+      <div class="flex items-center justify-between border-t border-line px-3 py-3">
+        <Tooltip text="Clamped against the left edge of the viewport."
+          ><Badge>left edge</Badge></Tooltip
+        >
+        <Tooltip text="Clamped against the right edge of the viewport."
+          ><Badge>right edge</Badge></Tooltip
+        >
       </div>
     </section>
 
@@ -459,8 +501,8 @@ const BODY = 'flex flex-wrap items-center gap-3 px-3 py-3'
           v-for="(card, index) in CARDS"
           :key="card.id"
           :worktree="card"
-          :git="GITS[index]?.status ?? null"
-          :pull="GITS[index]?.pull ?? null"
+          :git="CARD_GITS[index]?.status ?? null"
+          :pull="CARD_GITS[index]?.pull ?? null"
         />
       </div>
     </section>

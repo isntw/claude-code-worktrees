@@ -89,10 +89,11 @@ const live = computed(() => props.worktree.services.some((service) => service.st
 
 const finished = computed(() => !props.worktree.root && props.pull?.state === 'merged')
 
+const FINISHED_HINT =
+  'The work here has landed — its pull request is merged, so this worktree has nothing left to do. Removing it destroys the directory and the untracked files ccwt put there; the branch survives.'
+
 const finishedHint = computed(() =>
-  live.value
-    ? 'Its pull request is merged, and its services are still running'
-    : 'Its pull request is merged',
+  live.value ? `${FINISHED_HINT}\n\nIts services are still running.` : FINISHED_HINT,
 )
 
 const working = computed(() => held.value && !props.worktree.root)
@@ -170,7 +171,9 @@ const mergeable = computed(
       </button>
 
       <span class="flex shrink-0 items-center gap-1.5 self-center">
-        <Badge v-if="finished" variation="merged" :title="finishedHint">finished</Badge>
+        <Tooltip v-if="finished" :text="finishedHint" class="shrink-0"
+          ><Badge variation="success" :outline="false">finished</Badge></Tooltip
+        >
         <Badge v-if="live" variation="success" title="A service here is up and answering on its port"
           >running</Badge
         >
