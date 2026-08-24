@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import type { Recipe, WriteEntry } from '../../shared/types'
 import { argv, exec } from './exec'
 import { isDirectory, isSymlink, modifiedAt, pathExists, sameFile } from './fs'
+import { isInside } from './git'
 import { stub } from './stub'
 
 export const ALWAYS_PER_WORKTREE = [
@@ -450,5 +451,6 @@ export function worktreePathFor(
   projectSlug: string,
   slug: string,
 ): string {
-  return join(worktreesDirFor(rootPath, recipe), projectSlug, slug)
+  const dir = worktreesDirFor(rootPath, recipe)
+  return isInside(rootPath, dir) ? join(dir, slug) : join(dir, projectSlug, slug)
 }

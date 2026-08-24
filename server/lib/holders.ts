@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import type {
   ForeignHolder,
@@ -8,6 +9,7 @@ import type {
 } from '../../shared/types'
 import { projectName } from './projects'
 import { exec } from './exec'
+import { isInside } from './git'
 import { isListening } from './ports'
 import * as supervisor from './supervisor'
 
@@ -234,4 +236,33 @@ export async function free(port: number, request: FreeRequest): Promise<FreeOutc
     refused,
     why: after.free ? null : whyHeld(after),
   }
+}
+
+async function actual(path: string): Promise<string> {
+  return realpath(path).catch(() => path)
+}
+
+export async function reapWithin(port: number, worktreePath: string): Promise<ForeignHolder[]> {
+  const before = await holders(port)
+  if (before.free || !before.foreign.length) return []
+
+  const root = await actual(worktreePath)
+  const mine = await ourPids()
+  const strays: ForeignHolder[] = []
+
+  for (const holder of before.foreign) {
+    if (holder.cwd === null || mine.has(holder.pid)) continue
+    if (isInside(root, await actual(holder.cwd))) strays.push(holder)
+  }
+
+  if (!strays.length) return []
+
+  for (const stray of strays) signal(stray.pid, 'SIGTERM')
+
+  if (await stillHeld(port, QUIET_FOR_MS)) {
+    for (const stray of strays) signal(stray.pid, 'SIGKILL')
+    await stillHeld(port, HARD_FOR_MS)
+  }
+
+  return strays
 }

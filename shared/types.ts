@@ -190,6 +190,7 @@ export interface RemoveOutcome {
   branch: string | null
   branchDeleted: boolean
   branchIssue: string | null
+  stopped: string[]
 }
 
 export type MergeMethod = 'merge' | 'squash' | 'rebase'

@@ -27,6 +27,7 @@ import {
   writeWorktreeConfig,
 } from './git'
 import { isDirectory, isSymlink, pathExists } from './fs'
+import { reapWithin } from './holders'
 import { allocate, isListening, pruneSharedPorts, readAllocated, release } from './ports'
 import type { Placeholders } from './provision'
 import {
@@ -696,7 +697,7 @@ async function dropBranch(
   rootPath: string,
   branch: string | null,
   wanted: boolean,
-): Promise<RemoveOutcome> {
+): Promise<Omit<RemoveOutcome, 'stopped'>> {
   if (!wanted || !branch) return { branch, branchDeleted: false, branchIssue: null }
 
   const refused = await deleteBranch(rootPath, branch).catch((cause: Error) => cause.message)
@@ -741,7 +742,7 @@ export async function remove(
     await supervisor.stopWorktree(worktreeId)
     supervisor.forgetScrollback(worktreeId)
     await pruneWorktrees(project.rootPath)
-    return dropBranch(project.rootPath, worktree.branch, alsoBranch)
+    return { ...(await dropBranch(project.rootPath, worktree.branch, alsoBranch)), stopped: [] }
   }
 
   const recipe = project.recipe
@@ -758,6 +759,11 @@ export async function remove(
     const port = await readAllocated(worktree.path, service.name, service.portRange)
     if (port !== null) leaving[service.name] = port
     perService[service.name] = await readNamedPorts(worktree.path, service)
+  }
+
+  const holding = new Set<number>(Object.values(leaving))
+  for (const named of Object.values(perService)) {
+    for (const port of Object.values(named)) holding.add(port)
   }
 
   const base = {
@@ -806,6 +812,15 @@ export async function remove(
     await runPostRemove(worktree.path, rendered).catch(() => undefined)
   }
 
+  const stopped: string[] = []
+
+  for (const port of holding) {
+    const strays = await reapWithin(port, worktree.path).catch(() => [])
+    for (const stray of strays) {
+      stopped.push(`${stray.name} (pid ${stray.pid}) was still holding port ${port}`)
+    }
+  }
+
   for (const service of recipe?.services ?? []) {
     await release(worktree.path, service.name).catch(() => undefined)
     for (const variable of Object.keys(service.ports ?? {})) {
@@ -816,5 +831,5 @@ export async function remove(
   await removeWorktree(project.rootPath, worktree.path, owned)
   supervisor.forgetScrollback(worktreeId)
 
-  return dropBranch(project.rootPath, worktree.branch, alsoBranch)
+  return { ...(await dropBranch(project.rootPath, worktree.branch, alsoBranch)), stopped }
 }
