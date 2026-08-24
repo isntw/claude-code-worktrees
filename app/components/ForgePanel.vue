@@ -69,7 +69,7 @@ const { session, device, busy, error, signedIn, configured, start, cancel, signO
             v-if="signedIn"
             size="sm"
             :disabled="busy"
-            title="Forget the account ccwt holds. Pull request state disappears from the cards until you sign in again."
+            tooltip="Forget the account ccwt holds. Pull request state disappears from the cards until you sign in again."
             @click="signOut"
             >sign out</Button
           >

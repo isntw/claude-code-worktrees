@@ -141,18 +141,16 @@ const mergeable = computed(
             :aria-label="lock"
             :title="lock"
           />
-          <span
-            v-if="working"
-            class="shrink-0 font-sans text-[0.625rem] text-dim"
-            :title="workingHint"
+          <Tooltip v-if="working" :text="workingHint" class="shrink-0"
+            ><span class="font-sans text-[0.625rem] text-dim">
+              <StateDot variation="agent" beating class="mr-1 align-middle" />agent<span
+                v-if="heldFor"
+                class="text-faint"
+              >
+                · {{ heldFor }}</span
+              >
+            </span></Tooltip
           >
-            <StateDot variation="agent" beating class="mr-1 align-middle" />agent<span
-              v-if="heldFor"
-              class="text-faint"
-            >
-              · {{ heldFor }}</span
-            >
-          </span>
         </span>
         <span class="mt-1 flex items-center gap-1.5">
           <span class="truncate font-mono text-[0.625rem] text-faint">{{
@@ -168,7 +166,7 @@ const mergeable = computed(
         <Badge
           v-if="worktree.prunable"
           variation="warning"
-          title="The directory is gone from disk — only the lock is keeping git's entry alive. Releasing the lock drops it; the branch is kept."
+          tooltip="The directory is gone from disk — only the lock is keeping git's entry alive. Releasing the lock drops it; the branch is kept."
           >directory missing</Badge
         >
         <Badge
@@ -257,34 +255,43 @@ const mergeable = computed(
           class="truncate font-mono text-[0.6875rem] text-ink underline decoration-line-strong underline-offset-2 hover:decoration-ink"
           >{{ service.url.replace(/^https?:\/\//, '') }}</a
         >
-        <span
+        <Tooltip
           v-else-if="service.reachable === false"
-          class="truncate font-sans text-[0.6875rem] text-caution"
-          :title="`ccwt assigned port ${service.port}, but nothing is listening there. The command probably does not take that port.`"
-          >not on port {{ service.port }}</span
+          class="min-w-0"
+          :text="`ccwt assigned port ${service.port}, but nothing is listening there. The command probably does not take that port.`"
+          ><span class="min-w-0 truncate font-sans text-[0.6875rem] text-caution"
+            >not on port {{ service.port }}</span
+          ></Tooltip
         >
-        <span
+        <Tooltip
           v-else-if="service.taken && service.port && service.movable"
-          class="truncate font-sans text-[0.6875rem] text-dim"
-          :title="`Something is answering on ${service.port}, so starting this service takes the next free port in its range and remembers it.`"
-          >{{ service.port }} taken · moves on start</span
+          class="min-w-0"
+          :text="`Something is answering on ${service.port}, so starting this service takes the next free port in its range and remembers it.`"
+          ><span class="min-w-0 truncate font-sans text-[0.6875rem] text-dim"
+            >{{ service.port }} taken · moves on start</span
+          ></Tooltip
         >
-        <span
+        <Tooltip
           v-else-if="service.taken && service.port && service.heldBy"
-          class="truncate font-sans text-[0.6875rem] text-dim"
-          :title="`${service.heldBy.service} is running on ${service.port} in ${service.heldBy.same ? service.heldBy.worktree : 'another project'}, and this service is pinned to that port. Only one can hold it at a time.`"
-          >{{ service.port }} held by
-          <span class="font-mono">{{
-            service.heldBy.same ? service.heldBy.worktree : 'another project'
-          }}</span></span
+          class="min-w-0"
+          :text="`${service.heldBy.service} is running on ${service.port} in ${service.heldBy.same ? service.heldBy.worktree : 'another project'}, and this service is pinned to that port. Only one can hold it at a time.`"
+          ><span class="min-w-0 truncate font-sans text-[0.6875rem] text-dim"
+            >{{ service.port }} held by
+            <span class="font-mono">{{
+              service.heldBy.same ? service.heldBy.worktree : 'another project'
+            }}</span></span
+          ></Tooltip
         >
-        <button
+        <Tooltip
           v-else-if="service.taken && service.port"
-          type="button"
-          class="cursor-pointer truncate font-sans text-[0.6875rem] text-caution underline decoration-dotted underline-offset-[3px] transition-colors hover:text-ink"
-          :title="`Port ${service.port} is answering and this service is pinned to it, so it cannot move. See what is holding it.`"
-          @click="emit('take', service.name)"
-          >port {{ service.port }} taken</button
+          class="min-w-0"
+          :text="`Port ${service.port} is answering and this service is pinned to it, so it cannot move. See what is holding it.`"
+          ><button
+            type="button"
+            class="min-w-0 cursor-pointer truncate font-sans text-[0.6875rem] text-caution underline decoration-dotted underline-offset-[3px] transition-colors hover:text-ink"
+            @click="emit('take', service.name)"
+            >port {{ service.port }} taken</button
+          ></Tooltip
         >
         <span v-else class="truncate font-mono text-[0.6875rem] text-faint">{{
           service.state === 'starting' && service.port

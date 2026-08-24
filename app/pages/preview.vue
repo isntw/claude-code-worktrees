@@ -15,7 +15,7 @@ import type {
   Worktree,
 } from '#shared/types'
 import type { BadgeSize } from '../components/Badge.vue'
-import type { Placement } from '../components/Tooltip.vue'
+import type { Placement } from '../composables/useTooltip'
 import type { Stat } from '../components/StatBar.vue'
 import { VARIATIONS } from '../components/variation'
 import { NAV } from '../nav'
@@ -300,6 +300,9 @@ const TIP =
         <Badge v-for="v in VARIATIONS" :key="v" :variation="v">{{ v }}</Badge>
         <Badge selected>selected</Badge>
         <Badge mono>mono</Badge>
+        <Badge variation="warning" tooltip="A badge explaining itself through the tooltip prop, with no wrapper element."
+          >with a tooltip</Badge
+        >
       </div>
       <div class="flex flex-wrap items-center gap-3 border-t border-line px-3 py-3">
         <Badge v-for="v in VARIATIONS" :key="`${v}-filled`" :variation="v" :outline="false">{{
@@ -381,6 +384,11 @@ const TIP =
       </div>
       <div :class="BODY">
         <Button v-for="v in VARIATIONS" :key="v" :variation="v" :outline="false">{{ v }}</Button>
+      </div>
+      <div :class="BODY">
+        <Button tooltip="A button explaining itself through the tooltip prop — the listeners attach to the button, so nothing wraps it."
+          >with a tooltip</Button
+        >
       </div>
       <div :class="BODY">
         <Button size="sm">small</Button>

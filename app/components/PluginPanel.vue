@@ -133,7 +133,7 @@ const confirm = async () => {
           v-if="stale"
           size="sm"
           :disabled="busy"
-          title="Hand Claude Code the copy of the plugin this ccwt carries, replacing the one it installed."
+          tooltip="Hand Claude Code the copy of the plugin this ccwt carries, replacing the one it installed."
           @click="update"
           >{{ busy ? 'working…' : 'update' }}</Button
         >
@@ -146,7 +146,7 @@ const confirm = async () => {
           v-if="installed || state === 'disabled'"
           size="sm"
           :disabled="busy"
-          title="Uninstall the plugin from Claude Code. Sessions stop being told what ccwt runs."
+          tooltip="Uninstall the plugin from Claude Code. Sessions stop being told what ccwt runs."
           @click="remove"
           >remove</Button
         >

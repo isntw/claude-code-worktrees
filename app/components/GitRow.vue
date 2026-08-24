@@ -43,11 +43,11 @@ const asOf = computed(() =>
 
 <template>
   <div class="flex items-center gap-2">
-    <span
+    <Tooltip
       v-if="!status.upstream"
       class="shrink-0 font-sans text-[0.6875rem] text-faint"
-      :title="`No upstream is set and there is no origin/${status.branch} here, so this work has not been pushed under this name. ccwt does not fetch, so a branch pushed from elsewhere shows this until you fetch.`"
-      >unpushed</span
+      :text="`No upstream is set and there is no origin/${status.branch} here, so this work has not been pushed under this name. ccwt does not fetch, so a branch pushed from elsewhere shows this until you fetch.`"
+      >unpushed</Tooltip
     >
     <span
       v-else-if="status.ahead || status.behind"

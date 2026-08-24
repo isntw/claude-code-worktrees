@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { tone } from './variation'
+import { useTooltip } from '../composables/useTooltip'
+import type { Placement } from '../composables/useTooltip'
 import type { Variation } from './variation'
 
 export type BadgeSize = 'sm' | 'md' | 'lg'
@@ -18,9 +20,23 @@ const props = withDefaults(
     mono?: boolean
     outline?: boolean
     selected?: boolean
+    tooltip?: string
+    placement?: Placement
   }>(),
-  { variation: 'neutral', size: 'md', mono: false, outline: true, selected: false },
+  {
+    variation: 'neutral',
+    size: 'md',
+    mono: false,
+    outline: true,
+    selected: false,
+    tooltip: undefined,
+    placement: 'top',
+  },
 )
+
+const root = ref<HTMLElement | null>(null)
+
+const { id } = useTooltip(root, () => props.tooltip, { placement: () => props.placement })
 
 const face = computed(() =>
   props.selected
@@ -32,7 +48,12 @@ const face = computed(() =>
 </script>
 
 <template>
-  <span class="t-badge" :class="[tone(variation), face, SIZE[size], mono ? 'font-mono' : '']">
+  <span
+    ref="root"
+    class="t-badge"
+    :class="[tone(variation), face, SIZE[size], mono ? 'font-mono' : '']"
+    :aria-describedby="tooltip ? id : undefined"
+  >
     <span class="t-badge-label"><slot /></span>
   </span>
 </template>

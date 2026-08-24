@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { tone } from './variation'
+import { useTooltip } from '../composables/useTooltip'
+import type { Placement } from '../composables/useTooltip'
 import type { Variation } from './variation'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     variation?: Variation
     outline?: boolean
@@ -10,9 +13,24 @@ withDefaults(
     icon?: boolean
     disabled?: boolean
     type?: 'button' | 'submit'
+    tooltip?: string
+    placement?: Placement
   }>(),
-  { variation: 'neutral', outline: true, size: 'md', icon: false, disabled: false, type: 'button' },
+  {
+    variation: 'neutral',
+    outline: true,
+    size: 'md',
+    icon: false,
+    disabled: false,
+    type: 'button',
+    tooltip: undefined,
+    placement: 'top',
+  },
 )
+
+const root = ref<HTMLElement | null>(null)
+
+const { id } = useTooltip(root, () => props.tooltip, { placement: () => props.placement })
 
 const NEUTRAL = {
   outline: 'border-line text-dim hover:border-line-strong hover:text-ink',
@@ -38,8 +56,10 @@ const SIZE = {
 
 <template>
   <button
+    ref="root"
     :type="type"
     :disabled="disabled"
+    :aria-describedby="tooltip ? id : undefined"
     class="shrink-0 border font-mono transition-colors duration-100 ease-linear disabled:pointer-events-none disabled:opacity-40"
     :class="[
       SIZE[size].box,
