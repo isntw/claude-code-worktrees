@@ -256,9 +256,9 @@ const remove = (row: OverviewRow) => {
   doomed.value = { projectId: row.projectId, worktree: row.worktree }
 }
 
-const removed = async (kept: string | null) => {
+const removed = async (notice: string | null) => {
   doomed.value = null
-  error.value = kept ? `The worktree is gone, but the branch was kept — ${kept}` : null
+  error.value = notice
   await load()
 }
 

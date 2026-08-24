@@ -247,11 +247,11 @@ const create = async (input: { name: string; branch: string; start: boolean }) =
   }
 }
 
-const removed = async (kept: string | null) => {
+const removed = async (notice: string | null) => {
   const target = doomed.value
   if (target && selected.value === target.id) hide()
   doomed.value = null
-  error.value = kept ? `The worktree is gone, but the branch was kept — ${kept}` : null
+  error.value = notice
   await load()
 }
 

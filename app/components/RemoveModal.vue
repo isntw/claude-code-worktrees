@@ -7,7 +7,7 @@ const props = withDefaults(
   { git: null },
 )
 
-const emit = defineEmits<{ close: []; removed: [kept: string | null] }>()
+const emit = defineEmits<{ close: []; removed: [notice: string | null] }>()
 
 const api = useApi()
 
@@ -23,12 +23,23 @@ const uncommitted = computed(() => {
   return git.staged + git.unstaged + git.conflicted
 })
 
+const held = computed(() => props.worktree.lockState === 'live')
+
 const confirm = async () => {
   busy.value = true
   error.value = null
   try {
     const outcome = await api.removeWorktree(props.projectId, props.worktree.id, branch.value)
-    emit('removed', outcome.branchIssue ? `${outcome.branch} — ${outcome.branchIssue}` : null)
+
+    const notes: string[] = []
+    if (outcome.branchIssue) {
+      notes.push(`The branch ${outcome.branch} was kept — ${outcome.branchIssue}`)
+    }
+    if (outcome.stopped.length) {
+      notes.push(`Stopped ${outcome.stopped.join(' and ')}`)
+    }
+
+    emit('removed', notes.length ? `The worktree is gone. ${notes.join('. ')}.` : null)
   } catch (cause) {
     error.value = (cause as Error).message
     busy.value = false
@@ -56,20 +67,25 @@ const confirm = async () => {
       files git ignores. If anything is there, the removal is refused and names it.
     </p>
 
-    <p v-if="uncommitted && !worktree.prunable" class="mt-3 font-sans text-xs text-alarm">
+    <Notice v-if="uncommitted && !worktree.prunable" variation="error" class="mt-3">
       <span class="font-mono tabular-nums">{{ uncommitted }}</span>
       {{ uncommitted === 1 ? 'file has' : 'files have' }} changes that are not committed anywhere.
-      Deleting the directory deletes them, and keeping the branch does not bring them back.
-    </p>
+      <template #hint
+        >Deleting the directory deletes them, and keeping the branch does not bring them
+        back.</template
+      >
+    </Notice>
 
     <p v-if="worktree.locked" class="mt-3 font-sans text-xs text-caution">
-      <template v-if="worktree.lockState === 'live'"
-        >An agent is working here — removing takes the files out from under it.</template
-      >
+      <template v-if="held">An agent is working here.</template>
       <template v-else>Locked. Removing releases the lock first.</template>
       <code v-if="worktree.lockReason" class="ml-1 font-mono text-[0.6875rem]">{{
         worktree.lockReason
       }}</code>
+    </p>
+
+    <p v-if="held && !worktree.prunable" class="mt-3 font-sans text-xs text-caution">
+      Ask the agent to exit the worktree first — the session itself keeps running.
     </p>
 
     <p v-if="!worktree.branch" class="mt-3 font-sans text-xs text-dim">
