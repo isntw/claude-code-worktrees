@@ -65,13 +65,10 @@ const { session, device, busy, error, signedIn, configured, start, cancel, signO
               busy ? 'working…' : signedIn ? 'use a different account' : 'connect GitHub'
             }}</Button
           >
-          <Button
+          <Tooltip
             v-if="signedIn"
-            size="sm"
-            :disabled="busy"
-            title="Forget the account ccwt holds. Pull request state disappears from the cards until you sign in again."
-            @click="signOut"
-            >sign out</Button
+            text="Forget the account ccwt holds. Pull request state disappears from the cards until you sign in again."
+            ><Button size="sm" :disabled="busy" @click="signOut">sign out</Button></Tooltip
           >
         </template>
       </div>

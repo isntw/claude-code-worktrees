@@ -129,26 +129,22 @@ const confirm = async () => {
         <Button v-if="state === 'absent'" size="sm" :disabled="busy" @click="asking = 'install'"
           >install…</Button
         >
-        <Button
+        <Tooltip
           v-if="stale"
-          size="sm"
-          :disabled="busy"
-          title="Hand Claude Code the copy of the plugin this ccwt carries, replacing the one it installed."
-          @click="update"
-          >{{ busy ? 'working…' : 'update' }}</Button
+          text="Hand Claude Code the copy of the plugin this ccwt carries, replacing the one it installed."
+          ><Button size="sm" :disabled="busy" @click="update">{{
+            busy ? 'working…' : 'update'
+          }}</Button></Tooltip
         >
 
         <Button v-if="report" size="sm" :disabled="busy" @click="asking = 'about'"
           >what it does</Button
         >
 
-        <Button
+        <Tooltip
           v-if="installed || state === 'disabled'"
-          size="sm"
-          :disabled="busy"
-          title="Uninstall the plugin from Claude Code. Sessions stop being told what ccwt runs."
-          @click="remove"
-          >remove</Button
+          text="Uninstall the plugin from Claude Code. Sessions stop being told what ccwt runs."
+          ><Button size="sm" :disabled="busy" @click="remove">remove</Button></Tooltip
         >
       </div>
     </div>
