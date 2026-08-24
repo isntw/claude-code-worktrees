@@ -28,7 +28,7 @@ import {
 } from './git'
 import { isDirectory, isSymlink, pathExists } from './fs'
 import { reapWithin } from './holders'
-import { allocate, isListening, pruneSharedPorts, readAllocated, release } from './ports'
+import { allocate, isFree, pruneSharedPorts, readAllocated, release } from './ports'
 import type { Placeholders } from './provision'
 import {
   divergedBeneath,
@@ -229,8 +229,6 @@ async function allocateAll(
   return { ports, named }
 }
 
-const PROBE_MS = 250
-
 function holdOf(
   project: Project,
   worktreeId: string,
@@ -264,10 +262,25 @@ async function servicesFor(
   return Promise.all(
     recipe.services.map(async (service) => {
       const live = supervisor.status(worktreeId, service.name)
-      if (live && live.state !== 'stopped') return live
+      if (live && live.state !== 'stopped' && live.state !== 'crashed') return live
 
       const port = await readAllocated(worktreePath, service.name, service.portRange)
       const extra = await readNamedPorts(worktreePath, service)
+
+      const contention = {
+        taken: port === null ? false : !(await isFree(port)),
+        movable: service.portRange[0] !== service.portRange[1],
+        heldBy: port === null ? null : holdOf(project, worktreeId, service.name, port),
+      }
+
+      if (live) {
+        return {
+          ...live,
+          port,
+          ...contention,
+          extra: Object.keys(extra).length ? extra : undefined,
+        }
+      }
 
       return {
         name: service.name,
@@ -278,9 +291,7 @@ async function servicesFor(
         startedAt: null,
         exitCode: null,
         reachable: null,
-        taken: port === null ? false : await isListening(port, PROBE_MS),
-        movable: service.portRange[0] !== service.portRange[1],
-        heldBy: port === null ? null : holdOf(project, worktreeId, service.name, port),
+        ...contention,
         extra: Object.keys(extra).length ? extra : undefined,
       }
     }),

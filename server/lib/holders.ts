@@ -10,7 +10,7 @@ import type {
 import { projectName } from './projects'
 import { exec } from './exec'
 import { isInside } from './git'
-import { isListening } from './ports'
+import { isFree, isListening } from './ports'
 import * as supervisor from './supervisor'
 
 const LOOK_MS = 5_000
@@ -104,25 +104,25 @@ async function describe(pid: number): Promise<ForeignHolder> {
 }
 
 export async function holders(port: number): Promise<PortHolders> {
-  if (!(await isListening(port, PROBE_MS))) {
-    return { port, free: true, ours: [], foreign: [], why: null }
-  }
+  const answering = await isListening(port, PROBE_MS)
 
   const ours = await ourHolders(port)
   if (ours.length) return { port, free: false, ours, foreign: [], why: null }
 
   const { pids, why } = await listeningPids(port)
   const foreign = await Promise.all(pids.map(describe))
+  if (foreign.length) return { port, free: false, ours: [], foreign, why: null }
+
+  if (!answering) return { port, free: true, ours: [], foreign: [], why: null }
 
   return {
     port,
     free: false,
     ours: [],
-    foreign,
-    why: foreign.length
-      ? null
-      : (why ??
-        `Something is answering on port ${port}, but ccwt cannot see what — it may belong to another user.`),
+    foreign: [],
+    why:
+      why ??
+      `Something is answering on port ${port}, but ccwt cannot see what — it may belong to another user.`,
   }
 }
 
@@ -130,11 +130,11 @@ async function stillHeld(port: number, withinMs: number): Promise<boolean> {
   const deadline = Date.now() + withinMs
 
   while (Date.now() < deadline) {
-    if (!(await isListening(port, PROBE_MS))) return false
+    if (await isFree(port)) return false
     await new Promise((wait) => setTimeout(wait, QUIET_EVERY_MS))
   }
 
-  return isListening(port, PROBE_MS)
+  return !(await isFree(port))
 }
 
 async function ourPids(): Promise<Set<number>> {

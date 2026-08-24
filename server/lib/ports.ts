@@ -33,13 +33,25 @@ export function hashToRange(seed: string, range: [number, number]): number {
 
 const LOOPBACK = ['127.0.0.1', '::1']
 
-function freeOn(port: number, host: string): Promise<boolean> {
+interface Bind {
+  host: string
+  ipv6Only: boolean
+}
+
+const BINDS: Bind[] = [
+  { host: '127.0.0.1', ipv6Only: false },
+  { host: '::1', ipv6Only: true },
+  { host: '0.0.0.0', ipv6Only: false },
+  { host: '::', ipv6Only: true },
+]
+
+function freeOn(port: number, bind: Bind): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = createServer()
     probe.once('error', () => resolve(false))
     probe.once('listening', () => probe.close(() => resolve(true)))
     try {
-      probe.listen({ port, host, ipv6Only: host === '::1' })
+      probe.listen({ port, host: bind.host, ipv6Only: bind.ipv6Only })
     } catch {
       resolve(false)
     }
@@ -47,8 +59,8 @@ function freeOn(port: number, host: string): Promise<boolean> {
 }
 
 export async function isFree(port: number): Promise<boolean> {
-  for (const host of LOOPBACK) {
-    if (!(await freeOn(port, host))) return false
+  for (const bind of BINDS) {
+    if (!(await freeOn(port, bind))) return false
   }
   return true
 }
