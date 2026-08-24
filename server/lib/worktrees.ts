@@ -406,13 +406,13 @@ function liveServices(recipe: Recipe, worktreeId: string): string[] {
     .map((service) => service.name)
 }
 
-async function repairWorktree(
+async function repairFiles(
   project: Project,
   worktree: Worktree,
   refresh: boolean,
-): Promise<void> {
+): Promise<string[]> {
   const recipe = project.recipe
-  if (!recipe) return
+  if (!recipe) return []
   if (worktree.root) throw new Error('The repository root is not provisioned by ccwt.')
 
   const worktreeId = worktree.id
@@ -467,19 +467,37 @@ async function repairWorktree(
   await allocateAll(project, worktreeId, worktree.path)
   supervisor.note(worktreeId, 'provision', 'ready')
 
-  if (live.length) {
-    supervisor.note(worktreeId, 'provision', `starting ${live.join(', ')} back up…`)
-    for (const name of startOrder(recipe.services)) {
-      if (!live.includes(name)) continue
-      await startService(project, worktreeId, worktree.path, name, worktree.branch, false).catch(
-        (cause: Error) => {
-          supervisor.note(worktreeId, name, cause.message, 'stderr')
-          return null
-        },
-      )
-    }
-  }
+  return live
+}
 
+async function resumeServices(
+  project: Project,
+  worktree: Worktree,
+  live: string[],
+): Promise<void> {
+  const recipe = project.recipe
+  if (!recipe || !live.length) return
+
+  const worktreeId = worktree.id
+  supervisor.note(worktreeId, 'provision', `starting ${live.join(', ')} back up…`)
+
+  for (const name of startOrder(recipe.services)) {
+    if (!live.includes(name)) continue
+    await startService(project, worktreeId, worktree.path, name, worktree.branch, false).catch(
+      (cause: Error) => {
+        supervisor.note(worktreeId, name, cause.message, 'stderr')
+        return null
+      },
+    )
+  }
+}
+
+async function repairWorktree(
+  project: Project,
+  worktree: Worktree,
+  refresh: boolean,
+): Promise<void> {
+  await resumeServices(project, worktree, await repairFiles(project, worktree, refresh))
 }
 
 export async function repair(
@@ -501,10 +519,23 @@ export async function repair(
 export async function repairAll(project: Project, refresh = false): Promise<Worktree[]> {
   if (!project.recipe) throw new Error('This project has no resolvable recipe.')
 
-  for (const worktree of await list(project)) {
-    if (worktree.root || worktree.prunable) continue
+  await enableWorktreeConfig(project.rootPath)
+  await pruneSharedPorts(project.rootPath)
 
-    await repairWorktree(project, worktree, refresh).catch((cause: Error) => {
+  const targets = (await list(project)).filter((worktree) => !worktree.root && !worktree.prunable)
+
+  const placed = await Promise.all(
+    targets.map(async (worktree) => ({
+      worktree,
+      live: await repairFiles(project, worktree, refresh).catch((cause: Error) => {
+        supervisor.note(worktree.id, 'provision', cause.message, 'stderr')
+        return [] as string[]
+      }),
+    })),
+  )
+
+  for (const { worktree, live } of placed) {
+    await resumeServices(project, worktree, live).catch((cause: Error) => {
       supervisor.note(worktree.id, 'provision', cause.message, 'stderr')
     })
   }

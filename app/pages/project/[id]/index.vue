@@ -345,7 +345,7 @@ onBeforeUnmount(() => {
     <Button
       v-if="unprovisioned.length"
       variation="warning"
-      :disabled="loading || repairingAll || !project?.recipe"
+      :disabled="loading || repairingAll || repairing !== null || !project?.recipe"
       :title="REPAIR_HINT"
       @click="repairEvery"
       >{{ repairingAll ? 'repair all…' : 'repair all' }}</Button
@@ -437,7 +437,7 @@ onBeforeUnmount(() => {
         @lock="act(() => api.lockWorktree(projectId, worktree.id))"
         @unlock="act(() => api.unlockWorktree(projectId, worktree.id))"
         @remove="doomed = worktree"
-        :repairing="repairing === worktree.id"
+        :repairing="repairingAll || repairing === worktree.id"
         @repair="repair(worktree)"
         @merge="openMerge(worktree)"
       />
