@@ -87,14 +87,6 @@ const allRunning = computed(() =>
 
 const live = computed(() => props.worktree.services.some((service) => service.state === 'running'))
 
-const finished = computed(() => !props.worktree.root && props.pull?.state === 'merged')
-
-const finishedHint = computed(() =>
-  live.value
-    ? 'Its pull request is merged, and its services are still running'
-    : 'Its pull request is merged',
-)
-
 const working = computed(() => held.value && !props.worktree.root)
 
 const heldFor = computed(() => {
@@ -170,7 +162,6 @@ const mergeable = computed(
       </button>
 
       <span class="flex shrink-0 items-center gap-1.5 self-center">
-        <Badge v-if="finished" variation="merged" :title="finishedHint">finished</Badge>
         <Badge v-if="live" variation="success" title="A service here is up and answering on its port"
           >running</Badge
         >

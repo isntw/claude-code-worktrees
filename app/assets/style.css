@@ -224,6 +224,152 @@
     display: block;
   }
 
+  .t-tooltip {
+    --tip: var(--ccwt-ink);
+    --tip-ink: var(--ccwt-canvas);
+    --tip-line: var(--ccwt-ink);
+
+    position: fixed;
+    z-index: 60;
+    max-inline-size: 19rem;
+    border: 1px solid var(--tip-line);
+    background: var(--tip);
+    padding: 0.375rem 0.5rem;
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    color: var(--tip-ink);
+    pointer-events: none;
+    transition: opacity 80ms linear;
+  }
+
+  :where(.dark) .t-tooltip {
+    --tip: var(--ccwt-raised);
+    --tip-ink: var(--ccwt-ink);
+    --tip-line: var(--ccwt-line-strong);
+  }
+
+  .t-tooltip-text {
+    display: block;
+    white-space: pre-line;
+    overflow-wrap: break-word;
+  }
+
+  .t-tooltip code {
+    font-family: var(--font-mono);
+    white-space: nowrap;
+  }
+
+  .t-tooltip-veil {
+    visibility: hidden;
+  }
+
+  .t-tooltip-cursor {
+    display: inline-block;
+    inline-size: 0.4em;
+    margin-inline-end: -0.4em;
+    block-size: 1em;
+    background: var(--tip-ink);
+    vertical-align: text-bottom;
+    animation: ccwt-caret 1s steps(1) infinite;
+  }
+
+  @keyframes ccwt-caret {
+    0%,
+    49% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  .t-tooltip-caret {
+    position: absolute;
+  }
+
+  .t-tooltip-caret::before,
+  .t-tooltip-caret::after {
+    content: '';
+    position: absolute;
+  }
+
+  .t-tooltip-caret::before {
+    background: var(--tip-line);
+  }
+
+  .t-tooltip-caret::after {
+    inset: 0;
+    background: var(--tip);
+  }
+
+  .t-tooltip-caret[data-side='top'],
+  .t-tooltip-caret[data-side='bottom'] {
+    inline-size: 12px;
+    block-size: 8px;
+    margin-inline-start: -6px;
+  }
+
+  .t-tooltip-caret[data-side='left'],
+  .t-tooltip-caret[data-side='right'] {
+    inline-size: 8px;
+    block-size: 12px;
+    margin-block-start: -6px;
+  }
+
+  .t-tooltip-caret[data-side='bottom'] {
+    inset-block-end: -6px;
+  }
+
+  .t-tooltip-caret[data-side='bottom']::before {
+    inset: 2px 0 0 0;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+  }
+
+  .t-tooltip-caret[data-side='bottom']::after {
+    clip-path: polygon(-0.586px 0, 12.586px 0, 6px 6.586px);
+  }
+
+  .t-tooltip-caret[data-side='top'] {
+    inset-block-start: -6px;
+  }
+
+  .t-tooltip-caret[data-side='top']::before {
+    inset: 0 0 2px 0;
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+
+  .t-tooltip-caret[data-side='top']::after {
+    clip-path: polygon(6px 1.414px, 12.586px 8px, -0.586px 8px);
+  }
+
+  .t-tooltip-caret[data-side='right'] {
+    inset-inline-end: -6px;
+  }
+
+  .t-tooltip-caret[data-side='right']::before {
+    inset: 0 0 0 2px;
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+  }
+
+  .t-tooltip-caret[data-side='right']::after {
+    clip-path: polygon(0 -0.586px, 6.586px 6px, 0 12.586px);
+  }
+
+  .t-tooltip-caret[data-side='left'] {
+    inset-inline-start: -6px;
+  }
+
+  .t-tooltip-caret[data-side='left']::before {
+    inset: 0 2px 0 0;
+    clip-path: polygon(100% 0, 0 50%, 100% 100%);
+  }
+
+  .t-tooltip-caret[data-side='left']::after {
+    clip-path: polygon(1.414px 6px, 8px -0.586px, 8px 12.586px);
+  }
+
   .t-tabs {
     display: inline-flex;
     align-items: stretch;
