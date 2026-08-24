@@ -186,11 +186,11 @@ const removeWrite = (path: string) => {
 }
 
 const open = ref({
-  files: false,
-  postCreate: false,
-  services: false,
-  postRemove: false,
-  worktreesDir: false,
+  files: true,
+  postCreate: true,
+  services: true,
+  postRemove: true,
+  worktreesDir: true,
 })
 
 const tally = (counts: [number, string][]) =>
