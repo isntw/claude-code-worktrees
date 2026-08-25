@@ -112,7 +112,7 @@ Optional. A session can set a project up and run it *through* ccwt instead of ar
 recipe, start the services, read what they printed — without a dev server of its own fighting for the
 port.
 
-**Ten MCP tools.** Three read:
+**Eleven MCP tools.** Three read:
 
 | Tool | Returns |
 |---|---|
@@ -120,7 +120,7 @@ port.
 | `ccwt_get_logs` | A service's recent output, so a change can be checked without starting or building anything. |
 | `ccwt_read_recipe` | The recipe ccwt has stored for a repository, or that it holds none. |
 
-Seven act:
+Eight act:
 
 | Tool | Does |
 |---|---|
@@ -131,12 +131,15 @@ Seven act:
 | `ccwt_provision_worktree` | Puts back what the recipe names and a worktree is missing. Files only: `postCreate` is never re-run on a worktree that already exists. |
 | `ccwt_start_worktree` | Starts the services the recipe declares. ccwt still allocates the port, repairs what's missing and owns the process. |
 | `ccwt_stop_worktree` | Stops them, killing the process group so nothing keeps the port. The worktree is untouched. |
+| `ccwt_remove_worktree` | Removes a worktree — services stopped, ports released, directory gone, branch kept unless asked. Called without `confirm` it removes nothing and says what removal would destroy. |
 
-**A session can run the whole loop except removal.** Write the recipe, create a worktree, start it,
-read the logs, stop it — because a recipe is read when a service *starts*, and a session that cannot
-stop one cannot prove the recipe it just wrote. Deleting a worktree stays in the dashboard, where the
-confirmation names the path, the untracked files ccwt put there and whether the branch survives. No
-tool writes a file into your repository.
+**A session can run the whole loop.** Write the recipe, create a worktree, start it, read the logs,
+stop it — because a recipe is read when a service *starts*, and a session that cannot stop one cannot
+prove the recipe it just wrote. Removal is the one that answers before it acts: without `confirm` it
+deletes nothing and names the path, the untracked files ccwt put there, work committed nowhere and
+whether a session is holding the worktree — the same facts the dashboard's confirmation puts on
+screen, for the same person to agree to. It refuses the repository root and the directory the session
+started in. No tool writes a file into your repository.
 
 **Four hooks:**
 
@@ -147,10 +150,13 @@ tool writes a file into your repository.
   and the refusal names the URL to open instead.
 - `SessionEnd` — the marker is cleared.
 
-**And two skills.** `ccwt-recipe-create`, so "set this project up for ccwt" is a request a session can
-carry out — read the project, write the recipe, check it, store it — instead of you filling in the
-form. Then `ccwt-worktree-verify`, which holds it to proving the result: a port answering is not the
-service answering, and a recipe that validates can still start the wrong thing.
+**And three skills.** `ccwt-recipe-create`, so "set this project up for ccwt" is a request a session
+can carry out — read the project, write the recipe, check it, store it — instead of you filling in
+the form. Then `ccwt-worktree-verify`, which holds it to proving the result: a port answering is not
+the service answering, and a recipe that validates can still start the wrong thing. And
+`ccwt-worktree-remove`, which holds it to asking first: what the directory takes with it, why a lock
+is neither permission nor a refusal, and that a worktree ccwt did not create is not ccwt's to
+empty.
 
 One button in Settings installs the plugin into Claude Code's own storage, machine-wide for every
 project. Nothing is written into any repository.

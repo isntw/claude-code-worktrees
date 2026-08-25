@@ -1,4 +1,4 @@
-import { resolve } from 'node:path'
+import { resolve, sep } from 'node:path'
 import { call as request, locate } from '../lib/discover.ts'
 import type { Answer, Placed, Project } from '../lib/discover.ts'
 import type { WorktreeLike } from './answer.ts'
@@ -22,6 +22,12 @@ export async function place(path?: string): Promise<{ error: string } | Standing
   return found
 }
 
+export function within(parent: string, child: string): boolean {
+  const above = resolve(parent)
+  const below = resolve(child)
+  return below === above || below.startsWith(`${above}${sep}`)
+}
+
 export const unregistered = (found: Standing): string =>
   `${found.rootPath} is not registered with ccwt. Register it with ccwt_add_project first.`
 
@@ -38,7 +44,8 @@ export function why(result: Answer<unknown>, what: string): string {
   }
   const said = (result.body as { message?: string; statusMessage?: string } | null)?.message
     || (result.body as { statusMessage?: string } | null)?.statusMessage
-  return `ccwt refused to ${what} (${result.status})${said ? `: ${said}` : ''}.`
+  const spoken = said?.trim().replace(/\.$/, '')
+  return `ccwt refused to ${what} (${result.status})${spoken ? `: ${spoken}` : ''}.`
 }
 
 export const answered = <T>(result: Answer<T>): boolean => result.ok && result.body !== null
