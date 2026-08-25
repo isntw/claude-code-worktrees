@@ -262,7 +262,8 @@ async function servicesFor(
   return Promise.all(
     recipe.services.map(async (service) => {
       const live = supervisor.status(worktreeId, service.name)
-      if (live && live.state !== 'stopped' && live.state !== 'crashed') return live
+      if (live && live.state !== 'stopped' && live.state !== 'crashed')
+        return { ...live, primary: service.primary }
 
       const port = await readAllocated(worktreePath, service.name, service.portRange)
       const extra = await readNamedPorts(worktreePath, service)
@@ -276,6 +277,7 @@ async function servicesFor(
       if (live) {
         return {
           ...live,
+          primary: service.primary,
           port,
           ...contention,
           extra: Object.keys(extra).length ? extra : undefined,
@@ -284,6 +286,7 @@ async function servicesFor(
 
       return {
         name: service.name,
+        primary: service.primary,
         state: 'stopped' as const,
         port,
         url: null,

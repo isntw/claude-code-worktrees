@@ -5,10 +5,10 @@ import type {
   GitStatus,
   LockState,
   LogLine,
+  OverviewIssue,
+  OverviewProject,
   OverviewRow,
-  PortClaim,
   PortHold,
-  PortRow,
   PullRequest,
   PullState,
   ServiceState,
@@ -145,33 +145,58 @@ const STATS: Stat[] = [
   { key: 'problems', label: 'Problems', value: 0, variation: 'neutral' },
 ]
 
-const claim = (
-  service: string,
-  state: ServiceState,
-  project: string,
-  worktree: string,
-): PortClaim => ({
-  projectId: 'p',
-  projectName: project,
-  worktreeId: `${project}-${worktree}-${service}`,
-  worktreeName: worktree,
-  service,
-  state,
-  url: state === 'running' ? 'http://localhost:5200' : null,
-})
-
-const PORTS: PortRow[] = [
+const PANELS: OverviewProject[] = [
   {
-    port: 3000,
-    claims: [
-      claim('api', 'stopped', 'app', 'checkout-rewrite'),
-      claim('api', 'stopped', 'app', 'flaky-tests'),
-    ],
+    id: 'app',
+    name: 'app',
+    rootPath: '~/workspace/app',
+    defaultBranch: 'main',
+    worktrees: 3,
+    live: 2,
+    errors: 1,
+    readable: true,
   },
-  { port: 5200, claims: [claim('web', 'running', 'app', 'checkout-rewrite')] },
-  { port: 5201, claims: [claim('web', 'starting', 'app', 'flaky-tests')] },
-  { port: 5203, claims: [claim('web', 'crashed', 'legacy', 'bump-nuxt')] },
-  { port: 8080, claims: [claim('api', 'running', 'app', 'checkout-rewrite')] },
+  {
+    id: 'legacy',
+    name: 'legacy',
+    rootPath: '~/workspace/legacy',
+    defaultBranch: 'develop',
+    worktrees: 1,
+    live: 0,
+    errors: 0,
+    readable: false,
+  },
+]
+
+const shut = ref(false)
+
+const ISSUES: OverviewIssue[] = [
+  {
+    projectId: 'app',
+    projectName: 'app',
+    worktree: null,
+    code: 'project.no-recipe',
+    severity: 'error',
+    message: 'This project has no recipe, so ccwt cannot build a worktree of it.',
+    hint: 'Write one from the project page.',
+  },
+  {
+    projectId: 'app',
+    projectName: 'app',
+    worktree: 'checkout-rewrite',
+    code: 'worktree.drift',
+    severity: 'warning',
+    message: 'main moved on 14 commits since this branch left it.',
+  },
+  {
+    projectId: 'app',
+    projectName: 'app',
+    worktree: 'flaky-tests',
+    code: 'worktree.unprovisioned',
+    severity: 'info',
+    message: 'Dependencies are not in place yet.',
+    hint: 'Starting a service puts them there.',
+  },
 ]
 
 const said = (service: string, stream: 'stdout' | 'stderr', text: string): LogLine => ({
@@ -480,16 +505,6 @@ const TIP =
       <div class="px-3 py-3"><StatBar :stats="STATS" /></div>
     </section>
 
-    <section :class="SECTION">
-      <header :class="HEAD"><p class="t-eyebrow">Ports</p></header>
-      <PortList :rows="PORTS" />
-    </section>
-
-    <section :class="SECTION">
-      <header :class="HEAD"><p class="t-eyebrow">Ports — none</p></header>
-      <PortList :rows="[]" />
-    </section>
-
     <section :class="SECTION" class="min-w-0 xl:col-span-2">
       <header :class="HEAD"><p class="t-eyebrow">Worktree table</p></header>
       <WorktreeTable :rows="ROWS" />
@@ -500,6 +515,32 @@ const TIP =
         <p class="t-eyebrow">Worktree table — a port already taken</p>
       </header>
       <WorktreeTable :rows="TAKEN_ROWS" />
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Problems</p></header>
+      <IssueList :issues="ISSUES" />
+    </section>
+
+    <section class="xl:col-span-2">
+      <p class="t-eyebrow mb-2">Project panels</p>
+      <div class="flex flex-col gap-2">
+        <ProjectPanel :project="PANELS[0]!">
+          <WorktreeTable :rows="TAKEN_ROWS" />
+          <div class="border-t border-line">
+            <header class="flex h-8 items-center gap-2 border-b border-line px-3">
+              <p class="t-eyebrow">Problems</p>
+            </header>
+            <IssueList :issues="ISSUES" />
+          </div>
+        </ProjectPanel>
+
+        <ProjectPanel v-model:open="shut" :project="PANELS[1]!">
+          <p class="px-3 py-3 font-sans text-[0.6875rem] text-faint">
+            Its worktrees could not be read.
+          </p>
+        </ProjectPanel>
+      </div>
     </section>
 
     <section class="xl:col-span-2">

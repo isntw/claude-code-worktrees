@@ -117,7 +117,14 @@ const save = async () => {
 
 const updateService = (index: number, service: Service) => {
   if (!draft.value) return
-  const services = [...draft.value.services]
+
+  const services = draft.value.services.map((held, at) => {
+    if (at === index) return service
+    if (!service.primary || !held.primary) return held
+    const { primary: _dropped, ...rest } = held
+    return rest
+  })
+
   services[index] = service
   draft.value = { ...draft.value, services }
 }
@@ -372,6 +379,7 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
             :key="index"
             :service="service"
             :index="index"
+            :siblings="draft.services.length"
             :writes="draft.provision.write"
             :start-open="index === added"
             @update="updateService"

@@ -2,16 +2,15 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type {
   Overview,
+  OverviewIssue,
+  OverviewProject,
   OverviewRow,
-  PortClaim,
   PullRequest,
   ServiceStatus,
-  Severity,
   Worktree,
 } from '#shared/types'
 import { routeKeys } from '#shared/route-keys'
 import type { Stat } from '../components/StatBar.vue'
-import type { Tile } from '../components/TileGrid.vue'
 import type { Variation } from '../components/variation'
 import { NAV } from '../nav'
 
@@ -58,7 +57,6 @@ const load = async () => {
 }
 
 const rows = computed(() => data.value?.rows ?? [])
-const ports = computed(() => data.value?.ports ?? [])
 const issues = computed(() => data.value?.issues ?? [])
 
 const isRunning = (row: OverviewRow) =>
@@ -143,26 +141,47 @@ const stats = computed<Stat[]>(() => {
   ]
 })
 
-const tiles = computed<Tile[]>(() =>
-  (data.value?.projects ?? []).map((project) => ({
-    key: project.id,
-    label: project.name,
-    total: project.worktrees,
-    errors: project.errors,
-    note:
-      [project.live ? `${project.live} up` : null, project.defaultBranch]
-        .filter(Boolean)
-        .join(' · ') || undefined,
-    inert: !project.readable,
-    go: () => router.push(`/project/${projectKeys.value.get(project.id) ?? project.id}`),
-  })),
+interface Group {
+  project: OverviewProject
+  rows: OverviewRow[]
+  issues: OverviewIssue[]
+}
+
+const groups = computed<Group[]>(() =>
+  (data.value?.projects ?? [])
+    .map((project) => ({
+      project,
+      rows: visible.value.filter((row) => row.projectId === project.id),
+      issues: issues.value.filter((issue) => issue.projectId === project.id),
+    }))
+    .filter(
+      (group) =>
+        group.rows.length > 0 ||
+        filter.value === 'all' ||
+        (filter.value === 'attention' && group.project.errors > 0),
+    ),
 )
 
-const SEVERITY: Record<Severity, { variation: Variation; text: string }> = {
-  info: { variation: 'info', text: 'text-dim' },
-  warning: { variation: 'warning', text: 'text-caution' },
-  error: { variation: 'error', text: 'text-alarm' },
+const nothing = (group: Group) => {
+  if (filter.value === 'running') return 'Nothing here is running.'
+  if (filter.value === 'attention') return 'Nothing here needs attention.'
+  if (!group.project.readable) return 'Its worktrees could not be read.'
+  return 'No worktrees yet.'
 }
+
+const COLLAPSED = 'ccwt.overview.collapsed'
+
+const collapsed = ref<string[]>([])
+
+const shows = (id: string) => !collapsed.value.includes(id)
+
+const reveal = (id: string, open: boolean) => {
+  collapsed.value = open ? collapsed.value.filter((held) => held !== id) : [...collapsed.value, id]
+  localStorage.setItem(COLLAPSED, JSON.stringify(collapsed.value))
+}
+
+const enter = (project: OverviewProject) =>
+  router.push(`/project/${projectKeys.value.get(project.id) ?? project.id}`)
 
 const stamp = computed(() => {
   const at = data.value?.at
@@ -176,7 +195,6 @@ const drill = (projectId: string, worktreeId: string) =>
   })
 
 const open = (row: OverviewRow) => drill(row.projectId, row.worktree.id)
-const pick = (claim: PortClaim) => drill(claim.projectId, claim.worktreeId)
 
 const merging = ref<{ projectId: string; pull: PullRequest } | null>(null)
 
@@ -274,6 +292,14 @@ const nudge = () => {
 }
 
 onMounted(async () => {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(COLLAPSED) ?? '[]')
+    if (Array.isArray(stored))
+      collapsed.value = stored.filter((id): id is string => typeof id === 'string')
+  } catch {
+    collapsed.value = []
+  }
+
   disconnect = api.connect((message) => {
     if (message.type === 'log') return
     nudge()
@@ -287,8 +313,9 @@ onBeforeUnmount(() => {
   disconnect?.()
 })
 
-const HEAD = 'flex h-10 shrink-0 items-center gap-3 border-b border-line px-3'
 const PANEL = 'border border-line bg-surface'
+const SECTION = 'flex h-8 items-center gap-2 border-b border-line px-3'
+const COUNT = 'ml-auto font-mono text-[0.625rem] tabular-nums text-faint'
 </script>
 
 <template>
@@ -321,15 +348,25 @@ const PANEL = 'border border-line bg-surface'
     </div>
 
     <template v-else>
-      <section :class="PANEL" class="min-w-0">
-        <header :class="HEAD">
-          <p class="t-eyebrow">Worktrees</p>
-          <Tabs v-model="filter" :options="tabs" label="Filter worktrees" class="ml-auto" />
-        </header>
+      <div class="flex h-6 shrink-0 items-center gap-3">
+        <p class="t-eyebrow">Projects</p>
+        <span class="font-mono text-[0.625rem] tabular-nums text-faint"
+          >{{ groups.length }} of {{ data?.totals.projects ?? 0 }}</span
+        >
+        <Tabs v-model="filter" :options="tabs" label="Filter worktrees" class="ml-auto" />
+      </div>
 
+      <ProjectPanel
+        v-for="group in groups"
+        :key="group.project.id"
+        :project="group.project"
+        :open="shows(group.project.id)"
+        @update:open="reveal(group.project.id, $event)"
+        @go="enter(group.project)"
+      >
         <WorktreeTable
-          v-if="visible.length"
-          :rows="visible"
+          v-if="group.rows.length"
+          :rows="group.rows"
           @open="open"
           @start="start"
           @stop="stop"
@@ -341,61 +378,26 @@ const PANEL = 'border border-line bg-surface'
           :repairing="repairing"
           @repair="repair"
         />
-        <p v-else class="px-3 py-4 font-sans text-[0.6875rem] text-faint">
-          Nothing matches this filter.
-        </p>
-      </section>
+        <p v-else class="px-3 py-3 font-sans text-[0.6875rem] text-faint">{{ nothing(group) }}</p>
 
-      <div class="grid gap-3 xl:grid-cols-3">
-        <section :class="PANEL" class="min-w-0 xl:col-span-2">
-          <header :class="HEAD"><p class="t-eyebrow">Projects</p></header>
-          <div class="p-3"><TileGrid dense :tiles="tiles" /></div>
-        </section>
-
-        <section :class="PANEL" class="min-w-0">
-          <header :class="HEAD">
-            <p class="t-eyebrow">Ports</p>
-            <span class="ml-auto font-mono text-[0.625rem] tabular-nums text-faint">{{
-              ports.length
-            }}</span>
+        <div v-if="group.issues.length" class="border-t border-line">
+          <header :class="SECTION">
+            <p class="t-eyebrow">Problems</p>
+            <span :class="COUNT">{{ group.issues.length }}</span>
           </header>
+          <IssueList :issues="group.issues" />
+        </div>
+      </ProjectPanel>
 
-          <PortList :rows="ports" @pick="pick" />
-        </section>
-      </div>
-
-      <section v-if="issues.length" :class="PANEL">
-        <header :class="HEAD">
-          <p class="t-eyebrow">Problems</p>
-          <span class="ml-auto font-mono text-[0.625rem] tabular-nums text-faint">{{
-            issues.length
-          }}</span>
-        </header>
-
-        <ul class="flex flex-col">
-          <li
-            v-for="(issue, index) in issues"
-            :key="`${issue.projectId}:${issue.code}:${index}`"
-            class="flex flex-col gap-1 border-b border-line px-3 py-2 last:border-b-0"
-          >
-            <span class="flex items-center gap-2">
-              <StateDot :variation="SEVERITY[issue.severity].variation" />
-              <span class="truncate font-mono text-[0.625rem] text-faint"
-                >{{ issue.projectName
-                }}<template v-if="issue.worktree">/{{ issue.worktree }}</template></span
-              >
-              <code class="ml-auto shrink-0 font-mono text-[0.625rem] text-faint">{{
-                issue.code
-              }}</code>
-            </span>
-            <p class="font-sans text-[0.6875rem]" :class="SEVERITY[issue.severity].text">
-              {{ issue.message }}
-              <span v-if="issue.hint" class="text-faint"> — {{ issue.hint }}</span>
-            </p>
-          </li>
-        </ul>
-      </section>
+      <p
+        v-if="!groups.length"
+        :class="PANEL"
+        class="px-3 py-4 font-sans text-[0.6875rem] text-faint"
+      >
+        Nothing matches this filter.
+      </p>
     </template>
+
   </main>
 
   <MergeModal

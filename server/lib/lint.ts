@@ -119,9 +119,27 @@ function provisionNotes(recipe: Recipe): RecipeNote[] {
   return notes
 }
 
+function primaryNotes(recipe: Recipe): RecipeNote[] {
+  const withPort = recipe.services.filter((service) => service.portRange.length === 2)
+  const [first] = withPort
+
+  if (withPort.length < 2 || !first) return []
+  if (withPort.some((service) => service.primary)) return []
+
+  return [
+    {
+      path: 'services',
+      severity: 'info',
+      message: `No service is marked primary, so a worktree reports \`${first.name}\` — the first one listed — as its port.`,
+      hint: 'Mark the one somebody opens in a browser as `primary`.',
+    },
+  ]
+}
+
 export function noteRecipe(recipe: Recipe): RecipeNote[] {
   return [
     ...recipe.services.flatMap(serviceNotes),
+    ...primaryNotes(recipe),
     ...provisionNotes(recipe),
   ]
 }
