@@ -242,7 +242,7 @@ async function actual(path: string): Promise<string> {
   return realpath(path).catch(() => path)
 }
 
-export async function reapWithin(port: number, worktreePath: string): Promise<ForeignHolder[]> {
+export async function straysWithin(port: number, worktreePath: string): Promise<ForeignHolder[]> {
   const before = await holders(port)
   if (before.free || !before.foreign.length) return []
 
@@ -255,6 +255,11 @@ export async function reapWithin(port: number, worktreePath: string): Promise<Fo
     if (isInside(root, await actual(holder.cwd))) strays.push(holder)
   }
 
+  return strays
+}
+
+export async function reapWithin(port: number, worktreePath: string): Promise<ForeignHolder[]> {
+  const strays = await straysWithin(port, worktreePath)
   if (!strays.length) return []
 
   for (const stray of strays) signal(stray.pid, 'SIGTERM')

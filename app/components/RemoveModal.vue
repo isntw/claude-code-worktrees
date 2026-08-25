@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import type { GitStatus, Worktree } from '#shared/types'
+import { computed, onMounted, ref } from 'vue'
+import type { GitStatus, Occupancy, Occupant, Worktree } from '#shared/types'
 
 const props = withDefaults(
   defineProps<{ projectId: string; worktree: Worktree; git?: GitStatus | null }>(),
@@ -24,6 +24,23 @@ const uncommitted = computed(() => {
 })
 
 const held = computed(() => props.worktree.lockState === 'live')
+
+const occupancy = ref<Occupancy | null>(null)
+
+const standing = computed(() => (occupancy.value?.occupants ?? []).filter((one) => !one.ours))
+const sessions = computed(() => standing.value.filter((one) => /(^|\/)claude\b/i.test(one.command)))
+
+const said = (one: Occupant) => {
+  const parts = one.command.split(' ')
+  const head = parts[0]
+  if (!head) return one.name
+  return [head.split('/').pop(), ...parts.slice(1)].join(' ')
+}
+
+onMounted(async () => {
+  if (props.worktree.prunable) return
+  occupancy.value = await api.occupants(props.projectId, props.worktree.id).catch(() => null)
+})
 
 const confirm = async () => {
   busy.value = true
@@ -74,6 +91,28 @@ const confirm = async () => {
         >Deleting the directory deletes them, and keeping the branch does not bring them
         back.</template
       >
+    </Notice>
+
+    <Notice
+      v-if="standing.length"
+      :variation="sessions.length ? 'agent' : 'warning'"
+      class="mt-3"
+    >
+      {{ standing.length === 1 ? 'A program is' : `${standing.length} programs are` }} working inside
+      this directory. Deleting it takes the ground out from under
+      {{ standing.length === 1 ? 'it' : 'them' }}.
+      <template #hint>
+        <span class="flex flex-col gap-0.5">
+          <span v-for="one in standing" :key="one.pid" class="font-mono text-[0.6875rem]">
+            <span class="tabular-nums text-ink">pid {{ one.pid }}</span>
+            <span class="ml-2">{{ said(one) }}</span>
+          </span>
+          <span v-if="sessions.length" class="mt-1 font-sans">
+            Get that session out first — ask it to leave the worktree, or close it. ccwt cannot move
+            it for you.
+          </span>
+        </span>
+      </template>
     </Notice>
 
     <p v-if="worktree.locked" class="mt-3 font-sans text-xs text-caution">

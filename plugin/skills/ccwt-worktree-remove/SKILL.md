@@ -53,6 +53,17 @@ So when the answer says a process that is **still running** holds it, that is an
 working directory. Quote the reason to the person and let them decide. Never confirm past a live
 lock on your own judgement.
 
+## What is working in there
+
+The first call also names every program whose working directory is inside the worktree, as
+`working`. Removing the directory takes the ground out from under each of them: a session that `cd`
+ed in loses the directory it is working in, and what happens next is not ccwt's to control.
+
+ccwt leaves them alone. It stops its own services and reaps a stray still holding one of the
+worktree's ports, and those are already left out of `working` — what is left is collateral. Quote it
+with the path. A session in that list has to leave the directory itself; nothing outside a process
+can move it, and `ExitWorktree` does not apply to a worktree ccwt created.
+
 ## Never the one you are in
 
 The tool refuses the worktree this session started in, and refuses the repository root. If what

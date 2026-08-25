@@ -104,6 +104,20 @@ export interface ForeignHolder {
   user: string | null
 }
 
+export interface Occupant {
+  pid: number
+  name: string
+  command: string
+  cwd: string
+  user: string | null
+  ours: boolean
+}
+
+export interface Occupancy {
+  occupants: Occupant[]
+  why: string | null
+}
+
 export interface PortHolders {
   port: number
   free: boolean

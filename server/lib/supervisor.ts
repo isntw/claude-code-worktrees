@@ -719,6 +719,14 @@ async function runStopCommand(entry: Entry): Promise<void> {
   }
 }
 
+export function pidsIn(worktreeId: string): number[] {
+  const pids: number[] = []
+  for (const [key, entry] of entries) {
+    if (key.startsWith(`${worktreeId}:`) && entry.pid !== null) pids.push(entry.pid)
+  }
+  return pids
+}
+
 export async function stopWorktree(worktreeId: string): Promise<void> {
   const names: string[] = []
   for (const [key, entry] of entries) {
