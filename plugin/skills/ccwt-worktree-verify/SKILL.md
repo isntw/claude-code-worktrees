@@ -78,5 +78,6 @@ What a recipe change reaches depends on what changed:
 - **A `postCreate` command** only ever runs on a worktree ccwt creates. Existing worktrees will never
   have it; make a new one with `ccwt_create_worktree`.
 
-Removing a worktree is the dashboard's, not a tool's. If a test left one behind, say so and let the
-person delete it — the confirmation there names the path and what it destroys.
+If a test left a worktree behind, say so. `ccwt_remove_worktree` takes it away, but its first call
+only says what removal would destroy and removes nothing — the person decides from that. The
+**`ccwt-worktree-remove`** skill covers what goes with the directory and what survives it.

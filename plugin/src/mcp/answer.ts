@@ -116,7 +116,13 @@ export interface WorktreeLike {
   id: string
   name: string
   path: string
+  root?: boolean
   branch?: string | null
+  origin?: string
+  locked?: boolean
+  lockReason?: string | null
+  lockState?: string | null
+  prunable?: boolean
   provisioned?: boolean | null
   services: ServiceLike[]
 }

@@ -199,7 +199,7 @@ A session working in a worktree does not know ccwt started its dev server, so it
 Nothing in §5.1–§5.5 answers that: the lock reports an agent to *us*, and says nothing back.
 
 **ccwt ships a Claude Code plugin**, installed from `/settings` by pressing a button. It carries
-four hooks, two skills and an MCP server:
+four hooks, three skills and an MCP server:
 
 - `SessionStart` describes **the repository** — every worktree, its services, the port each holds,
   and whether that port answers. Not the current directory: ports live in each linked worktree's git
@@ -211,11 +211,16 @@ four hooks, two skills and an MCP server:
   of frameworks.
 - Both hooks also **name the session after its worktree**, and rename it when that changes. A title
   typed by hand is never overwritten.
-- **Ten MCP tools** let a session ask what is running, read what it printed, write the recipe, and
-  create, provision, start and stop a worktree. ccwt still owns the lifecycle — it allocates every
-  port and spawns every process — but a session that cannot stop a service cannot prove the recipe it
-  just wrote, since a recipe is read when a service *starts*. **Removal is the exception** and stays
-  in the dashboard, where the confirmation names the path and what it destroys.
+- **Eleven MCP tools** let a session ask what is running, read what it printed, write the recipe,
+  and create, provision, start, stop and remove a worktree. ccwt still owns the lifecycle — it
+  allocates every port and spawns every process — but a session that cannot stop a service cannot
+  prove the recipe it just wrote, since a recipe is read when a service *starts*. **Removal answers
+  before it acts**: without `confirm` it deletes nothing and names the path, the untracked files ccwt
+  put there, work committed nowhere and whether a process still holds the worktree — the
+  confirmation the dashboard draws, handed to the person the session is talking to. It refuses the
+  repository root and the directory the session started in. Removal was held back from the plugin at
+  first on the grounds that the confirmation belonged on screen; a tool that has to answer with those
+  facts before it can act puts the same decision to the same person.
 
 **This is the direction §5.2 does not cover, and it does not reopen it.** §5.2 made ccwt's display
 depend on sessions reporting in; this tells sessions what ccwt already knows, and a session asking

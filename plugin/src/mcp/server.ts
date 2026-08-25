@@ -30,6 +30,7 @@ import {
   serviceProblem,
   unregistered,
   why,
+  within,
 } from './reach.ts'
 import type { IssueLike, RecipeNoteLike, Standing } from './reach.ts'
 
@@ -797,6 +798,232 @@ server.registerTool(
         'The worktree and its files are untouched. Starting it again re-reads the recipe.',
       ],
       { worktree: wanted.name, path: wanted.path, services: statuses.map(shapeService) },
+    )
+  },
+)
+
+interface RemoveOutcomeLike {
+  branch: string | null
+  branchDeleted: boolean
+  branchIssue: string | null
+  stopped: string[]
+}
+
+interface StatusLike {
+  staged: number
+  unstaged: number
+  conflicted: number
+}
+
+async function uncommittedIn(projectId: string, worktreeId: string): Promise<number | null> {
+  const report = await request<Record<string, StatusLike>>('GET', `/api/projects/${projectId}/git`)
+  if (!answered(report)) return null
+
+  const status = report.body![worktreeId]
+  if (!status) return null
+
+  return status.staged + status.unstaged + status.conflicted
+}
+
+server.registerTool(
+  named('ccwt_remove_worktree'),
+  {
+    title: 'Remove a worktree',
+    description:
+      'Delete a worktree ccwt manages: its services are stopped, the ports it held are released, the directory goes, and the branch is kept unless `branch` says otherwise. Call it once **without** `confirm` and nothing is removed — the answer says what removal would destroy, which is what you put to the person before asking to go ahead. It refuses the repository root and the directory this session started in.',
+    inputSchema: z.strictObject({
+      worktree: z
+        .string()
+        .min(1)
+        .describe(
+          'Name of the worktree to remove, as ccwt_get_status reports it. Required: a tool that deletes a directory does not pick one on its own, so there is no default and no path shorthand.',
+        ),
+      branch: z
+        .boolean()
+        .optional()
+        .describe(
+          'Delete the local branch as well. Off by default — the branch outliving the worktree is what makes removal recoverable. Nothing on a remote changes either way, and git keeps a branch whose commits are merged nowhere.',
+        ),
+      confirm: z
+        .boolean()
+        .optional()
+        .describe(
+          'Leave it out the first time. Without it nothing is removed; pass `true` only after the person has been told the path and what goes with it, and has said to.',
+        ),
+      path: PATH_ARG,
+    }),
+    outputSchema: {
+      ...ANSWER,
+      removed: z
+        .boolean()
+        .optional()
+        .describe('False on the answer that only says what removal would destroy.'),
+      worktree: z.string().optional(),
+      path: z.string().optional(),
+      branch: z.string().nullable().optional(),
+      origin: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'Who made this worktree: "ccwt", "claude", or "manual" for one ccwt found rather than created. ccwt will not delete uncommitted or ignored files out of a manual one.',
+        ),
+      prunable: z
+        .boolean()
+        .optional()
+        .describe('True when the directory is already gone and only git’s entry for it is left.'),
+      held: z
+        .boolean()
+        .optional()
+        .describe('True when a process that is still running holds the lock — a session is working in there.'),
+      lockReason: z.string().nullable().optional(),
+      running: z.array(z.string()).optional().describe('Services that are up, and get stopped.'),
+      uncommitted: z
+        .number()
+        .nullable()
+        .optional()
+        .describe('Files carrying changes committed nowhere. Null when ccwt could not read the git status.'),
+      branchDeleted: z.boolean().optional(),
+      branchIssue: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Why the branch was kept, when `branch` asked for it to go.'),
+      stopped: z
+        .array(z.string())
+        .optional()
+        .describe('Strays that were still holding a port when the worktree went.'),
+    },
+    annotations: { ...ACTS, destructiveHint: true, idempotentHint: false },
+  },
+  async ({ worktree, branch, confirm, path }): Promise<Told> => {
+    const found = await standing(path)
+    const missing = needsProject(found)
+    if (missing) return nope(missing)
+    const at = found as Standing
+
+    const picked = await pick(at, worktree, 'remove')
+    if ('error' in picked) return broke(picked.error)
+
+    const wanted = picked.chosen
+
+    if (wanted.root === true) {
+      return nope(`${wanted.path} is the repository root, not a worktree ccwt can remove.`)
+    }
+
+    if (within(wanted.path, process.cwd())) {
+      return nope([
+        `This session started inside ${wanted.path}, so removing it would delete the directory it is working in.`,
+        'Say that it can go, and leave it to the person — the ccwt dashboard removes it with the same confirmation.',
+      ])
+    }
+
+    const prunable = wanted.prunable === true
+    const owned = wanted.origin !== 'manual'
+    const held = wanted.lockState === 'live'
+    const running = wanted.services
+      .filter((service) => service.state === 'running' || service.state === 'starting')
+      .map((service) => service.name)
+
+    const facts = {
+      worktree: wanted.name,
+      path: wanted.path,
+      branch: wanted.branch ?? null,
+      origin: wanted.origin ?? null,
+      prunable,
+      held,
+      lockReason: wanted.lockReason ?? null,
+      running,
+    }
+
+    if (confirm !== true) {
+      const uncommitted = prunable ? null : await uncommittedIn(at.project!.id, wanted.id)
+
+      const lines = [
+        `${wanted.name} — ${wanted.path}`,
+        `  branch ${wanted.branch ?? '(detached)'}`,
+        ...wanted.services.map(describeService),
+        '',
+        prunable
+          ? 'The directory is already gone from disk and git still keeps the entry. Removing drops that entry and changes nothing on disk.'
+          : owned
+            ? 'Removing deletes this directory, and with it the untracked files ccwt put there — a hardlinked `node_modules`, copied `.env` files, anything else never committed.'
+            : 'ccwt did not create this worktree, so it will not empty it: removal goes ahead only if nothing would be lost — nothing uncommitted, and no file git ignores. Anything there and it is refused, naming what it found.',
+      ]
+
+      if (uncommitted) {
+        lines.push(
+          `${uncommitted} file${uncommitted === 1 ? '' : 's'} ${uncommitted === 1 ? 'carries' : 'carry'} changes committed nowhere. Deleting the directory deletes them, and keeping the branch does not bring them back.`,
+        )
+      }
+
+      if (running.length) {
+        lines.push(
+          `${running.join(', ')} ${running.length === 1 ? 'is' : 'are'} up, and ${running.length === 1 ? 'is' : 'are'} stopped first.`,
+        )
+      }
+
+      if (held) {
+        lines.push(
+          `A process that is still running holds this worktree${wanted.lockReason ? ` — ${wanted.lockReason}` : ''}. That is a session working in there. ccwt releases the lock rather than refusing, so confirming takes the directory out from under it: quote this and let them answer.`,
+        )
+      } else if (wanted.locked === true) {
+        lines.push(
+          `It is locked${wanted.lockReason ? ` — ${wanted.lockReason}` : ''}, by nothing still running. Removal releases the lock first.`,
+        )
+      }
+
+      lines.push(
+        wanted.branch
+          ? branch === true
+            ? `\`branch: true\` deletes the branch ${wanted.branch} from this computer as well. Nothing on a remote changes, and git keeps it anyway if its commits are merged nowhere.`
+            : `The branch ${wanted.branch} is kept, so what was committed survives. Pass \`branch: true\` to delete it too.`
+          : 'It is detached, so there is no branch to keep or delete.',
+        '',
+        'Nothing has been removed. Put the path and what goes with it to the person, then pass `confirm: true`.',
+      )
+
+      return told(lines, { removed: false, uncommitted, ...facts })
+    }
+
+    const gone = await request<RemoveOutcomeLike>(
+      'DELETE',
+      `/api/projects/${at.project!.id}/worktrees/${wanted.id}${branch === true ? '?branch=true' : ''}`,
+      undefined,
+      PLACE_MS,
+    )
+    if (!answered(gone)) return broke(why(gone, `remove ${wanted.name}`))
+
+    const outcome = gone.body!
+    const stopped = Array.isArray(outcome.stopped) ? outcome.stopped : []
+
+    return told(
+      [
+        prunable
+          ? `Dropped git’s entry for ${wanted.name} — ${wanted.path}. Nothing was on disk to delete.`
+          : `Removed ${wanted.name} — ${wanted.path}.`,
+        ...(running.length
+          ? [`${running.join(', ')} ${running.length === 1 ? 'was' : 'were'} stopped first.`]
+          : []),
+        ...(stopped.length ? [`Reaped what was left behind: ${stopped.join('; ')}.`] : []),
+        outcome.branch === null
+          ? 'It was detached, so no branch was involved.'
+          : outcome.branchDeleted
+            ? `The branch ${outcome.branch} was deleted from this computer. Nothing on a remote changed.`
+            : outcome.branchIssue
+              ? `The branch ${outcome.branch} was kept — ${outcome.branchIssue}`
+              : `The branch ${outcome.branch} is kept, and holds what was committed to it.`,
+        '',
+        'The ports it held are released and ccwt has forgotten its scrollback. ccwt_get_status is the check.',
+      ],
+      {
+        removed: true,
+        ...facts,
+        branch: outcome.branch,
+        branchDeleted: outcome.branchDeleted === true,
+        branchIssue: outcome.branchIssue ?? null,
+        stopped,
+      },
     )
   },
 )

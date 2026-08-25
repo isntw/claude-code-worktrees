@@ -39,4 +39,20 @@
     <question>Take a recipe with one service `dev`, working directory `.`, the command `docker compose up -d`, range 5200 to 5299, an environment entry mapping `WEB_PORT` to the allocated port, and `node_modules` hardlinked — and explicitly tell ccwt this service is an ordinary command rather than a container stack. Validate it. Exactly one advisory comes back; give the exact location string it names.</question>
     <answer>services.0.kind</answer>
   </qa_pair>
+  <qa_pair>
+    <question>Ask ccwt to take away the checkout the repository itself lives in rather than one of its worktrees, with the confirmation passed so nothing is held back. It refuses. Quote the refusal exactly from the word after the path onwards.</question>
+    <answer>is the repository root, not a worktree ccwt can remove.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Pick a worktree of this repository that the session is not working inside, and find out what taking it away would destroy without letting anything be taken away. In the structured answer, what does the field reporting whether the worktree went say?</question>
+    <answer>false</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Find out what taking away one of this repository's worktrees would destroy, without taking it away. One field counts the files whose changes are committed nowhere. Name that field exactly as the answer spells it.</question>
+    <answer>uncommitted</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A worktree that ccwt found rather than created holds a file git ignores, and nothing else out of the ordinary. Asked to take that worktree away, does ccwt delete the directory? Answer yes or no.</question>
+    <answer>no</answer>
+  </qa_pair>
 </evaluation>

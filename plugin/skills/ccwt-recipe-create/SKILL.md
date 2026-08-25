@@ -36,8 +36,8 @@ If the project is not registered yet, `ccwt_add_project` registers the repositor
 
 A recipe only takes effect on a worktree ccwt creates next; existing ones keep what they have. Never
 run the project's command yourself to see whether it works — that is the duplicate ccwt exists to
-prevent. **Removing a worktree is the one thing you cannot do**: it stays in the dashboard, so a
-worktree you make for a test is one to mention when you are done.
+prevent. A worktree you make for a test is one to mention when you are done: `ccwt_remove_worktree`
+removes it, and its first call says what that would destroy rather than doing it.
 
 ## What to read before you write anything
 
@@ -210,5 +210,6 @@ retest a change, since a `command` or `env` edit reaches a service only on the n
 
 Then say plainly what the recipe does — which services, on which ports, what gets placed, what gets
 installed — what you saw when you fetched it, and that it takes effect on the next worktree rather
-than on ones that already exist. If a test left a worktree behind, say so: removing one is the
-dashboard's job.
+than on ones that already exist. If a test left a worktree behind, say so and offer to take it away:
+`ccwt_remove_worktree` says what removal would destroy before it removes anything, and the
+**`ccwt-worktree-remove`** skill covers the rest.
