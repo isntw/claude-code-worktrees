@@ -22,6 +22,7 @@ export interface Runtime {
 export interface SeenService {
   name: string
   command: string
+  primary?: boolean
   port: number | null
   up: boolean
 }
@@ -258,6 +259,7 @@ export async function describe(cwd: string, transcriptPath?: unknown): Promise<S
           return {
             name: service.name,
             command: service.command,
+            primary: service.primary,
             port,
             up: port === null ? false : await isListening(port),
           }

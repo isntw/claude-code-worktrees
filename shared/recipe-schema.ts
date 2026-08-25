@@ -37,6 +37,7 @@ export const serviceSchema = z
   .strictObject({
     name: z.string().regex(NAME, 'Use letters, digits, dash or underscore.'),
     kind: z.enum(['command', 'stack']).optional(),
+    primary: z.boolean().optional(),
     cwd: z.string().default('.'),
     command: z.string().min(1, 'A service needs a command.'),
     portRange: range,
@@ -119,6 +120,15 @@ const configObject = z
         }
       }
     })
+
+    const chosen = recipe.services.filter((service) => service.primary)
+    if (chosen.length > 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['services'],
+        message: `A worktree has one main service, and ${chosen.map((service) => `\`${service.name}\``).join(', ')} are all marked primary.`,
+      })
+    }
 
     const cycle = findCycle(recipe.services)
     if (cycle) {

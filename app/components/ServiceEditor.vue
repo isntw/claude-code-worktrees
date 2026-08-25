@@ -18,6 +18,7 @@ const props = withDefaults(
   defineProps<{
     service: Service
     index: number
+    siblings: number
     writes?: WriteEntry[]
     startOpen?: boolean
   }>(),
@@ -316,12 +317,20 @@ const setPinnedPort = (raw: string) => {
       <span class="truncate font-mono text-[0.6875rem] text-ink">{{
         service.name || 'unnamed'
       }}</span>
-      <span class="t-eyebrow ml-auto shrink-0 text-faint">{{
-        kind === 'stack' ? 'container stack' : 'command'
-      }}</span>
     </template>
 
     <template #actions>
+      <Tooltip
+        v-if="siblings > 1"
+        text="Its port is the one a worktree reports as its own, and the one the dashboard puts on the row. Without this the first service listed answers for the worktree."
+      >
+        <Checkbox
+          :model-value="service.primary === true"
+          @update:model-value="(value) => patch({ primary: value ? true : undefined })"
+          >main</Checkbox
+        >
+      </Tooltip>
+
       <Tabs
         :model-value="kind"
         :options="KINDS"

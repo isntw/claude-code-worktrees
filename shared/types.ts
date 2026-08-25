@@ -18,6 +18,7 @@ export interface Diagnostic {
 export interface Service {
   name: string
   kind?: ServiceKind
+  primary?: boolean
   cwd: string
   command: string
   portRange: [number, number]
@@ -73,6 +74,7 @@ export interface PortHold {
 
 export interface ServiceStatus {
   name: string
+  primary?: boolean
   state: ServiceState
   port: number | null
   url: string | null

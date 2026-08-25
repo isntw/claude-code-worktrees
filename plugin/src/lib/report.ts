@@ -76,11 +76,14 @@ export function overview(found: Seen): string | null {
   const rows = found.worktrees
     .filter((worktree) => worktree.services.some((service) => service.port !== null))
     .map((worktree) => {
-      const services = worktree.services
-        .filter((service) => service.port !== null)
+      const listed = worktree.services.filter((service) => service.port !== null)
+      const many = listed.length > 1
+
+      const services = [...listed]
+        .sort((left, right) => Number(Boolean(right.primary)) - Number(Boolean(left.primary)))
         .map(
           (service) =>
-            `${service.name} → ${service.port} ${service.up ? `running at http://localhost:${service.port}` : 'stopped'}`,
+            `${service.name}${many && service.primary ? ' (main)' : ''} → ${service.port} ${service.up ? `running at http://localhost:${service.port}` : 'stopped'}`,
         )
         .join(', ')
       return `  ${worktree.name}${worktree.root ? ' (root)' : ''} — ${services}`

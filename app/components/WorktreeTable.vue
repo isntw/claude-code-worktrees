@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Lock, LockOpen, Trash2 } from 'lucide-vue-next'
+import { ExternalLink, Lock, LockOpen, Trash2 } from 'lucide-vue-next'
 import type { OverviewRow, ServiceState, ServiceStatus, Worktree } from '#shared/types'
 import { PULL } from './pull'
 import { repairTitle } from './repair'
@@ -88,6 +88,50 @@ const contestOf = (row: OverviewRow): Contest | null => {
   }
 }
 
+interface PortCell {
+  port: number
+  url: string | null
+  taken: boolean
+  more: number
+  hint: string
+}
+
+const cellOf = (worktree: Worktree): PortCell | null => {
+  const listed = worktree.services.filter((service) => service.port !== null)
+  const first = listed.find((service) => service.primary) ?? listed[0]
+  if (!first || first.port === null) return null
+
+  const said = listed.map(
+    (service) => `${service.name} on ${service.port}${service.primary ? ' — primary' : ''}`,
+  )
+
+  if (first.taken && first.heldBy)
+    said.push(
+      `${first.heldBy.service} holds ${first.port} in ${first.heldBy.same ? first.heldBy.worktree : 'another project'}`,
+    )
+  else if (first.taken && first.movable)
+    said.push(`${first.port} is answering — ${first.name} takes the next free port on start`)
+  else if (first.taken)
+    said.push(`${first.port} is answering and ${first.name} is pinned to it`)
+
+  return {
+    port: first.port,
+    url: first.url,
+    taken: Boolean(first.taken),
+    more: listed.length - 1,
+    hint: said.join('\n'),
+  }
+}
+
+const cells = computed(() => {
+  const found: Record<string, PortCell> = {}
+  for (const row of rows) {
+    const cell = cellOf(row.worktree)
+    if (cell) found[row.worktree.id] = cell
+  }
+  return found
+})
+
 const contested = computed(() => {
   const found: Record<string, Contest> = {}
   for (const row of rows) {
@@ -100,23 +144,23 @@ const contested = computed(() => {
 
 <template>
   <div class="ccwt-table overflow-x-auto">
-    <table class="min-w-[62rem]">
+    <table class="min-w-[58rem]">
       <colgroup>
-        <col style="width: 13%" />
-        <col style="width: 26%" />
-        <col style="width: 19%" />
+        <col style="width: 28%" />
+        <col style="width: 20%" />
         <col style="width: 14%" />
         <col style="width: 11%" />
-        <col style="width: 17%" />
+        <col style="width: 9%" />
+        <col style="width: 18%" />
       </colgroup>
 
       <thead>
         <tr>
-          <th scope="col">Project</th>
           <th scope="col">Worktree</th>
           <th scope="col">Branch</th>
           <th scope="col">Pull request</th>
           <th scope="col">Services</th>
+          <th scope="col">Port</th>
           <th scope="col" class="text-right!">Actions</th>
         </tr>
       </thead>
@@ -131,10 +175,6 @@ const contested = computed(() => {
           @keydown.enter.prevent="emit('open', row)"
           @keydown.space.prevent="emit('open', row)"
         >
-          <td class="truncate whitespace-nowrap font-mono text-[0.6875rem] text-dim">
-            {{ row.projectName }}
-          </td>
-
           <td>
             <span class="flex items-center gap-1.5">
               <span class="truncate font-mono text-[0.6875rem] text-ink">{{
@@ -226,6 +266,36 @@ const contested = computed(() => {
               >
             </span>
             <span v-else class="font-sans text-[0.625rem] text-faint">none</span>
+          </td>
+
+          <td>
+            <span v-if="cells[row.worktree.id]" class="flex items-baseline gap-1">
+              <a
+                v-if="cells[row.worktree.id]!.url"
+                :href="cells[row.worktree.id]!.url!"
+                target="_blank"
+                rel="noreferrer"
+                class="flex items-center gap-1 font-mono text-[0.6875rem] tabular-nums text-ink underline decoration-line-strong underline-offset-2 transition-colors hover:decoration-ink"
+                :title="`Open ${cells[row.worktree.id]!.url}`"
+                @click.stop
+                ><span>{{ cells[row.worktree.id]!.port }}</span>
+                <ExternalLink :size="10" class="shrink-0 no-underline" aria-hidden="true"
+              /></a>
+              <span
+                v-else
+                class="font-mono text-[0.6875rem] tabular-nums"
+                :class="cells[row.worktree.id]!.taken ? 'text-caution' : 'text-faint'"
+                :title="cells[row.worktree.id]!.hint"
+                >{{ cells[row.worktree.id]!.port }}</span
+              >
+              <span
+                v-if="cells[row.worktree.id]!.more"
+                class="font-mono text-[0.625rem] text-faint"
+                :title="cells[row.worktree.id]!.hint"
+                >+{{ cells[row.worktree.id]!.more }}</span
+              >
+            </span>
+            <span v-else class="font-sans text-[0.625rem] text-faint">—</span>
           </td>
 
           <td>

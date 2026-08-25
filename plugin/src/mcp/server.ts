@@ -86,6 +86,7 @@ server.registerTool(
             services: z.array(
               z.object({
                 name: z.string(),
+                primary: z.boolean().optional(),
                 port: z.number().nullable(),
                 up: z.boolean(),
                 url: z.string().nullable(),
@@ -104,11 +105,13 @@ server.registerTool(
     const lines = [`${found.projectName} — ${found.rootPath}`, '']
 
     for (const worktree of found.worktrees) {
-      const services = worktree.services.map((service) =>
-        service.port === null
-          ? `    ${service.name}: no port allocated`
-          : `    ${service.name}: port ${service.port} — ${service.up ? `running at http://localhost:${service.port}` : 'stopped'}`,
-      )
+      const many = worktree.services.length > 1
+      const services = worktree.services.map((service) => {
+        const name = `${service.name}${many && service.primary ? ' (main)' : ''}`
+        return service.port === null
+          ? `    ${name}: no port allocated`
+          : `    ${name}: port ${service.port} — ${service.up ? `running at http://localhost:${service.port}` : 'stopped'}`
+      })
       lines.push(`  ${worktree.name}${worktree.root ? ' (root)' : ''} — ${worktree.path}`, ...services)
     }
 
@@ -128,6 +131,7 @@ server.registerTool(
         root: worktree.root,
         services: worktree.services.map((service) => ({
           name: service.name,
+          primary: service.primary,
           port: service.port,
           up: service.up,
           url: service.port === null ? null : `http://localhost:${service.port}`,

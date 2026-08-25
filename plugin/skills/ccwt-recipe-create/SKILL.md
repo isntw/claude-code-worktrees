@@ -141,6 +141,11 @@ another service's allocation. A range whose ends are equal is a pinned port.
 port answers, and is retried for two minutes — a port answering does not mean the thing behind it is
 ready.
 
+**When a project has more than one service, mark the one somebody opens with `"primary": true`.**
+That service's port is what a worktree reports as its own, and what the dashboard shows on the
+worktree's row. Only one service may carry it. Leave it off and the first service listed answers for
+the worktree — which is wrong for the common recipe that lists a database first.
+
 ## Container stacks
 
 Set `kind` to `"stack"`. A stack is still just a command to ccwt, so the recipe carries everything
