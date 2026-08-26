@@ -27,7 +27,7 @@ import {
   writeWorktreeConfig,
 } from './git'
 import { isDirectory, isSymlink, pathExists } from './fs'
-import { reapWithin } from './holders'
+import { reapWithin, straysWithin } from './holders'
 import { allocate, isFree, pruneSharedPorts, readAllocated, release } from './ports'
 import type { Placeholders } from './provision'
 import {
@@ -739,6 +739,45 @@ async function assertNothingToLose(worktreePath: string): Promise<void> {
   }
 }
 
+interface HeldPorts {
+  leaving: Record<string, number>
+  perService: Record<string, Record<string, number>>
+  holding: Set<number>
+}
+
+async function portsHeldBy(recipe: Recipe | null, worktreePath: string): Promise<HeldPorts> {
+  const leaving: Record<string, number> = {}
+  const perService: Record<string, Record<string, number>> = {}
+
+  for (const service of recipe?.services ?? []) {
+    const port = await readAllocated(worktreePath, service.name, service.portRange)
+    if (port !== null) leaving[service.name] = port
+    perService[service.name] = await readNamedPorts(worktreePath, service)
+  }
+
+  const holding = new Set<number>(Object.values(leaving))
+  for (const named of Object.values(perService)) {
+    for (const port of Object.values(named)) holding.add(port)
+  }
+
+  return { leaving, perService, holding }
+}
+
+export async function whatRemovalTakes(
+  project: Project,
+  worktreeId: string,
+  worktreePath: string,
+): Promise<number[]> {
+  const { holding } = await portsHeldBy(project.recipe, worktreePath)
+  const taken = new Set<number>(supervisor.pidsIn(worktreeId))
+
+  for (const port of holding) {
+    for (const stray of await straysWithin(port, worktreePath)) taken.add(stray.pid)
+  }
+
+  return [...taken]
+}
+
 export async function remove(
   project: Project,
   worktreeId: string,
@@ -766,19 +805,7 @@ export async function remove(
 
   await supervisor.stopWorktree(worktreeId)
 
-  const leaving: Record<string, number> = {}
-  const perService: Record<string, Record<string, number>> = {}
-
-  for (const service of recipe?.services ?? []) {
-    const port = await readAllocated(worktree.path, service.name, service.portRange)
-    if (port !== null) leaving[service.name] = port
-    perService[service.name] = await readNamedPorts(worktree.path, service)
-  }
-
-  const holding = new Set<number>(Object.values(leaving))
-  for (const named of Object.values(perService)) {
-    for (const port of Object.values(named)) holding.add(port)
-  }
+  const { leaving, perService, holding } = await portsHeldBy(recipe, worktree.path)
 
   const base = {
     project: slugify(project.name),
