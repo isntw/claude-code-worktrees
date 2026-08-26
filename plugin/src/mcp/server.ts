@@ -829,6 +829,22 @@ async function uncommittedIn(projectId: string, worktreeId: string): Promise<num
   return status.staged + status.unstaged + status.conflicted
 }
 
+interface OccupancyLike {
+  occupants?: { pid: number; command: string; name: string; ours: boolean }[]
+}
+
+async function workingIn(projectId: string, worktreeId: string): Promise<string[]> {
+  const report = await request<OccupancyLike>(
+    'GET',
+    `/api/projects/${projectId}/worktrees/${worktreeId}/occupants`,
+  )
+  if (!answered(report)) return []
+
+  return (report.body?.occupants ?? [])
+    .filter((one) => !one.ours)
+    .map((one) => `pid ${one.pid} ${one.name}`)
+}
+
 server.registerTool(
   named('ccwt_remove_worktree'),
   {
@@ -897,6 +913,12 @@ server.registerTool(
         .array(z.string())
         .optional()
         .describe('Strays that were still holding a port when the worktree went.'),
+      working: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Programs whose working directory is inside this worktree, which removal takes the ground out from under. ccwt does not stop them, and cannot move a session out of a directory.',
+        ),
     },
     annotations: { ...ACTS, destructiveHint: true, idempotentHint: false },
   },
@@ -942,6 +964,7 @@ server.registerTool(
 
     if (confirm !== true) {
       const uncommitted = prunable ? null : await uncommittedIn(at.project!.id, wanted.id)
+      const working = prunable ? [] : await workingIn(at.project!.id, wanted.id)
 
       const lines = [
         `${wanted.name} — ${wanted.path}`,
@@ -967,6 +990,12 @@ server.registerTool(
         )
       }
 
+      if (working.length) {
+        lines.push(
+          `${working.length === 1 ? 'A program is' : `${working.length} programs are`} working inside this directory: ${working.join('; ')}. Removing it takes the ground out from under ${working.length === 1 ? 'it' : 'them'} — ccwt stops its own services, but it does not stop these and cannot move a session out of a directory. Quote this and let them answer.`,
+        )
+      }
+
       if (held) {
         lines.push(
           `A process that is still running holds this worktree${wanted.lockReason ? ` — ${wanted.lockReason}` : ''}. That is a session working in there. ccwt releases the lock rather than refusing, so confirming takes the directory out from under it: quote this and let them answer.`,
@@ -987,7 +1016,7 @@ server.registerTool(
         'Nothing has been removed. Put the path and what goes with it to the person, then pass `confirm: true`.',
       )
 
-      return told(lines, { removed: false, uncommitted, ...facts })
+      return told(lines, { removed: false, uncommitted, working, ...facts })
     }
 
     const gone = await request<RemoveOutcomeLike>(

@@ -9,6 +9,7 @@ import type {
   ForgeSession,
   ForgeStatus,
   FreeOutcome,
+  Occupancy,
   FreeRequest,
   GitReport,
   LogLine,
@@ -108,6 +109,8 @@ export function useApi() {
     listWorktrees: (projectId: string) => call<Worktree[]>(`/projects/${projectId}/worktrees`),
     createWorktree: (projectId: string, input: { name: string; branch: string; start: boolean }) =>
       call<Worktree>(`/projects/${projectId}/worktrees`, { method: 'POST', body: input }),
+    occupants: (projectId: string, worktreeId: string) =>
+      call<Occupancy>(`/projects/${projectId}/worktrees/${worktreeId}/occupants`),
     removeWorktree: (projectId: string, worktreeId: string, alsoBranch = false) =>
       call<RemoveOutcome>(`${worktree(projectId, worktreeId)}?branch=${alsoBranch}`, {
         method: 'DELETE',

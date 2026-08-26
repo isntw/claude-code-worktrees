@@ -53,11 +53,43 @@ So when the answer says a process that is **still running** holds it, that is an
 working directory. Quote the reason to the person and let them decide. Never confirm past a live
 lock on your own judgement.
 
+## What is working in there
+
+The first call also names every program whose working directory is inside the worktree, as
+`working`. Removing the directory takes the ground out from under each of them: a session that `cd`
+ed in loses the directory it is working in, and what happens next is not ccwt's to control.
+
+ccwt leaves them alone. It stops its own services and reaps a stray still holding one of the
+worktree's ports, and those are already left out of `working` — what is left is collateral. Quote it
+with the path. A session in that list has to leave the directory itself; nothing outside a process
+can move it, and `ExitWorktree` does not apply to a worktree ccwt created.
+
+## Being asked to leave one
+
+"Exit this worktree", or work that is finished and a directory that should go with it, is three
+steps in this order:
+
+1. **Push what is worth keeping.** Once it is on the remote, the directory holds nothing that is
+   only there.
+2. **Leave the directory** — `cd` to the repository root. Nothing outside a process can move it out
+   of a directory, so this is the one step only the session standing there can take.
+3. **Then remove it.**
+
+Step 2 is not optional and nothing checks it for you. The tool refuses a worktree the session was
+*launched* in, which it knows from where its own process started — it cannot see a `cd` made since.
+A session that started at the root and moved in gets no refusal, so removing from in there deletes
+the directory out from under itself, and every tool call after it.
+
+`ExitWorktree` is not this. It exits a worktree Claude Code created for a session of its own, and
+ccwt creates worktrees with `git worktree add` — so there is no session to exit and the call does
+nothing at all. It says so, and a no-op is not the work being done.
+
 ## Never the one you are in
 
-The tool refuses the worktree this session started in, and refuses the repository root. If what
-should go is where you are working, say so and leave it — deleting your own working directory takes
-every tool call after it.
+The tool refuses the worktree this session started in, and refuses the repository root. That
+refusal is final for a session launched inside a worktree: where its process started never changes,
+so no amount of moving about makes the tool accept it. Say so and leave it to the person. A session
+that only moved in has the three steps above instead.
 
 ## Stale entries
 
