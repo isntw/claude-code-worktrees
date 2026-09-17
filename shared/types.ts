@@ -159,6 +159,7 @@ export interface Worktree {
   lockedAt: string | null
   prunable: boolean
   provisioned: boolean
+  repairing: ProvisionProgress | null
   services: ServiceStatus[]
   issues: Diagnostic[]
 }

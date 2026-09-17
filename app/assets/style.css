@@ -646,16 +646,6 @@
     color: var(--ccwt-canvas);
   }
 
-  .ccwt-table tbody tr.is-progress,
-  .ccwt-table tbody tr.is-progress:hover {
-    background: var(--ccwt-surface);
-    cursor: default;
-  }
-
-  .ccwt-table tbody tr.is-progress td {
-    padding-block: 0.45rem;
-  }
-
   .ccwt-log {
     font-family: var(--font-mono);
     font-size: 0.6875rem;

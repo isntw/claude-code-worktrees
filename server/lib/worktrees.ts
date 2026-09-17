@@ -331,6 +331,7 @@ export async function list(project: Project): Promise<Worktree[]> {
           lockedAt: lockedAtOf(entry.locked, entry.lockReason),
           prunable: entry.prunable,
           provisioned: !(await outOfDate(project, entry.path)),
+          repairing: supervisor.progressFor(id),
           services: await servicesFor(project, id, entry.path),
           issues: [],
         }

@@ -305,6 +305,7 @@ onMounted(async () => {
     if (message.type === 'log') return
     if (message.type === 'provision') {
       track(message.worktreeId, message.progress)
+      if (!message.progress) nudge()
       return
     }
     nudge()

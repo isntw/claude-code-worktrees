@@ -192,8 +192,22 @@ const repairing = ref<string | null>(null)
 const repairingAll = ref(false)
 const { progress, started, settled, finished, track, forget: forgetProgress } = useProvisionProgress()
 
-const progressFor = (worktree: Worktree): ProvisionProgress | null =>
-  progress.value[worktree.id] ?? (finished(worktree.id) ? { label: 'ready', done: 1, total: 1 } : null)
+const READY: ProvisionProgress = { label: 'ready', done: 1, total: 1 }
+
+const driving = (worktree: Worktree) =>
+  repairing.value === worktree.id || (repairingAll.value && !worktree.provisioned)
+
+const progressFor = (worktree: Worktree): ProvisionProgress | null => {
+  const live = progress.value[worktree.id]
+  if (live) return live
+  if (driving(worktree)) return finished(worktree.id) ? READY : null
+
+  return worktree.repairing
+}
+
+const busy = (worktree: Worktree) => driving(worktree) || Boolean(worktree.repairing)
+
+const anyRepairing = computed(() => worktrees.value.some((worktree) => worktree.repairing))
 
 const settle = (next: Worktree) => {
   const at = worktrees.value.findIndex((worktree) => worktree.id === next.id)
@@ -203,6 +217,7 @@ const settle = (next: Worktree) => {
 const repair = async (worktree: Worktree) => {
   repairing.value = worktree.id
   error.value = null
+  forgetProgress()
   if (selected.value !== worktree.id) await show(worktree.id)
 
   try {
@@ -325,6 +340,7 @@ onMounted(async () => {
     }
     if (message.type === 'provision') {
       track(message.worktreeId, message.progress)
+      if (!message.progress) load()
       return
     }
     load()
@@ -359,7 +375,7 @@ onBeforeUnmount(() => {
     <Button
       v-if="unprovisioned.length"
       variation="warning"
-      :disabled="loading || repairingAll || repairing !== null || !project?.recipe"
+      :disabled="loading || repairingAll || repairing !== null || anyRepairing || !project?.recipe"
       :title="REPAIR_HINT"
       @click="repairEvery"
       >{{ repairingAll ? repairAllLabel : 'repair all' }}</Button
@@ -451,7 +467,7 @@ onBeforeUnmount(() => {
         @lock="act(() => api.lockWorktree(projectId, worktree.id))"
         @unlock="act(() => api.unlockWorktree(projectId, worktree.id))"
         @remove="doomed = worktree"
-        :repairing="repairing === worktree.id || (repairingAll && !worktree.provisioned)"
+        :repairing="busy(worktree)"
         :progress="progressFor(worktree)"
         @repair="repair(worktree)"
         @merge="openMerge(worktree)"

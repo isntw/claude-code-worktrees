@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const { done, total, label } = defineProps<{ done: number; total: number; label: string }>()
+const { done, total, label, compact = false } = defineProps<{
+  done: number
+  total: number
+  label: string
+  compact?: boolean
+}>()
 
 const determinate = computed(() => total > 0)
 const percent = computed(() =>
@@ -10,7 +15,7 @@ const percent = computed(() =>
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
+  <div class="flex items-center gap-2" :title="compact ? label : undefined">
     <span
       class="t-progress min-w-0 flex-1"
       role="progressbar"
@@ -24,6 +29,6 @@ const percent = computed(() =>
     </span>
 
     <span v-if="determinate" class="t-data shrink-0 tabular-nums text-dim">{{ percent }}%</span>
-    <span class="t-data shrink-0 truncate text-faint">{{ label }}</span>
+    <span v-if="!compact" class="t-data shrink-0 truncate text-faint">{{ label }}</span>
   </div>
 </template>

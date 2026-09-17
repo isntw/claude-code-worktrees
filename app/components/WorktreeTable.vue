@@ -30,6 +30,11 @@ const emit = defineEmits<{
   take: [row: OverviewRow, service: string]
 }>()
 
+const busy = (row: OverviewRow) => repairing === row.worktree.id || Boolean(row.worktree.repairing)
+
+const progressOf = (row: OverviewRow): ProvisionProgress | null =>
+  progress[row.worktree.id] ?? row.worktree.repairing
+
 const lockAction = (worktree: Worktree) => {
   if (worktree.root) return 'The repository root cannot be locked'
   if (!worktree.locked) return 'Lock this worktree so nothing removes or prunes it'
@@ -258,7 +263,16 @@ const contested = computed(() => {
             <span v-else class="font-sans text-[0.625rem] text-faint">—</span>
           </td>
 
-          <td>
+          <td v-if="busy(row)" colspan="2">
+            <Progress
+              compact
+              :done="progressOf(row)?.done ?? 0"
+              :total="progressOf(row)?.total ?? 0"
+              :label="progressOf(row)?.label ?? 'starting repair'"
+            />
+          </td>
+
+          <td v-if="!busy(row)">
             <span
               v-if="row.worktree.services.length"
               class="flex items-center gap-1.5"
@@ -277,7 +291,7 @@ const contested = computed(() => {
             <span v-else class="font-sans text-[0.625rem] text-faint">none</span>
           </td>
 
-          <td>
+          <td v-if="!busy(row)">
             <span v-if="cells[row.worktree.id]" class="flex items-baseline gap-1">
               <a
                 v-if="cells[row.worktree.id]!.url"
@@ -313,10 +327,10 @@ const contested = computed(() => {
                 v-if="row.worktree.services.length && !row.worktree.provisioned && !row.worktree.root"
                 size="sm"
                 variation="warning"
-                :disabled="repairing === row.worktree.id"
+                :disabled="busy(row)"
                 :title="repairTitle(row.worktree.name)"
                 @click.stop="emit('repair', row)"
-                >{{ repairing === row.worktree.id ? 'repair…' : 'repair' }}</Button
+                >{{ busy(row) ? 'repair…' : 'repair' }}</Button
               >
               <Button
                 v-else-if="row.worktree.services.length && anyLive(row.worktree)"
@@ -373,16 +387,6 @@ const contested = computed(() => {
                 <Trash2 :size="11" aria-hidden="true" />
               </Button>
             </span>
-          </td>
-        </tr>
-
-        <tr v-if="repairing === row.worktree.id" class="is-progress">
-          <td colspan="6">
-            <Progress
-              :done="progress[row.worktree.id]?.done ?? 0"
-              :total="progress[row.worktree.id]?.total ?? 0"
-              :label="progress[row.worktree.id]?.label ?? 'starting repair'"
-            />
           </td>
         </tr>
         </template>

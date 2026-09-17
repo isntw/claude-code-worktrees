@@ -263,6 +263,10 @@ export function progress(worktreeId: string, value: ProvisionProgress | null): v
   for (const listener of progressListeners) listener(worktreeId, value)
 }
 
+export function progressFor(worktreeId: string): ProvisionProgress | null {
+  return lastProgress.get(worktreeId) ?? null
+}
+
 export function subscribeProgress(listener: ProgressListener): () => void {
   progressListeners.add(listener)
   return () => progressListeners.delete(listener)
