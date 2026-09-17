@@ -426,6 +426,17 @@ const TIP =
     </section>
 
     <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Progress</p></header>
+      <div class="flex flex-col gap-3 px-3 py-3">
+        <Progress :done="0" :total="632" label="relinking node_modules" />
+        <Progress :done="214" :total="632" label="relinking node_modules" />
+        <Progress :done="632" :total="632" label="relinking node_modules" />
+        <Progress :done="0" :total="0" label="stopping dev" />
+        <Progress :done="0" :total="0" label="copying declared files" />
+      </div>
+    </section>
+
+    <section :class="SECTION">
       <header :class="HEAD"><p class="t-eyebrow">Text inputs</p></header>
       <div class="flex flex-col gap-3 px-3 py-3">
         <Input v-model="text" label="Filled" />

@@ -436,6 +436,7 @@ async function repairFiles(
 
   if (live.length) {
     supervisor.note(worktreeId, 'provision', `stopping ${live.join(', ')} to update the worktree…`)
+    supervisor.progress(worktreeId, { label: `stopping ${live.join(', ')}`, done: 0, total: 0 })
     for (const name of startOrder(recipe.services).reverse()) {
       if (live.includes(name)) await supervisor.stop(worktreeId, name)
     }
@@ -454,6 +455,7 @@ async function repairFiles(
       recipe,
       placeholders(project, worktree.path),
       refresh,
+      (progress) => supervisor.progress(worktreeId, progress),
     )
 
     if (report.written.length) {
@@ -495,6 +497,7 @@ async function resumeServices(
 
   const worktreeId = worktree.id
   supervisor.note(worktreeId, 'provision', `starting ${live.join(', ')} back up…`)
+  supervisor.progress(worktreeId, { label: `starting ${live.join(', ')}`, done: 0, total: 0 })
 
   for (const name of startOrder(recipe.services)) {
     if (!live.includes(name)) continue
@@ -512,7 +515,11 @@ async function repairWorktree(
   worktree: Worktree,
   refresh: boolean,
 ): Promise<void> {
-  await resumeServices(project, worktree, await repairFiles(project, worktree, refresh))
+  try {
+    await resumeServices(project, worktree, await repairFiles(project, worktree, refresh))
+  } finally {
+    supervisor.progress(worktree.id, null)
+  }
 }
 
 export async function repair(
@@ -537,22 +544,31 @@ export async function repairAll(project: Project, refresh = false): Promise<Work
   await enableWorktreeConfig(project.rootPath)
   await pruneSharedPorts(project.rootPath)
 
-  const targets = (await list(project)).filter((worktree) => !worktree.root && !worktree.prunable)
+  const targets = (await list(project)).filter(
+    (worktree) => !worktree.root && !worktree.prunable && !worktree.provisioned,
+  )
 
   const placed = await Promise.all(
-    targets.map(async (worktree) => ({
-      worktree,
-      live: await repairFiles(project, worktree, refresh).catch((cause: Error) => {
+    targets.map(async (worktree) => {
+      const live = await repairFiles(project, worktree, refresh).catch((cause: Error) => {
         supervisor.note(worktree.id, 'provision', cause.message, 'stderr')
         return [] as string[]
-      }),
-    })),
+      })
+
+      supervisor.progress(worktree.id, null)
+
+      return { worktree, live }
+    }),
   )
 
   for (const { worktree, live } of placed) {
-    await resumeServices(project, worktree, live).catch((cause: Error) => {
-      supervisor.note(worktree.id, 'provision', cause.message, 'stderr')
-    })
+    try {
+      await resumeServices(project, worktree, live)
+    } catch (cause) {
+      supervisor.note(worktree.id, 'provision', (cause as Error).message, 'stderr')
+    } finally {
+      supervisor.progress(worktree.id, null)
+    }
   }
 
   return list(project)

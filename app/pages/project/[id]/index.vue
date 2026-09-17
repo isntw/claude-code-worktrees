@@ -7,6 +7,7 @@ import type {
   GitReport,
   LogLine,
   Project,
+  ProvisionProgress,
   PullRequest,
   ServiceStatus,
   Worktree,
@@ -189,6 +190,10 @@ const watching = async (worktree: Worktree, run: () => Promise<unknown>) => {
 
 const repairing = ref<string | null>(null)
 const repairingAll = ref(false)
+const { progress, started, settled, finished, track, forget: forgetProgress } = useProvisionProgress()
+
+const progressFor = (worktree: Worktree): ProvisionProgress | null =>
+  progress.value[worktree.id] ?? (finished(worktree.id) ? { label: 'ready', done: 1, total: 1 } : null)
 
 const settle = (next: Worktree) => {
   const at = worktrees.value.findIndex((worktree) => worktree.id === next.id)
@@ -209,9 +214,14 @@ const repair = async (worktree: Worktree) => {
   }
 }
 
+const repairAllLabel = computed(() =>
+  started.value ? `repair all… ${settled.value}/${started.value}` : 'repair all…',
+)
+
 const repairEvery = async () => {
   repairingAll.value = true
   error.value = null
+  forgetProgress()
 
   try {
     for (const next of await api.provisionAll(projectId.value, true)) settle(next)
@@ -313,6 +323,10 @@ onMounted(async () => {
       if (message.projectId === projectId.value) forge.value = message.status
       return
     }
+    if (message.type === 'provision') {
+      track(message.worktreeId, message.progress)
+      return
+    }
     load()
   })
 
@@ -348,7 +362,7 @@ onBeforeUnmount(() => {
       :disabled="loading || repairingAll || repairing !== null || !project?.recipe"
       :title="REPAIR_HINT"
       @click="repairEvery"
-      >{{ repairingAll ? 'repair all…' : 'repair all' }}</Button
+      >{{ repairingAll ? repairAllLabel : 'repair all' }}</Button
     >
     <Button
       variation="primary"
@@ -437,7 +451,8 @@ onBeforeUnmount(() => {
         @lock="act(() => api.lockWorktree(projectId, worktree.id))"
         @unlock="act(() => api.unlockWorktree(projectId, worktree.id))"
         @remove="doomed = worktree"
-        :repairing="repairingAll || repairing === worktree.id"
+        :repairing="repairing === worktree.id || (repairingAll && !worktree.provisioned)"
+        :progress="progressFor(worktree)"
         @repair="repair(worktree)"
         @merge="openMerge(worktree)"
       />

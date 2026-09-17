@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import type {
   LogLine,
+  ProvisionProgress,
   Service,
   ServiceState,
   ServiceStatus,
@@ -27,6 +28,7 @@ const TAIL_LINES = 12
 
 export type LogListener = (line: LogLine) => void
 export type StatusListener = (worktreeId: string, status: ServiceStatus) => void
+export type ProgressListener = (worktreeId: string, progress: ProvisionProgress | null) => void
 
 interface Identity {
   pgid: number
@@ -65,6 +67,8 @@ interface Entry {
 const entries = new Map<string, Entry>()
 const logListeners = new Set<LogListener>()
 const statusListeners = new Set<StatusListener>()
+const progressListeners = new Set<ProgressListener>()
+const lastProgress = new Map<string, ProvisionProgress>()
 
 const keyFor = (worktreeId: string, service: string) => `${worktreeId}:${service}`
 
@@ -250,6 +254,18 @@ export function subscribe(listener: LogListener): () => void {
 export function subscribeStatus(listener: StatusListener): () => void {
   statusListeners.add(listener)
   return () => statusListeners.delete(listener)
+}
+
+export function progress(worktreeId: string, value: ProvisionProgress | null): void {
+  if (!value && !lastProgress.delete(worktreeId)) return
+  if (value) lastProgress.set(worktreeId, value)
+
+  for (const listener of progressListeners) listener(worktreeId, value)
+}
+
+export function subscribeProgress(listener: ProgressListener): () => void {
+  progressListeners.add(listener)
+  return () => progressListeners.delete(listener)
 }
 
 export function environmentFor(service: Service, vars: Vars): NodeJS.ProcessEnv {

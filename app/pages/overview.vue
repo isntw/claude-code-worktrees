@@ -238,6 +238,7 @@ const took = async () => {
 }
 
 const repairing = ref<string | null>(null)
+const { progress, track } = useProvisionProgress()
 
 const repair = async (row: OverviewRow) => {
   repairing.value = row.worktree.id
@@ -302,6 +303,10 @@ onMounted(async () => {
 
   disconnect = api.connect((message) => {
     if (message.type === 'log') return
+    if (message.type === 'provision') {
+      track(message.worktreeId, message.progress)
+      return
+    }
     nudge()
   })
 
@@ -376,6 +381,7 @@ const COUNT = 'ml-auto font-mono text-[0.625rem] tabular-nums text-faint'
           @unlock="unlock"
           @remove="remove"
           :repairing="repairing"
+          :progress="progress"
           @repair="repair"
         />
         <p v-else class="px-3 py-3 font-sans text-[0.6875rem] text-faint">{{ nothing(group) }}</p>

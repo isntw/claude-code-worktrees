@@ -252,6 +252,12 @@ export interface LogLine {
   text: string
 }
 
+export interface ProvisionProgress {
+  label: string
+  done: number
+  total: number
+}
+
 export type PortMode = 'allocated' | 'fixed' | 'none'
 
 export type SetupTopic = 'files' | 'services' | 'together' | 'problems'
@@ -471,3 +477,4 @@ export type SocketMessage =
   | { type: 'service'; worktreeId: string; status: ServiceStatus }
   | { type: 'worktrees'; projectId: string }
   | { type: 'pulls'; projectId: string; status: ForgeStatus }
+  | { type: 'provision'; worktreeId: string; progress: ProvisionProgress | null }

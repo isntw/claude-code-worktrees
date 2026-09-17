@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { ExternalLink, Lock, LockOpen, Trash2 } from 'lucide-vue-next'
-import type { OverviewRow, ServiceState, ServiceStatus, Worktree } from '#shared/types'
+import type {
+  OverviewRow,
+  ProvisionProgress,
+  ServiceState,
+  ServiceStatus,
+  Worktree,
+} from '#shared/types'
 import { PULL } from './pull'
 import { repairTitle } from './repair'
 import type { Variation } from './variation'
 
-const { rows, repairing = null } = defineProps<{ rows: OverviewRow[]; repairing?: string | null }>()
+const { rows, repairing = null, progress = {} } = defineProps<{
+  rows: OverviewRow[]
+  repairing?: string | null
+  progress?: Record<string, ProvisionProgress>
+}>()
 
 const emit = defineEmits<{
   open: [row: OverviewRow]
@@ -166,9 +176,8 @@ const contested = computed(() => {
       </thead>
 
       <tbody>
+        <template v-for="row in rows" :key="row.worktree.id">
         <tr
-          v-for="row in rows"
-          :key="row.worktree.id"
           tabindex="0"
           :title="row.worktree.path"
           @click="emit('open', row)"
@@ -366,6 +375,17 @@ const contested = computed(() => {
             </span>
           </td>
         </tr>
+
+        <tr v-if="repairing === row.worktree.id" class="is-progress">
+          <td colspan="6">
+            <Progress
+              :done="progress[row.worktree.id]?.done ?? 0"
+              :total="progress[row.worktree.id]?.total ?? 0"
+              :label="progress[row.worktree.id]?.label ?? 'starting repair'"
+            />
+          </td>
+        </tr>
+        </template>
       </tbody>
     </table>
   </div>

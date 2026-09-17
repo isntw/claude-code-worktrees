@@ -523,6 +523,43 @@
     outline-offset: 1px;
   }
 
+  .t-progress {
+    position: relative;
+    display: block;
+    block-size: 3px;
+    inline-size: 100%;
+    overflow: hidden;
+    background: var(--ccwt-line);
+  }
+
+  .t-progress-fill {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    display: block;
+    background: var(--ccwt-ink);
+    transition: inline-size 240ms linear;
+  }
+
+  .t-progress-drift {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    display: block;
+    inline-size: 34%;
+    background: var(--ccwt-ink);
+    animation: ccwt-drift 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes ccwt-drift {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(394%);
+    }
+  }
+
   .sweep::after {
     content: '';
     position: absolute;
@@ -607,6 +644,16 @@
 
   .ccwt-table tbody tr.is-selected :where(span, i, div, code) {
     color: var(--ccwt-canvas);
+  }
+
+  .ccwt-table tbody tr.is-progress,
+  .ccwt-table tbody tr.is-progress:hover {
+    background: var(--ccwt-surface);
+    cursor: default;
+  }
+
+  .ccwt-table tbody tr.is-progress td {
+    padding-block: 0.45rem;
   }
 
   .ccwt-log {
