@@ -67,7 +67,7 @@ export function renameTo(
   const wanted = `${TITLE_PREFIX}${found.projectName}/${found.here.name}`
   if (wanted === current) return null
 
-  if (!current) return wanted
+  if (!current) return ours === wanted ? null : wanted
   if (!ours) return wanted
   return current === ours ? wanted : null
 }

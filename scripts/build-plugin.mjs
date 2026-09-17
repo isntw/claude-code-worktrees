@@ -18,8 +18,8 @@ const manifestPath = join(root, 'plugin', '.claude-plugin', 'plugin.json')
 const manifest = await read('plugin/.claude-plugin/plugin.json')
 
 if (manifest.version !== version) {
-  const { name, version: _was, ...rest } = manifest
-  await writeFile(manifestPath, `${JSON.stringify({ name, version, ...rest }, null, 2)}\n`)
+  const { $schema, name, version: _was, ...rest } = manifest
+  await writeFile(manifestPath, `${JSON.stringify({ $schema, name, version, ...rest }, null, 2)}\n`)
 }
 
 const result = spawnSync(
