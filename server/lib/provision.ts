@@ -1,6 +1,6 @@
 import { cp, link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import type { Recipe, WriteEntry } from '../../shared/types'
+import type { ProvisionProgress, Recipe, WriteEntry } from '../../shared/types'
 import { argv, exec } from './exec'
 import { isDirectory, isSymlink, modifiedAt, pathExists, sameFile } from './fs'
 import { isInside } from './git'
@@ -15,6 +15,11 @@ export const ALWAYS_PER_WORKTREE = [
   '.next',
   'dist',
 ] as const
+
+export type ProvisionWatch = (progress: ProvisionProgress) => void
+
+const PROGRESS_MS = 400
+const PROGRESS_SCAN_DIRS = 4096
 
 export interface ProvisionReport {
   copied: string[]
@@ -286,14 +291,65 @@ function alreadyLinked(stderr: string): boolean {
   return lines.length > 0 && lines.every((line) => /are identical \(not copied\)\.$/.test(line.trim()))
 }
 
-async function hardlinkTree(source: string, target: string, refresh: boolean): Promise<void> {
+async function countEntries(path: string): Promise<number> {
+  const entries = await readdir(path, { withFileTypes: true }).catch(() => null)
+  if (!entries) return 0
+
+  let total = 0
+  let descended = 0
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || descended >= PROGRESS_SCAN_DIRS) {
+      total += 1
+      continue
+    }
+
+    descended += 1
+    const inner = await readdir(join(path, entry.name)).catch(() => null)
+    total += inner?.length || 1
+  }
+
+  return total
+}
+
+function track(target: string, total: number, report: (done: number) => void): () => void {
+  let busy = false
+
+  const timer = setInterval(() => {
+    if (busy) return
+    busy = true
+
+    void countEntries(target)
+      .then((done) => report(Math.min(done, total)))
+      .finally(() => {
+        busy = false
+      })
+  }, PROGRESS_MS)
+
+  timer.unref()
+
+  return () => clearInterval(timer)
+}
+
+async function hardlinkTree(
+  source: string,
+  target: string,
+  refresh: boolean,
+  watch?: (done: number, total: number) => void,
+): Promise<void> {
   if (process.platform === 'win32') throw cannotHardlink('this platform cannot hardlink a directory tree')
 
   if (refresh) await rm(target, { recursive: true, force: true })
 
   const merging = !refresh && (await pathExists(target))
   const args = merging ? ['-aln', `${source}/.`, target] : ['-al', source, target]
-  const result = await exec('cp', args, { timeoutMs: 300_000 }).catch(() => null)
+
+  const total = watch ? await countEntries(source) : 0
+  const stop = watch && total ? track(target, total, (done) => watch(done, total)) : null
+
+  const result = await exec('cp', args, { timeoutMs: 300_000 })
+    .catch(() => null)
+    .finally(() => stop?.())
 
   if (result?.code === 0) return
   if (result && merging && alreadyLinked(result.stderr)) return
@@ -311,6 +367,7 @@ export async function linkPaths(
   entries: string[],
   report: ProvisionReport,
   refresh = false,
+  watch?: ProvisionWatch,
 ): Promise<void> {
   for (const entry of entries) {
     const reason = unsafe(entry)
@@ -343,10 +400,19 @@ export async function linkPaths(
 
     if (await replaceSymlink(target, entry, report, directory)) continue
 
+    const label = `${refresh ? 'relinking' : 'linking'} ${entry}`
+    watch?.({ label, done: 0, total: 0 })
+
     try {
       await mkdir(dirname(target), { recursive: true })
 
-      if (directory) await hardlinkTree(source, target, refresh)
+      if (directory)
+        await hardlinkTree(
+          source,
+          target,
+          refresh,
+          watch && ((done, total) => watch({ label, done, total })),
+        )
       else
         await link(source, target).catch((cause: Error) => {
           throw cannotHardlink(cause.message)
@@ -418,12 +484,19 @@ export async function placeFiles(
   recipe: Recipe,
   at: Placeholders,
   refresh = false,
+  watch?: ProvisionWatch,
 ): Promise<ProvisionReport> {
   const report = emptyReport()
 
+  if (recipe.provision.copy.length) watch?.({ label: 'copying declared files', done: 0, total: 0 })
   await copyFiles(rootPath, worktreePath, recipe.provision.copy, report)
-  await linkPaths(rootPath, worktreePath, recipe.provision.link, report, refresh)
+
+  await linkPaths(rootPath, worktreePath, recipe.provision.link, report, refresh, watch)
+
+  if (recipe.provision.write.length) watch?.({ label: 'writing declared files', done: 0, total: 0 })
   await writeFiles(worktreePath, recipe.provision.write, at, report)
+
+  if (report.linked.length) watch?.({ label: 'pruning build caches', done: 0, total: 0 })
   await pruneCaches(worktreePath, report.linked, report)
 
   return report

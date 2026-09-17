@@ -10,6 +10,10 @@ export default defineNitroPlugin((nitro) => {
     broadcast({ type: 'service', worktreeId, status })
   })
 
+  supervisor.subscribeProgress((worktreeId, progress) => {
+    broadcast({ type: 'provision', worktreeId, progress })
+  })
+
   const shutdown = () => {
     void supervisor.stopAll()
   }

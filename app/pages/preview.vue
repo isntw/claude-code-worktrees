@@ -60,6 +60,7 @@ const sample = (index: number, service: ServiceState): Worktree => ({
   lockedAt: LOCKS[index] ? new Date(Date.now() - (index + 1) * 47 * 60_000).toISOString() : null,
   prunable: false,
   provisioned: true,
+  repairing: null,
   services: [
     {
       name: 'web',
@@ -422,6 +423,19 @@ const TIP =
         <Button size="sm"><template #lead><Plus :size="11" /></template>lead sm</Button>
         <Button size="md"><template #lead><Plus :size="12" /></template>lead md</Button>
         <Button icon><Plus :size="12" /></Button>
+      </div>
+    </section>
+
+    <section :class="SECTION">
+      <header :class="HEAD"><p class="t-eyebrow">Progress</p></header>
+      <div class="flex flex-col gap-3 px-3 py-3">
+        <Progress :done="0" :total="632" label="relinking node_modules" />
+        <Progress :done="214" :total="632" label="relinking node_modules" />
+        <Progress :done="632" :total="632" label="relinking node_modules" />
+        <Progress :done="0" :total="0" label="stopping dev" />
+        <Progress :done="0" :total="0" label="copying declared files" />
+        <Progress compact :done="214" :total="632" label="relinking node_modules" />
+        <Progress compact :done="0" :total="0" label="stopping dev" />
       </div>
     </section>
 

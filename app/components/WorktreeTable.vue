@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { ExternalLink, Lock, LockOpen, Trash2 } from 'lucide-vue-next'
-import type { OverviewRow, ServiceState, ServiceStatus, Worktree } from '#shared/types'
+import type {
+  OverviewRow,
+  ProvisionProgress,
+  ServiceState,
+  ServiceStatus,
+  Worktree,
+} from '#shared/types'
 import { PULL } from './pull'
 import { repairTitle } from './repair'
 import type { Variation } from './variation'
 
-const { rows, repairing = null } = defineProps<{ rows: OverviewRow[]; repairing?: string | null }>()
+const { rows, repairing = null, progress = {} } = defineProps<{
+  rows: OverviewRow[]
+  repairing?: string | null
+  progress?: Record<string, ProvisionProgress>
+}>()
 
 const emit = defineEmits<{
   open: [row: OverviewRow]
@@ -19,6 +29,11 @@ const emit = defineEmits<{
   repair: [row: OverviewRow]
   take: [row: OverviewRow, service: string]
 }>()
+
+const busy = (row: OverviewRow) => repairing === row.worktree.id || Boolean(row.worktree.repairing)
+
+const progressOf = (row: OverviewRow): ProvisionProgress | null =>
+  progress[row.worktree.id] ?? row.worktree.repairing
 
 const lockAction = (worktree: Worktree) => {
   if (worktree.root) return 'The repository root cannot be locked'
@@ -166,9 +181,8 @@ const contested = computed(() => {
       </thead>
 
       <tbody>
+        <template v-for="row in rows" :key="row.worktree.id">
         <tr
-          v-for="row in rows"
-          :key="row.worktree.id"
           tabindex="0"
           :title="row.worktree.path"
           @click="emit('open', row)"
@@ -249,7 +263,16 @@ const contested = computed(() => {
             <span v-else class="font-sans text-[0.625rem] text-faint">—</span>
           </td>
 
-          <td>
+          <td v-if="busy(row)" colspan="2">
+            <Progress
+              compact
+              :done="progressOf(row)?.done ?? 0"
+              :total="progressOf(row)?.total ?? 0"
+              :label="progressOf(row)?.label ?? 'starting repair'"
+            />
+          </td>
+
+          <td v-if="!busy(row)">
             <span
               v-if="row.worktree.services.length"
               class="flex items-center gap-1.5"
@@ -268,7 +291,7 @@ const contested = computed(() => {
             <span v-else class="font-sans text-[0.625rem] text-faint">none</span>
           </td>
 
-          <td>
+          <td v-if="!busy(row)">
             <span v-if="cells[row.worktree.id]" class="flex items-baseline gap-1">
               <a
                 v-if="cells[row.worktree.id]!.url"
@@ -304,10 +327,10 @@ const contested = computed(() => {
                 v-if="row.worktree.services.length && !row.worktree.provisioned && !row.worktree.root"
                 size="sm"
                 variation="warning"
-                :disabled="repairing === row.worktree.id"
+                :disabled="busy(row)"
                 :title="repairTitle(row.worktree.name)"
                 @click.stop="emit('repair', row)"
-                >{{ repairing === row.worktree.id ? 'repair…' : 'repair' }}</Button
+                >{{ busy(row) ? 'repair…' : 'repair' }}</Button
               >
               <Button
                 v-else-if="row.worktree.services.length && anyLive(row.worktree)"
@@ -366,6 +389,7 @@ const contested = computed(() => {
             </span>
           </td>
         </tr>
+        </template>
       </tbody>
     </table>
   </div>

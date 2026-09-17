@@ -159,6 +159,7 @@ export interface Worktree {
   lockedAt: string | null
   prunable: boolean
   provisioned: boolean
+  repairing: ProvisionProgress | null
   services: ServiceStatus[]
   issues: Diagnostic[]
 }
@@ -250,6 +251,12 @@ export interface LogLine {
   stream: 'stdout' | 'stderr'
   at: string
   text: string
+}
+
+export interface ProvisionProgress {
+  label: string
+  done: number
+  total: number
 }
 
 export type PortMode = 'allocated' | 'fixed' | 'none'
@@ -471,3 +478,4 @@ export type SocketMessage =
   | { type: 'service'; worktreeId: string; status: ServiceStatus }
   | { type: 'worktrees'; projectId: string }
   | { type: 'pulls'; projectId: string; status: ForgeStatus }
+  | { type: 'provision'; worktreeId: string; progress: ProvisionProgress | null }

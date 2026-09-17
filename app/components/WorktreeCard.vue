@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Lock, LockOpen, Trash2 } from 'lucide-vue-next'
-import type { GitStatus, PullRequest, ServiceStatus, Worktree, WorktreeOrigin } from '#shared/types'
+import type {
+  GitStatus,
+  ProvisionProgress,
+  PullRequest,
+  ServiceStatus,
+  Worktree,
+  WorktreeOrigin,
+} from '#shared/types'
 import { repairTitle } from './repair'
 import type { StackPart } from '#shared/compose'
 import type { Variation } from './variation'
@@ -11,12 +18,13 @@ const props = withDefaults(
     worktree: Worktree
     selected?: boolean
     repairing?: boolean
+    progress?: ProvisionProgress | null
     parts?: Record<string, StackPart[]>
     git?: GitStatus | null
     pull?: PullRequest | null
     since?: string | null
   }>(),
-  { parts: () => ({}), git: null, pull: null, since: null, repairing: false },
+  { parts: () => ({}), git: null, pull: null, since: null, repairing: false, progress: null },
 )
 
 const portOf = (service: ServiceStatus, part: StackPart): number | null => {
@@ -375,6 +383,14 @@ const mergeable = computed(
     <p v-else class="border-b border-line px-3 py-2 font-sans text-[0.6875rem] text-faint">
       No service configured for this project.
     </p>
+
+    <div v-if="repairing && !worktree.root && !worktree.prunable" class="border-b border-line px-3 py-2">
+      <Progress
+        :done="progress?.done ?? 0"
+        :total="progress?.total ?? 0"
+        :label="progress?.label ?? 'starting repair'"
+      />
+    </div>
 
     <footer class="flex items-center gap-2 px-3 py-2">
       <code class="truncate font-mono text-[0.625rem] text-faint" :title="worktree.path">{{
