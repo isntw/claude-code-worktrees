@@ -8,8 +8,11 @@
 
 Run several branches at once. Every worktree gets its own dependencies, its own ports, its own dev
 server and its own logs — from one local dashboard. Each card carries the branch's **GitHub** pull
-request, and **ten MCP tools** let a Claude Code session set a project up, run it and read what it
+request, and **eleven MCP tools** let a Claude Code session set a project up, run it and read what it
 printed.
+
+> [!WARNING]
+> **Beta.** Only tested on a few projects so far, so expect rough edges.
 
 ![Every worktree, every port and every service, across all projects](docs/images/overview.png)
 
