@@ -22,12 +22,15 @@ const withRoot = async (root, work) => {
   }
 }
 
-test('the command names the launcher of the ccwt that is running, not the working directory', async () => {
+test('the command names the ccwt that is running, not the working directory', async () => {
   await withRoot('/opt/ccwt', () => {
-    const command = plugin.pluginCommand()
-    assert.ok(command.includes('/opt/ccwt/bin/ccwt.mjs'), command)
-    assert.ok(command.endsWith('--plugin-path'), command)
-    assert.ok(command.startsWith(process.execPath), command)
+    assert.equal(plugin.pluginCommand(), '/opt/ccwt/bin/ccwt.mjs --plugin-path')
+  })
+})
+
+test('the command names no interpreter, so a node upgrade cannot invalidate consent', async () => {
+  await withRoot('/opt/ccwt', () => {
+    assert.ok(!plugin.pluginCommand().includes(process.execPath), plugin.pluginCommand())
   })
 })
 

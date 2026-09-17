@@ -353,7 +353,7 @@ function tooOld(version: string | null): boolean {
 }
 
 export function pluginCommand(): string {
-  return `${process.execPath} ${join(packageRoot(), 'bin', 'ccwt.mjs')} --plugin-path`
+  return `${join(packageRoot(), 'bin', 'ccwt.mjs')} --plugin-path`
 }
 
 export function unusable(command: string): string | null {

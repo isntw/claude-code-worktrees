@@ -104,7 +104,20 @@ test('a name still equal to ours moves with the worktree', () => {
   )
 })
 
+test('a title we set is not set again when the event reports none', () => {
+  const here = worktree('feature', [service('dev', 5270, true)])
 
+  assert.equal(renameTo(repo([here], here), undefined, 'ccwt · demo/feature'), null)
+})
+
+test('a worktree moved under an unreported title still renames', () => {
+  const here = worktree('second', [service('dev', 5270, true)])
+
+  assert.equal(
+    renameTo(repo([here], here), undefined, 'ccwt · demo/first'),
+    'ccwt · demo/second',
+  )
+})
 
 test('the root checkout and an unknown directory are never renamed', () => {
   const root = worktree('demo', [service('dev', null, false)], true)
