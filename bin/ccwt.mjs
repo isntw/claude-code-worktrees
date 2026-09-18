@@ -55,6 +55,8 @@ const dir = process.env.CCWT_HOME || join(homedir(), '.ccwt')
 const runtimeFile = join(dir, 'runtime.json')
 const configFile = join(dir, 'config.json')
 
+const tilde = (path) => (path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path)
+
 const readJson = (path) =>
   readFile(path, 'utf8')
     .then((raw) => JSON.parse(raw))
@@ -70,6 +72,44 @@ if (values.version) {
   process.stdout.write(`${own?.version ?? '0.0.0'}\n`)
   process.exit(0)
 }
+
+const VERSION = (await readJson(join(root, 'package.json')))?.version ?? '0.0.0'
+
+const TONES = { success: '92;185;141', alarm: '255;92;66' }
+
+const MARK = { light: '237;235;229', accent: '217;119;87' }
+
+const styled = () => Boolean(process.stdout.isTTY) && !process.env.NO_COLOR
+
+const paint = (text, rgb) => (styled() ? `\u001b[38;2;${rgb}m${text}\u001b[0m` : text)
+
+const faint = (text) => (styled() ? `\u001b[2m${text}\u001b[0m` : text)
+
+const WORDMARK = [
+  ' ██████╗  ██████╗ ██╗    ██╗████████╗',
+  '██╔════╝ ██╔════╝ ██║    ██║╚══██╔══╝',
+  '██║      ██║      ██║ █╗ ██║   ██║   ',
+  '██║      ██║      ██║███╗██║   ██║   ',
+  '╚██████╗ ╚██████╗ ╚███╔███╔╝   ██║   ',
+  ' ╚═════╝  ╚═════╝  ╚══╝╚══╝    ╚═╝   ',
+]
+
+const label = (text) => (styled() ? `\u001b[38;2;110;107;100m${text}\u001b[0m` : text)
+
+const row = (key, value) => `  ${label(key.padEnd(4))}  ${value}\n`
+
+const dot = (tone) => paint('●', TONES[tone])
+
+const link = (target) =>
+  styled() ? `\u001b]8;;${target}\u001b\\\u001b[4m${target}\u001b[0m\u001b]8;;\u001b\\` : target
+
+const banner = [
+  ...WORDMARK.map((line, index) => {
+    const drawn = `  ${paint(line.slice(0, 18), MARK.light)}${paint(line.slice(18), MARK.accent)}`
+    return index === 0 ? `${drawn}  ${faint(`v${VERSION}`)}` : drawn
+  }),
+  faint('  worktrees as running environments'),
+].join('\n')
 
 function startNuxtDev(at, on) {
   const nuxt = join(root, 'node_modules/nuxt/bin/nuxt.mjs')
@@ -162,14 +202,16 @@ if (values.detach) {
   closeSync(sink)
 
   if (died !== null) {
-    process.stderr.write(`\n  ccwt exited immediately (code ${died}).\n  See ${logFile}\n\n`)
+    process.stderr.write(
+      `\n${banner}\n\n  ${dot('alarm')} could not start\n\n${row('code', String(died))}${row('logs', tilde(logFile))}\n`,
+    )
     process.exit(1)
   }
 
   child.unref()
 
   process.stdout.write(
-    `\n  ccwt running in the background on http://localhost:${port}/ (pid ${child.pid})\n  Logs  ${logFile}\n  Stop  kill ${child.pid}\n\n`,
+    `\n${banner}\n\n  ${dot('success')} running in the background\n\n${row('url', link(`http://localhost:${port}/`))}${row('pid', String(child.pid))}${row('logs', tilde(logFile))}${row('stop', `kill ${child.pid}`)}\n`,
   )
   process.exit(0)
 }
@@ -204,7 +246,9 @@ const url = `http://localhost:${port}/`
 
 if (values.dev) {
   startNuxtDev(port, host)
-  process.stdout.write(`\n  ccwt listening on ${url}\n  Its handshake is written, so Claude Code can reach it.\n\n`)
+  process.stdout.write(
+    `\n${banner}\n\n  ${dot('success')} listening\n\n${row('url', link(url))}\n${faint('  Its handshake is written, so Claude Code can reach it.')}\n\n`,
+  )
 } else {
   const server = join(root, '.output/server/index.mjs')
 
@@ -213,7 +257,9 @@ if (values.dev) {
     process.exit(1)
   })
 
-  process.stdout.write(`\n  ccwt listening on ${url}\n  Open it in any browser.\n\n`)
+  process.stdout.write(
+    `\n${banner}\n\n  ${dot('success')} listening\n\n${row('url', link(url))}\n${faint('  Open it in any browser.')}\n\n`,
+  )
 }
 
 if (values.open) {
