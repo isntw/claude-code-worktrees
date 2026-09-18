@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { existsSync, unlinkSync } from 'node:fs'
+import { closeSync, existsSync, openSync, unlinkSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
@@ -16,6 +16,7 @@ const { values } = parseArgs({
     port: { type: 'string', short: 'p' },
     host: { type: 'string', default: '127.0.0.1' },
     dev: { type: 'boolean', default: false },
+    detach: { type: 'boolean', default: false },
     open: { type: 'boolean', default: true },
     help: { type: 'boolean', short: 'h', default: false },
     version: { type: 'boolean', short: 'v', default: false },
@@ -35,6 +36,7 @@ if (values.help) {
     -p, --port <number>   port to listen on            (default 4600)
         --host <host>     host to bind                 (default 127.0.0.1)
         --dev             run the Nuxt dev server instead of the built one
+        --detach          run in the background and give the terminal back
         --no-open         do not open a browser
     -h, --help            show this
     -v, --version         show the version
@@ -133,6 +135,43 @@ if (running && alive(running.pid) && !(await isFree(running.port, running.host ?
 if (!(await isFree(port, host))) {
   process.stderr.write(`\n  Port ${port} is already in use by something else.\n  Try \`ccwt --port ${port + 1}\`, or set another one in Settings.\n\n`)
   process.exit(1)
+}
+
+if (values.detach) {
+  const logDir = join(dir, 'logs')
+  const logFile = join(logDir, 'ccwt.log')
+
+  await mkdir(logDir, { recursive: true, mode: 0o700 })
+
+  const sink = openSync(logFile, 'a')
+  const args = process.argv.slice(2).filter((arg) => arg !== '--detach')
+
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...args], {
+    cwd: process.cwd(),
+    detached: true,
+    stdio: ['ignore', sink, sink],
+    env: process.env,
+  })
+
+  let died = null
+  child.once('exit', (code) => {
+    died = code ?? 1
+  })
+
+  await new Promise((resolve) => setTimeout(resolve, 750))
+  closeSync(sink)
+
+  if (died !== null) {
+    process.stderr.write(`\n  ccwt exited immediately (code ${died}).\n  See ${logFile}\n\n`)
+    process.exit(1)
+  }
+
+  child.unref()
+
+  process.stdout.write(
+    `\n  ccwt running in the background on http://localhost:${port}/ (pid ${child.pid})\n  Logs  ${logFile}\n  Stop  kill ${child.pid}\n\n`,
+  )
+  process.exit(0)
 }
 
 const token = randomBytes(32).toString('hex')
