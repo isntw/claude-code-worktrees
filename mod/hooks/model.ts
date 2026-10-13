@@ -1,4 +1,4 @@
-import type { Service, View, Worktree } from '../types'
+import type { Holder, Service, View, Worktree } from '../types'
 
 export type Tone = 'error' | 'warning' | 'suggestion' | 'merged'
 
@@ -8,6 +8,7 @@ export type Alert = {
   text: string
   worktreeId: string
   action?: { kind: 'start' | 'repair'; service?: string }
+  takeover?: { port: number; service: string; pids: number[]; services: { worktreeId: string; service: string }[] }
   logs?: string
   link?: string
 }
@@ -49,40 +50,84 @@ export function statusText(view: View | null, seen: boolean): string | undefined
 export function attention(view: View | null): Alert[] {
   if (!view || view.kind !== 'here') return []
   const many = view.rows.length > 1
-  return view.rows.flatMap((row) => alertsFor(row, view, many ? `${row.name}: ` : ''))
+  return [...view.rows.flatMap((row) => alertsFor(row, view, many ? `${row.name}: ` : '')), ...heldPorts(view)]
+}
+
+function base(path: string | null): string {
+  if (!path) return 'somewhere'
+  const parts = path.split('/').filter(Boolean)
+  return parts[parts.length - 1] ?? path
+}
+
+export function holderText(holder: Holder): string {
+  const foreign = holder.foreign[0]
+  if (foreign) return `${foreign.name} (pid ${foreign.pid}) in ${base(foreign.cwd)}, not started by ccwt`
+  const ours = holder.ours[0]
+  if (ours) return `${ours.worktree}'s ${ours.service}`
+  return 'something else'
+}
+
+function heldPorts(view: Here): Alert[] {
+  const alerts: Alert[] = []
+  const seen = new Set<number>()
+
+  for (const row of view.rows) {
+    const main = mainService(row)
+    if (!main || main.port === null || !main.taken || main.state === 'running' || seen.has(main.port)) continue
+    seen.add(main.port)
+
+    const holder = view.holders[String(main.port)]
+    const cwd = holder?.foreign[0]?.cwd ?? null
+    const owner =
+      view.rows
+        .filter((candidate) => cwd !== null && (cwd === candidate.path || cwd.startsWith(`${candidate.path}/`)))
+        .sort((a, b) => b.path.length - a.path.length)[0] ??
+      view.rows.find((candidate) => candidate.id === view.hereId && mainService(candidate)?.port === main.port) ??
+      row
+    const service = mainService(owner)?.name ?? main.name
+
+    alerts.push({
+      key: `port-${main.port}`,
+      tone: 'warning',
+      worktreeId: owner.id,
+      text: `port ${main.port} is held by ${holder ? holderText(holder) : 'something else'}`,
+      takeover: holder
+        ? {
+            port: main.port,
+            service,
+            pids: holder.foreign.map((one) => one.pid),
+            services: holder.ours.map((one) => ({ worktreeId: one.worktreeId, service: one.service })),
+          }
+        : undefined,
+    })
+  }
+
+  return alerts
 }
 
 function alertsFor(row: Worktree, view: Here, prefix: string): Alert[] {
   const alerts: Alert[] = []
-  const base = { worktreeId: row.id }
+  const own = { worktreeId: row.id }
 
   for (const service of row.services) {
     if (service.state === 'crashed') {
       alerts.push({
-        ...base,
+        ...own,
         key: `${row.id}-crashed-${service.name}`,
         tone: 'error',
         text: `${prefix}${service.name} crashed${service.exitCode === null ? '' : ` (exit ${service.exitCode})`}`,
         action: { kind: 'start', service: service.name },
         logs: service.name,
       })
-    } else if (service.taken && service.state !== 'running') {
-      alerts.push({
-        ...base,
-        key: `${row.id}-taken-${service.name}`,
-        tone: 'warning',
-        text: `${prefix}port ${service.port} for ${service.name} is held by something else`,
-        link: view.dashboard,
-      })
     }
   }
 
   if (row.repairing && row.repairing.done < row.repairing.total) {
     const { label, done, total } = row.repairing
-    alerts.push({ ...base, key: `${row.id}-repairing`, tone: 'suggestion', text: `${prefix}repairing: ${label}  ${done}/${total}` })
+    alerts.push({ ...own, key: `${row.id}-repairing`, tone: 'suggestion', text: `${prefix}repairing: ${label}  ${done}/${total}` })
   } else if (!row.provisioned && !row.repairing) {
     alerts.push({
-      ...base,
+      ...own,
       key: `${row.id}-unprovisioned`,
       tone: 'warning',
       text: `${prefix}unprovisioned: files the recipe names are missing`,
@@ -92,14 +137,14 @@ function alertsFor(row: Worktree, view: Here, prefix: string): Alert[] {
 
   for (const issue of row.issues) {
     if (issue.severity === 'error') {
-      alerts.push({ ...base, key: `${row.id}-issue-${issue.code}`, tone: 'error', text: `${prefix}${issue.message}` })
+      alerts.push({ ...own, key: `${row.id}-issue-${issue.code}`, tone: 'error', text: `${prefix}${issue.message}` })
     }
   }
 
   const pull = view.pulls[row.id]
   if (pull?.state === 'merged' && !row.root) {
     alerts.push({
-      ...base,
+      ...own,
       key: `${row.id}-merged`,
       tone: 'merged',
       text: `${prefix}PR #${pull.number} merged, worktree still on disk`,
@@ -172,4 +217,13 @@ export function chipsWidth(services: readonly Service[]): number {
       sum + chipText(service).length + (service.port === null ? 0 : ` localhost:${service.port}`.length) + (index ? 3 : 0),
     0,
   )
+}
+
+export function mainService(row: Worktree): Service | undefined {
+  return row.services.find((service) => service.primary) ?? row.services[0]
+}
+
+export function chipWidth(service: Service | undefined): number {
+  if (!service) return 'no services'.length
+  return chipText(service).length + (service.port === null ? 0 : ` localhost:${service.port}`.length)
 }

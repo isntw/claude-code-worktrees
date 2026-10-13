@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Pull, Service, View, Worktree } from '../types'
-import { arrange, attention, clean, owning, statusText, touchedPath } from './model'
+import { arrange, attention, clean, mainService, owning, statusText, touchedPath } from './model'
 
 const service = (over: Partial<Service>): Service => ({
   name: 'web',
@@ -39,6 +39,7 @@ const here = (rows: Worktree[], pulls: Record<string, Pull> = {}): View => ({
   rows,
   others: [],
   pulls,
+  holders: {},
 })
 
 test('status line lists each service of the current worktree with its port and state', () => {
@@ -115,4 +116,34 @@ test('log text loses terminal colour codes and control characters', () => {
 test('a finished repair raises nothing', () => {
   const view = here([worktree({ repairing: { label: 'linking node_modules', done: 3740, total: 3740 } })])
   expect(attention(view)).toEqual([])
+})
+
+test('the main service is the primary one, else the first', () => {
+  const vite = service({ name: 'vite', port: 5237 })
+  const serve = service({ name: 'serve', port: 20086, primary: true })
+  expect(mainService(worktree({ services: [vite, serve] }))?.name).toBe('serve')
+  expect(mainService(worktree({ services: [vite] }))?.name).toBe('vite')
+  expect(mainService(worktree({ services: [] }))).toBe(undefined)
+})
+
+test('a held port is raised for the main service only', () => {
+  const vite = service({ name: 'vite', port: 5237, state: 'stopped', taken: true })
+  const serve = service({ name: 'serve', port: 20086, state: 'stopped', taken: true, primary: true })
+  expect(attention(here([worktree({ services: [vite, serve] })])).map((alert) => alert.key)).toEqual(['port-20086'])
+})
+
+test('a pinned port held by a stray process is raised once, naming it, with a take over for its worktree', () => {
+  const pinned = (id: string, path: string) =>
+    worktree({ id, name: id, path, services: [service({ name: 'dev', port: 3000, state: 'stopped', taken: true })] })
+  const view: View = {
+    ...(here([pinned('root', '/repo'), pinned('a', '/repo/.claude/worktrees/a'), pinned('b', '/repo/.claude/worktrees/b')]) as Extract<View, { kind: 'here' }>),
+    holders: {
+      '3000': { port: 3000, free: false, ours: [], foreign: [{ pid: 95422, name: 'next-server', cwd: '/repo' }] },
+    },
+  }
+  const alerts = attention(view)
+  expect(alerts.length).toBe(1)
+  expect(alerts[0]?.text).toBe('port 3000 is held by next-server (pid 95422) in repo, not started by ccwt')
+  expect(alerts[0]?.worktreeId).toBe('root')
+  expect(alerts[0]?.takeover).toEqual({ port: 3000, service: 'dev', pids: [95422], services: [] })
 })

@@ -2,6 +2,7 @@ export type ServiceState = 'stopped' | 'starting' | 'running' | 'crashed'
 
 export type Service = {
   name: string
+  primary?: boolean
   state: ServiceState
   port: number | null
   url: string | null
@@ -48,6 +49,13 @@ export type LogLine = {
   text: string
 }
 
+export type Holder = {
+  port: number
+  free: boolean
+  ours: { worktreeId: string; worktree: string; service: string }[]
+  foreign: { pid: number; name: string; cwd: string | null }[]
+}
+
 export type View =
   | { kind: 'offline' }
   | { kind: 'outside' }
@@ -60,6 +68,7 @@ export type View =
       rows: Worktree[]
       others: Worktree[]
       pulls: Record<string, Pull>
+      holders: Record<string, Holder>
     }
 
 declare module 'claude-code' {
@@ -68,6 +77,8 @@ declare module 'claude-code' {
       view: View | null
       tracked: string[]
       focus: string | null
+      cursor: string | null
+      everything: boolean
       selected: string | null
       logs: LogLine[]
       busy: string | null

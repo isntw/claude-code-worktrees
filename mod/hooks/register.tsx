@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { LogLine, Pull, Service, View, Worktree } from '../types'
-import { arrange, attention, chipText, chipsWidth, clean, owning, statusText, summary, tone, touchedPath, uptime, word } from './model'
+import type { Holder, LogLine, Pull, Service, View, Worktree } from '../types'
+import { arrange, attention, chipText, chipWidth, clean, mainService, owning, statusText, summary, tone, touchedPath, uptime, word } from './model'
 
 const PANE = 'ccwt'
 const TICK_MS = 3000
@@ -15,6 +15,8 @@ const focus = atom({ plugin: 'ccwt-mod', key: 'focus' } as const, null)
 const selected = atom({ plugin: 'ccwt-mod', key: 'selected' } as const, null)
 const logs = atom({ plugin: 'ccwt-mod', key: 'logs' } as const, [])
 const busy = atom({ plugin: 'ccwt-mod', key: 'busy' } as const, null)
+const cursor = atom({ plugin: 'ccwt-mod', key: 'cursor' } as const, null)
+const everything = atom({ plugin: 'ccwt-mod', key: 'everything' } as const, false)
 
 type Here = Extract<View, { kind: 'here' }>
 type Server = { origin: string; token: string; dashboard: string }
@@ -125,9 +127,20 @@ async function observe($: EngineInterface): Promise<{ next: View; server: Server
     local.pulls = forge.data?.pulls ?? {}
   }
   const pulls: Record<string, Pull> = {}
-  for (const row of rows) {
+  for (const row of [...rows, ...others]) {
     const pull = row.branch ? local.pulls[row.branch] : undefined
     if (pull) pulls[row.id] = pull
+  }
+
+  const held = new Set<number>()
+  for (const row of [...rows, ...others]) {
+    const main = mainService(row)
+    if (main && main.port !== null && main.taken && main.state !== 'running') held.add(main.port)
+  }
+  const holders: Record<string, Holder> = {}
+  for (const port of [...held].slice(0, 8)) {
+    const answer = await call<Holder>($, server, `/api/ports/${port}`)
+    if (answer.data) holders[String(port)] = answer.data
   }
 
   local.seen = true
@@ -142,6 +155,7 @@ async function observe($: EngineInterface): Promise<{ next: View; server: Server
       rows,
       others,
       pulls,
+      holders,
     },
   }
 }
@@ -228,6 +242,32 @@ function stopAll($: EngineInterface, worktreeId: string) {
   return act($, worktreeId, 'stop all', 'services/stop')
 }
 
+async function takeOver(
+  $: EngineInterface,
+  worktreeId: string,
+  takeover: { port: number; service: string; pids: number[]; services: { worktreeId: string; service: string }[] },
+) {
+  const current = await read($, view)
+  const server = await reach($)
+  if (!server || current?.kind !== 'here') return
+
+  await update($, busy, () => `${worktreeId} take over ${takeover.port}`)
+  const freed = await $.http
+    .fetch(`${server.origin}/api/ports/${takeover.port}/free`, {
+      method: 'POST',
+      headers: { 'x-ccwt-token': server.token, 'content-type': 'application/json' },
+      body: JSON.stringify({ pids: takeover.pids, services: takeover.services }),
+    })
+    .catch(() => null)
+  await update($, busy, () => null)
+  if (!freed?.ok) {
+    $.ui.toast(`ccwt: could not free port ${takeover.port}`)
+    await tick($)
+    return
+  }
+  await startService($, worktreeId, takeover.service)
+}
+
 function repair($: EngineInterface, worktreeId: string) {
   return act($, worktreeId, 'repair', 'provision')
 }
@@ -253,13 +293,15 @@ async function choose($: EngineInterface, service: string) {
 
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({
-      name: 'ccwt',
-      description: "Show what ccwt runs for this session's worktrees: services, logs, the rest of the project",
-    })
     $.ui.status(undefined)
     $.clock.every(TICK_MS, () => void tick($))
     void tick($)
+    await $.command
+      .register({
+        name: 'ccwt',
+        description: "Show what ccwt runs for this session's worktrees: services, logs, the rest of the project",
+      })
+      .catch(() => undefined)
     return next(e)
   })
 
@@ -283,6 +325,12 @@ export const register: Register = (on) => {
     return { text: 'ccwt pane opened.' }
   })
 
+  on('ui.focus', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const element = e.element
+    if (element?.startsWith('act-')) await update($, cursor, () => element.slice('act-'.length))
+    return next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const current = await read($, view)
@@ -291,17 +339,21 @@ export const register: Register = (on) => {
     const below = await next(e)
     const { Box, Text, Button, Link } = $.ui.resolve(e)
     const working = await read($, busy)
-    const alerts = attention(current)
-    const many = current.rows.length > 1
-    const nameWidth = Math.max(...current.rows.map((row) => row.name.length)) + 2
-    const chipsColumn = Math.max(...current.rows.map((row) => chipsWidth(row.services)))
+    const wanted = await read($, cursor)
+    const isAll = (await read($, everything)) && current.others.length > 0
+    const shown: Here = isAll ? { ...current, rows: [...current.rows, ...current.others], others: [] } : current
+    const total = current.rows.length + current.others.length
+    const selected = shown.rows.find((row) => row.id === wanted) ?? shown.rows.find((row) => row.id === current.hereId) ?? shown.rows[0]!
+    const alerts = attention(shown)
+    const many = shown.rows.length > 1
+    const nameWidth = Math.max(...shown.rows.map((row) => row.name.length)) + 2
+    const chipColumn = Math.max(...shown.rows.map((row) => chipWidth(mainService(row))))
     const verbOf = (row: Worktree) => {
+      if (row.services.length === 0) return null
       const which = row.services.length === 1 ? row.services[0]!.name : 'all'
       const anyUp = row.services.some((one) => one.state === 'running' || one.state === 'starting')
-      if (row.services.length === 0) return null
       return anyUp ? { kind: 'stop' as const, label: `stop ${which}` } : { kind: 'start' as const, label: `start ${which}` }
     }
-    const actionColumn = Math.max(...current.rows.map((row) => (verbOf(row)?.label.length ?? 0) + 3))
     const claimed = new Set<string>()
     const hotkey = (key: string) => {
       if (claimed.has(key)) return undefined
@@ -315,58 +367,70 @@ export const register: Register = (on) => {
           <Box flexDirection="row" justifyContent="space-between">
             <Text dimColor>
               ccwt . {current.projectName}
-              {many ? ` . ${current.rows.length} worktrees this session` : ''}
+              {isAll ? ` . all ${total} worktrees` : many ? ` . ${current.rows.length} worktrees this session` : ''}
             </Text>
             <Link href={current.dashboard} label="dashboard" />
           </Box>
-          {current.rows.map((row, index) => {
+          {shown.rows.map((row) => {
             const verb = verbOf(row)
-            const first = index === 0
+            const main = mainService(row)
+            const colour = main ? tone(main) : 'dim'
+            const isSelected = row.id === selected.id
             const isHere = row.id === current.hereId
             return (
               <Box key={`row-${row.id}`} flexDirection="row" gap={2}>
                 <Box width={nameWidth} flexShrink={0}>
-                  <Text bold={isHere} dimColor={!isHere} wrap="truncate">
-                    {isHere && many ? '> ' : '  '}
+                  <Text bold={isSelected} dimColor={!isSelected} wrap="truncate">
+                    {isSelected ? '> ' : '  '}
                     {row.name}
                   </Text>
                 </Box>
-                <Box width={chipsColumn} flexShrink={0} flexDirection="row" gap={3}>
-                  {row.services.length === 0 && <Text dimColor>no services</Text>}
-                  {row.services.map((one) => {
-                    const colour = tone(one)
-                    return (
-                      <Box key={`chip-${row.id}-${one.name}`} flexDirection="row" gap={1}>
-                        <Text color={colour === 'dim' ? undefined : colour} dimColor={colour === 'dim'}>
-                          {chipText(one)}
-                        </Text>
-                        {one.port !== null && <Link href={one.url ?? `http://localhost:${one.port}`} label={`localhost:${one.port}`} />}
-                      </Box>
-                    )
-                  })}
-                </Box>
-                <Box width={actionColumn} flexShrink={0}>
-                  {verb && (
-                    <Button
-                      key={`${verb.kind}-${row.id}`}
-                      plain
-                      label={working === `${row.id} ${verb.kind} all` ? `${verb.kind === 'start' ? 'starting' : 'stopping'}...` : verb.label}
-                      hotkey={first ? hotkey(verb.kind === 'start' ? 's' : 'x') : undefined}
-                      onPress={() => (verb.kind === 'start' ? startAll($, row.id) : stopAll($, row.id))}
-                    />
+                <Box width={chipColumn} flexShrink={0} flexDirection="row" gap={1}>
+                  {!main && <Text dimColor>no services</Text>}
+                  {main && (
+                    <Text color={colour === 'dim' ? undefined : colour} dimColor={colour === 'dim'}>
+                      {chipText(main)}
+                    </Text>
+                  )}
+                  {main && main.port !== null && (
+                    <Link href={main.url ?? `http://localhost:${main.port}`} label={`localhost:${main.port}`} />
                   )}
                 </Box>
-                <Button
-                  key={`details-${row.id}`}
-                  plain
-                  dimColor
-                  label="details"
-                  hotkey={first ? hotkey('d') : undefined}
-                  onPress={() => openPane($, row.id)}
-                />
+                {verb && (
+                  <Button
+                    key={`act-${row.id}`}
+                    plain
+                    autoFocus={isSelected ? true : undefined}
+                    label={working === `${row.id} ${verb.kind} all` ? `${verb.kind === 'start' ? 'starting' : 'stopping'}...` : verb.label}
+                    hotkey={isSelected ? hotkey(verb.kind === 'start' ? 's' : 'x') : undefined}
+                    onPress={() => (verb.kind === 'start' ? startAll($, row.id) : stopAll($, row.id))}
+                  />
+                )}
+                {isHere && many && <Text dimColor>here</Text>}
               </Box>
             )
           })}
+          <Box flexDirection="row" gap={2}>
+            <Text dimColor>up/down: worktree . enter: start/stop</Text>
+            <Button
+              key="details"
+              plain
+              dimColor
+              label={`details of ${selected.name}`}
+              hotkey={hotkey('d')}
+              onPress={() => openPane($, selected.id)}
+            />
+            {current.others.length > 0 && (
+              <Button
+                key="scope"
+                plain
+                dimColor
+                label={isAll ? 'session only' : `all ${total} worktrees`}
+                hotkey={hotkey('a')}
+                onPress={() => update($, everything, (was) => !was)}
+              />
+            )}
+          </Box>
           {alerts.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
               {alerts.map((alert) => (
@@ -382,6 +446,15 @@ export const register: Register = (on) => {
                       label={working === `${alert.worktreeId} start ${alert.action.service}` ? 'starting...' : 'restart'}
                       hotkey={hotkey('r')}
                       onPress={() => startService($, alert.worktreeId, alert.action!.service!)}
+                    />
+                  )}
+                  {alert.takeover && (
+                    <Button
+                      key={`${alert.key}-take`}
+                      plain
+                      label={working === `${alert.worktreeId} take over ${alert.takeover.port}` ? 'taking over...' : 'take over'}
+                      hotkey={hotkey('t')}
+                      onPress={() => takeOver($, alert.worktreeId, alert.takeover!)}
                     />
                   )}
                   {alert.action?.kind === 'repair' && (
