@@ -288,6 +288,7 @@ export const register: Register = (on) => {
     const current = await read($, view)
     if (current?.kind !== 'here') return next(e)
 
+    const below = await next(e)
     const { Box, Text, Button, Link } = $.ui.resolve(e)
     const working = await read($, busy)
     const alerts = attention(current)
@@ -309,103 +310,106 @@ export const register: Register = (on) => {
     }
 
     return (
-      <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-        <Box flexDirection="row" justifyContent="space-between">
-          <Text dimColor>
-            ccwt . {current.projectName}
-            {many ? ` . ${current.rows.length} worktrees this session` : ''}
-          </Text>
-          <Link href={current.dashboard} label="dashboard" />
-        </Box>
-        {current.rows.map((row, index) => {
-          const verb = verbOf(row)
-          const first = index === 0
-          const isHere = row.id === current.hereId
-          return (
-            <Box key={`row-${row.id}`} flexDirection="row" gap={2}>
-              <Box width={nameWidth} flexShrink={0}>
-                <Text bold={isHere} dimColor={!isHere} wrap="truncate">
-                  {isHere && many ? '> ' : '  '}
-                  {row.name}
-                </Text>
-              </Box>
-              <Box width={chipsColumn} flexShrink={0} flexDirection="row" gap={3}>
-                {row.services.length === 0 && <Text dimColor>no services</Text>}
-                {row.services.map((one) => {
-                  const colour = tone(one)
-                  return (
-                    <Box key={`chip-${row.id}-${one.name}`} flexDirection="row" gap={1}>
-                      <Text color={colour === 'dim' ? undefined : colour} dimColor={colour === 'dim'}>
-                        {chipText(one)}
-                      </Text>
-                      {one.port !== null && <Link href={one.url ?? `http://localhost:${one.port}`} label={`localhost:${one.port}`} />}
-                    </Box>
-                  )
-                })}
-              </Box>
-              <Box width={actionColumn} flexShrink={0}>
-                {verb && (
-                  <Button
-                    key={`${verb.kind}-${row.id}`}
-                    plain
-                    label={working === `${row.id} ${verb.kind} all` ? `${verb.kind === 'start' ? 'starting' : 'stopping'}...` : verb.label}
-                    hotkey={first ? hotkey(verb.kind === 'start' ? 's' : 'x') : undefined}
-                    onPress={() => (verb.kind === 'start' ? startAll($, row.id) : stopAll($, row.id))}
-                  />
-                )}
-              </Box>
-              <Button
-                key={`details-${row.id}`}
-                plain
-                dimColor
-                label="details"
-                hotkey={first ? hotkey('d') : undefined}
-                onPress={() => openPane($, row.id)}
-              />
-            </Box>
-          )
-        })}
-        {alerts.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            {alerts.map((alert) => (
-              <Box key={alert.key} flexDirection="row" gap={2}>
-                <Text color={alert.tone}>
-                  {alert.tone === 'error' || alert.tone === 'warning' ? '! ' : '~ '}
-                  {alert.text}
-                </Text>
-                {alert.action?.kind === 'start' && alert.action.service && (
-                  <Button
-                    key={`${alert.key}-start`}
-                    plain
-                    label={working === `${alert.worktreeId} start ${alert.action.service}` ? 'starting...' : 'restart'}
-                    hotkey={hotkey('r')}
-                    onPress={() => startService($, alert.worktreeId, alert.action!.service!)}
-                  />
-                )}
-                {alert.action?.kind === 'repair' && (
-                  <Button
-                    key={`${alert.key}-repair`}
-                    plain
-                    label={working === `${alert.worktreeId} repair` ? 'repairing...' : 'repair'}
-                    hotkey={hotkey('p')}
-                    onPress={() => repair($, alert.worktreeId)}
-                  />
-                )}
-                {alert.logs && (
-                  <Button
-                    key={`${alert.key}-logs`}
-                    plain
-                    dimColor
-                    label="logs"
-                    hotkey={hotkey('l')}
-                    onPress={() => openPane($, alert.worktreeId, alert.logs)}
-                  />
-                )}
-                {alert.link && <Link href={alert.link} label="open" />}
-              </Box>
-            ))}
+      <Box flexDirection="column">
+        <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+          <Box flexDirection="row" justifyContent="space-between">
+            <Text dimColor>
+              ccwt . {current.projectName}
+              {many ? ` . ${current.rows.length} worktrees this session` : ''}
+            </Text>
+            <Link href={current.dashboard} label="dashboard" />
           </Box>
-        )}
+          {current.rows.map((row, index) => {
+            const verb = verbOf(row)
+            const first = index === 0
+            const isHere = row.id === current.hereId
+            return (
+              <Box key={`row-${row.id}`} flexDirection="row" gap={2}>
+                <Box width={nameWidth} flexShrink={0}>
+                  <Text bold={isHere} dimColor={!isHere} wrap="truncate">
+                    {isHere && many ? '> ' : '  '}
+                    {row.name}
+                  </Text>
+                </Box>
+                <Box width={chipsColumn} flexShrink={0} flexDirection="row" gap={3}>
+                  {row.services.length === 0 && <Text dimColor>no services</Text>}
+                  {row.services.map((one) => {
+                    const colour = tone(one)
+                    return (
+                      <Box key={`chip-${row.id}-${one.name}`} flexDirection="row" gap={1}>
+                        <Text color={colour === 'dim' ? undefined : colour} dimColor={colour === 'dim'}>
+                          {chipText(one)}
+                        </Text>
+                        {one.port !== null && <Link href={one.url ?? `http://localhost:${one.port}`} label={`localhost:${one.port}`} />}
+                      </Box>
+                    )
+                  })}
+                </Box>
+                <Box width={actionColumn} flexShrink={0}>
+                  {verb && (
+                    <Button
+                      key={`${verb.kind}-${row.id}`}
+                      plain
+                      label={working === `${row.id} ${verb.kind} all` ? `${verb.kind === 'start' ? 'starting' : 'stopping'}...` : verb.label}
+                      hotkey={first ? hotkey(verb.kind === 'start' ? 's' : 'x') : undefined}
+                      onPress={() => (verb.kind === 'start' ? startAll($, row.id) : stopAll($, row.id))}
+                    />
+                  )}
+                </Box>
+                <Button
+                  key={`details-${row.id}`}
+                  plain
+                  dimColor
+                  label="details"
+                  hotkey={first ? hotkey('d') : undefined}
+                  onPress={() => openPane($, row.id)}
+                />
+              </Box>
+            )
+          })}
+          {alerts.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              {alerts.map((alert) => (
+                <Box key={alert.key} flexDirection="row" gap={2}>
+                  <Text color={alert.tone}>
+                    {alert.tone === 'error' || alert.tone === 'warning' ? '! ' : '~ '}
+                    {alert.text}
+                  </Text>
+                  {alert.action?.kind === 'start' && alert.action.service && (
+                    <Button
+                      key={`${alert.key}-start`}
+                      plain
+                      label={working === `${alert.worktreeId} start ${alert.action.service}` ? 'starting...' : 'restart'}
+                      hotkey={hotkey('r')}
+                      onPress={() => startService($, alert.worktreeId, alert.action!.service!)}
+                    />
+                  )}
+                  {alert.action?.kind === 'repair' && (
+                    <Button
+                      key={`${alert.key}-repair`}
+                      plain
+                      label={working === `${alert.worktreeId} repair` ? 'repairing...' : 'repair'}
+                      hotkey={hotkey('p')}
+                      onPress={() => repair($, alert.worktreeId)}
+                    />
+                  )}
+                  {alert.logs && (
+                    <Button
+                      key={`${alert.key}-logs`}
+                      plain
+                      dimColor
+                      label="logs"
+                      hotkey={hotkey('l')}
+                      onPress={() => openPane($, alert.worktreeId, alert.logs)}
+                    />
+                  )}
+                  {alert.link && <Link href={alert.link} label="open" />}
+                </Box>
+              ))}
+            </Box>
+          )}
+        </Box>
+        {below}
       </Box>
     )
   })
