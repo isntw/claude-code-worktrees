@@ -11,7 +11,11 @@ import { fileURLToPath } from 'node:url'
 
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1']
 
-const { values } = parseArgs({
+const STOP_WAIT_MS = 15_000
+
+const COMMANDS = ['start', 'stop', 'help']
+
+const { values, positionals, tokens } = parseArgs({
   options: {
     port: { type: 'string', short: 'p' },
     host: { type: 'string', default: '127.0.0.1' },
@@ -24,14 +28,28 @@ const { values } = parseArgs({
     'mod-path': { type: 'boolean', default: false },
   },
   allowNegative: true,
+  allowPositionals: true,
+  tokens: true,
 })
 
-if (values.help) {
+const [command, ...extra] = positionals
+
+if ((command !== undefined && !COMMANDS.includes(command)) || extra.length > 0) {
+  process.stderr.write(`\n  Unknown command: ${positionals.join(' ')}\n  Run \`ccwt --help\` for what ccwt takes.\n\n`)
+  process.exit(1)
+}
+
+if (command === 'start') values.detach = true
+
+if (values.help || command === 'help') {
   process.stdout.write(`
   ccwt — manage git worktrees as running environments
 
   Usage
-    ccwt [options]
+    ccwt [options]          run in the foreground
+    ccwt start [options]    run in the background and give the terminal back
+    ccwt stop               stop the ccwt that is running, and the services it supervises
+    ccwt help               show this
 
   Options
     -p, --port <number>   port to listen on            (default 4600)
@@ -172,7 +190,34 @@ const alive = (pid) => {
 
 const running = await readJson(runtimeFile)
 
-if (running && alive(running.pid) && !(await isFree(running.port, running.host ?? '127.0.0.1'))) {
+const answering = async () =>
+  Boolean(running) && alive(running.pid) && !(await isFree(running.port, running.host ?? '127.0.0.1'))
+
+if (command === 'stop') {
+  if (!(await answering())) {
+    process.stdout.write(`\n  ${dot('alarm')} ccwt is not running\n\n`)
+    process.exit(0)
+  }
+
+  process.kill(running.pid, 'SIGTERM')
+
+  const deadline = Date.now() + STOP_WAIT_MS
+  while (alive(running.pid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+
+  if (alive(running.pid)) {
+    process.stderr.write(
+      `\n  ${dot('alarm')} ccwt did not stop\n\n${row('pid', String(running.pid))}${row('kill', `kill -9 ${running.pid}`)}\n`,
+    )
+    process.exit(1)
+  }
+
+  process.stdout.write(`\n  ${dot('success')} stopped\n\n${row('url', `http://localhost:${running.port}/`)}${row('pid', String(running.pid))}\n`)
+  process.exit(0)
+}
+
+if (await answering()) {
   process.stderr.write(
     `\n  ccwt is already running on http://localhost:${running.port} (pid ${running.pid}).\n  One ccwt per machine: a second would supervise the same worktrees\n  and hand out the same ports. Open that one, or stop it first.\n\n`,
   )
@@ -191,7 +236,12 @@ if (values.detach) {
   await mkdir(logDir, { recursive: true, mode: 0o700 })
 
   const sink = openSync(logFile, 'a')
-  const args = process.argv.slice(2).filter((arg) => arg !== '--detach')
+  const dropped = new Set(
+    tokens
+      .filter((token) => token.kind === 'positional' || (token.kind === 'option' && token.name === 'detach'))
+      .map((token) => token.index),
+  )
+  const args = process.argv.slice(2).filter((_, index) => !dropped.has(index))
 
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...args], {
     cwd: process.cwd(),
@@ -218,7 +268,7 @@ if (values.detach) {
   child.unref()
 
   process.stdout.write(
-    `\n${banner}\n\n  ${dot('success')} running in the background\n\n${row('url', link(`http://localhost:${port}/`))}${row('pid', String(child.pid))}${row('logs', tilde(logFile))}${row('stop', `kill ${child.pid}`)}\n`,
+    `\n${banner}\n\n  ${dot('success')} running in the background\n\n${row('url', link(`http://localhost:${port}/`))}${row('pid', String(child.pid))}${row('logs', tilde(logFile))}${row('stop', 'ccwt stop')}\n`,
   )
   process.exit(0)
 }

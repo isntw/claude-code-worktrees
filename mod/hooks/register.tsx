@@ -419,7 +419,7 @@ export const register: Register = (on) => {
     const current = await read($, view)
 
     if (!current || current.kind === 'offline') {
-      return <Text dimColor>ccwt is not running. Start it with `npm start` in the ccwt checkout.</Text>
+      return <Text dimColor>ccwt is not running. Start it with `ccwt start`.</Text>
     }
     if (current.kind === 'outside') {
       return <Text dimColor>This session is not inside a worktree of a project ccwt knows.</Text>

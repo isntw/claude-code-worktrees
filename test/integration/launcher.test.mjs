@@ -67,6 +67,13 @@ async function withFakeHome(work) {
   }
 }
 
+const taken = (port) =>
+  new Promise((done) => {
+    const probe = createServer()
+    probe.once('error', () => done(true))
+    probe.listen(port, '127.0.0.1', () => probe.close(() => done(false)))
+  })
+
 async function freePort() {
   const probe = createServer()
   await new Promise((done) => probe.listen(0, '127.0.0.1', done))
@@ -81,6 +88,111 @@ test('a non-loopback host is refused outright', async () => {
 
     assert.equal(code, 1)
     assert.match(err, /Refusing to bind 0\.0\.0\.0/)
+  })
+})
+
+test('an unknown command is refused rather than started', async () => {
+  await withFakeHome(async (home, dir) => {
+    const { code, err } = await refuses(home, ['stat', '--no-open'])
+
+    assert.equal(code, 1)
+    assert.match(err, /Unknown command: stat/)
+    assert.ok(!existsSync(join(dir, 'runtime.json')), 'nothing may start on a mistyped command')
+  })
+})
+
+test('start detaches, and the background server is not handed the command again', async () => {
+  await withFakeHome(async (home, dir) => {
+    const path = join(dir, 'runtime.json')
+    const { code, out, err } = await refuses(home, ['start', '--dev', '--port', String(await freePort()), '--no-open'])
+
+    assert.equal(code, 0, err)
+
+    const pid = Number(/pid\s+(\d+)/.exec(out)?.[1])
+
+    try {
+      assert.ok(Number.isInteger(pid), `no pid in: ${out}`)
+      assert.ok(await until(() => existsSync(path)), 'runtime.json never appeared')
+      assert.equal(JSON.parse(readFileSync(path, 'utf8')).pid, pid, 'the printed pid must be the server')
+    } finally {
+      try {
+        process.kill(-pid, 'SIGKILL')
+      } catch {}
+    }
+  })
+})
+
+test('help is a command as well as a flag', async () => {
+  await withFakeHome(async (home, dir) => {
+    const { code, out } = await refuses(home, ['help'])
+
+    assert.equal(code, 0)
+    assert.match(out, /ccwt start/)
+    assert.match(out, /ccwt stop/)
+    assert.equal(out, (await refuses(home, ['--help'])).out)
+    assert.ok(!existsSync(join(dir, 'runtime.json')), 'help must not start anything')
+  })
+})
+
+test('stop with nothing running says so and succeeds', async () => {
+  await withFakeHome(async (home) => {
+    const { code, out } = await refuses(home, ['stop'])
+
+    assert.equal(code, 0)
+    assert.match(out, /ccwt is not running/)
+  })
+})
+
+test('stop leaves a process alone when the handshake names one that is not serving', async () => {
+  await withFakeHome(async (home, dir) => {
+    writeFileSync(
+      join(dir, 'runtime.json'),
+      JSON.stringify({ host: '127.0.0.1', port: await freePort(), pid: process.pid, token: 'x' }),
+    )
+
+    const { code, out } = await refuses(home, ['stop'])
+
+    assert.equal(code, 0)
+    assert.match(out, /ccwt is not running/)
+  })
+})
+
+test('stop ends what start began, and takes the handshake with it', async () => {
+  await withFakeHome(async (home, dir) => {
+    const path = join(dir, 'runtime.json')
+    const started = await refuses(home, ['start', '--dev', '--port', String(await freePort()), '--no-open'])
+    const pid = Number(/pid\s+(\d+)/.exec(started.out)?.[1])
+
+    try {
+      assert.equal(started.code, 0, started.err)
+      assert.ok(await until(() => existsSync(path)), 'runtime.json never appeared')
+      assert.ok(
+        await until(() => {
+          try {
+            process.kill(pid, 0)
+            return true
+          } catch {
+            return false
+          }
+        }),
+      )
+
+      const { port } = JSON.parse(readFileSync(path, 'utf8'))
+      const deadline = Date.now() + WAIT_MS
+      while (Date.now() < deadline && !(await taken(port))) await settle(200)
+      assert.ok(await taken(port), 'the dev server never took its port')
+
+      const stopped = await refuses(home, ['stop'])
+
+      assert.equal(stopped.code, 0, stopped.err)
+      assert.match(stopped.out, /stopped/)
+      assert.throws(() => process.kill(pid, 0), 'the server must be gone once stop returns')
+      assert.ok(await until(() => !existsSync(path)), 'a stopped ccwt must take its handshake with it')
+    } finally {
+      try {
+        process.kill(-pid, 'SIGKILL')
+      } catch {}
+    }
   })
 })
 
