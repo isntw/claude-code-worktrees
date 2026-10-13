@@ -81,6 +81,7 @@ declare module 'claude-code' {
       focus: string | null
       cursor: string | null
       everything: boolean
+      minimized: boolean
       selected: string | null
       logs: LogLine[]
       busy: string | null

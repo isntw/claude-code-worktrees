@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Holder, LogLine, Pull, Service, View, Worktree } from '../types'
-import { arrange, attention, chipText, chipWidth, clean, bornInSession, contest, mainService, owning, statusText, summary, tone, touchedPathIn, uptime, word } from './model'
+import { arrange, attention, clean, bornInSession, contest, mainService, owning, statusText, summary, tone, touchedPathIn, uptime, word } from './model'
 import type { Contest } from './model'
 
 const PANE = 'ccwt'
@@ -18,6 +18,7 @@ const logs = atom({ plugin: 'ccwt-mod', key: 'logs' } as const, [])
 const busy = atom({ plugin: 'ccwt-mod', key: 'busy' } as const, null)
 const cursor = atom({ plugin: 'ccwt-mod', key: 'cursor' } as const, null)
 const everything = atom({ plugin: 'ccwt-mod', key: 'everything' } as const, false)
+const minimized = atom({ plugin: 'ccwt-mod', key: 'minimized' } as const, false)
 
 type Here = Extract<View, { kind: 'here' }>
 type Server = { origin: string; token: string; dashboard: string }
@@ -364,10 +365,8 @@ export const register: Register = (on) => {
     const shown: Here = isAll ? { ...current, rows: [...current.rows, ...current.others], others: [] } : current
     const total = current.rows.length + current.others.length
     const selected = shown.rows.find((row) => row.id === wanted) ?? shown.rows.find((row) => row.id === current.hereId) ?? shown.rows[0]!
-    const alerts = attention(shown)
+    const alerts = attention(shown).filter((alert) => !alert.key.includes('-crashed-'))
     const many = shown.rows.length > 1
-    const nameWidth = Math.max(...shown.rows.map((row) => row.name.length)) + 2
-    const chipColumn = Math.max(...shown.rows.map((row) => chipWidth(mainService(row))))
     const verbOf = (row: Worktree) => {
       if (row.services.length === 0) return null
       const which = row.services.length === 1 ? row.services[0]!.name : 'all'
@@ -375,9 +374,15 @@ export const register: Register = (on) => {
       if (anyUp) return { kind: 'stop' as const, label: `stop ${which}`, contest: null }
       const held = contest(row, current.holders)
       if (held) return { kind: 'run' as const, label: 'run here', contest: held }
-      return { kind: 'start' as const, label: `start ${which}`, contest: null }
+      const crashed = row.services.some((one) => one.state === 'crashed')
+      return { kind: 'start' as const, label: crashed ? 'restart' : `start ${which}`, contest: null }
     }
-    const actionColumn = Math.max(0, ...shown.rows.map((row) => (verbOf(row)?.label.length ?? 0) + 3))
+    const CURSOR = 2
+    const GAP = 3
+    const nameColumn = Math.max(CURSOR + 'WORKTREE'.length, ...shown.rows.map((row) => CURSOR + row.name.length))
+    const stateColumn = Math.max('STATE'.length, ...shown.rows.map((row) => { const main = mainService(row); return main ? word(main).length : 'none'.length }))
+    const portColumn = Math.max('PORT'.length, ...shown.rows.map((row) => String(mainService(row)?.port ?? '-').length))
+    const actionColumn = Math.max('ACTION'.length, 'starting...'.length + 3, ...shown.rows.map((row) => (verbOf(row)?.label.length ?? 0) + 3))
     const claimed = new Set<string>()
     const hotkey = (key: string) => {
       if (claimed.has(key)) return undefined
@@ -385,39 +390,71 @@ export const register: Register = (on) => {
       return key
     }
 
+    if (await read($, minimized)) {
+      const services = shown.rows.flatMap((row) => row.services)
+      const up = services.filter((one) => one.state === 'running').length
+      const crashed = services.filter((one) => one.state === 'crashed').length
+      return (
+        <Box flexDirection="column">
+          <Box flexDirection="row" borderStyle="round" borderDimColor paddingX={1} justifyContent="space-between">
+            <Box flexDirection="row" gap={2}>
+              <Text dimColor>ccwt . {current.projectName}</Text>
+              <Text dimColor>{shown.rows.length === 1 ? '1 worktree' : `${shown.rows.length} worktrees`}</Text>
+              {up > 0 && <Text color="success">{up} up</Text>}
+              {crashed > 0 && <Text color="error">{crashed} crashed</Text>}
+              {alerts.length > 0 && <Text color="warning">{alerts.length === 1 ? '1 alert' : `${alerts.length} alerts`}</Text>}
+              <Button key="restore" plain dimColor label="expand" hotkey={hotkey('m')} autoFocus onPress={() => update($, minimized, () => false)} />
+            </Box>
+            <Link href={current.dashboard} label="dashboard" />
+          </Box>
+          {below}
+        </Box>
+      )
+    }
+
     return (
       <Box flexDirection="column">
         <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-          <Box flexDirection="row" justifyContent="space-between">
-            <Text dimColor>
-              ccwt . {current.projectName}
-              {isAll ? ` . all ${total} worktrees` : many ? ` . ${current.rows.length} worktrees this session` : ''}
-            </Text>
-            <Link href={current.dashboard} label="dashboard" />
+          <Box flexDirection="row" gap={GAP}>
+            <Box width={nameColumn} flexShrink={0}>
+              <Text dimColor>{'  '}WORKTREE</Text>
+            </Box>
+            <Box width={stateColumn} flexShrink={0}>
+              <Text dimColor>STATE</Text>
+            </Box>
+            <Box width={portColumn} flexShrink={0}>
+              <Text dimColor>PORT</Text>
+            </Box>
+            <Box width={actionColumn} flexShrink={0}>
+              <Text dimColor>ACTION</Text>
+            </Box>
+            <Box flexGrow={1} justifyContent="flex-end">
+              <Link href={current.dashboard} label="dashboard" />
+            </Box>
           </Box>
           {shown.rows.map((row) => {
             const verb = verbOf(row)
             const main = mainService(row)
             const colour = main ? tone(main) : 'dim'
             const isSelected = row.id === selected.id
-            const isHere = row.id === current.hereId
             return (
-              <Box key={`row-${row.id}`} flexDirection="row" gap={2}>
-                <Box width={nameWidth} flexShrink={0}>
+              <Box key={`row-${row.id}`} flexDirection="row" gap={GAP}>
+                <Box width={nameColumn} flexShrink={0}>
                   <Text bold={isSelected} dimColor={!isSelected} wrap="truncate">
                     {isSelected ? '> ' : '  '}
                     {row.name}
                   </Text>
                 </Box>
-                <Box width={chipColumn} flexShrink={0} flexDirection="row" gap={1}>
-                  {!main && <Text dimColor>no services</Text>}
-                  {main && (
-                    <Text color={colour === 'dim' ? undefined : colour} dimColor={colour === 'dim'}>
-                      {chipText(main)}
-                    </Text>
-                  )}
-                  {main && main.port !== null && (
-                    <Link href={main.url ?? `http://localhost:${main.port}`} label={`localhost:${main.port}`} />
+                <Box width={stateColumn} flexShrink={0}>
+                  <Text color={colour === 'dim' ? undefined : colour} dimColor={colour === 'dim'}>
+                    {main ? word(main) : 'none'}
+                  </Text>
+                </Box>
+                <Box width={portColumn} flexShrink={0}>
+                  {main && main.port !== null ? (
+                    <Link href={main.url ?? `http://localhost:${main.port}`} label={String(main.port)} />
+                  ) : (
+                    <Text dimColor>-</Text>
                   )}
                 </Box>
                 <Box width={actionColumn} flexShrink={0}>
@@ -433,38 +470,40 @@ export const register: Register = (on) => {
                             ? 'stopping...'
                             : verb.label
                       }
-                      hotkey={isSelected ? hotkey(verb.kind === 'stop' ? 'x' : 's') : undefined}
+                      hotkey={isSelected ? hotkey(verb.kind === 'stop' ? 'x' : verb.label === 'restart' ? 'r' : 's') : undefined}
                       onPress={() =>
                         verb.contest ? runHere($, row.id, verb.contest) : verb.kind === 'start' ? startAll($, row.id) : stopAll($, row.id)
                       }
                     />
                   )}
                 </Box>
-                {isSelected && verb?.contest && <Text dimColor wrap="truncate">stops {verb.contest.holder}</Text>}
-                {isHere && many && <Text dimColor>here</Text>}
               </Box>
             )
           })}
           <Box flexDirection="row" gap={2}>
-            <Text dimColor>up/down: worktree . enter: start/stop</Text>
-            <Button
-              key="details"
-              plain
-              dimColor
-              label={`details of ${selected.name}`}
-              hotkey={hotkey('d')}
-              onPress={() => openPane($, selected.id)}
-            />
+            <Button key="details" plain dimColor label="details" hotkey={hotkey('d')} onPress={() => openPane($, selected.id)} />
+            {selected.services.some((one) => one.state === 'crashed') && (
+              <Button
+                key="logs"
+                plain
+                dimColor
+                label="logs"
+                hotkey={hotkey('l')}
+                onPress={() => openPane($, selected.id, selected.services.find((one) => one.state === 'crashed')?.name)}
+              />
+            )}
             {current.others.length > 0 && (
               <Button
                 key="scope"
                 plain
                 dimColor
-                label={isAll ? 'session only' : `all ${total} worktrees`}
+                label={isAll ? 'session' : `all ${total}`}
                 hotkey={hotkey('a')}
                 onPress={() => update($, everything, (was) => !was)}
               />
             )}
+            <Button key="minimize" plain dimColor label="minimize" hotkey={hotkey('m')} onPress={() => update($, minimized, () => true)} />
+            {many && <Text dimColor>up/down . enter</Text>}
           </Box>
           {alerts.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
@@ -474,15 +513,6 @@ export const register: Register = (on) => {
                     {alert.tone === 'error' || alert.tone === 'warning' ? '! ' : '~ '}
                     {alert.text}
                   </Text>
-                  {alert.action?.kind === 'start' && alert.action.service && (
-                    <Button
-                      key={`${alert.key}-start`}
-                      plain
-                      label={working === `${alert.worktreeId} start ${alert.action.service}` ? 'starting...' : 'restart'}
-                      hotkey={hotkey('r')}
-                      onPress={() => startService($, alert.worktreeId, alert.action!.service!)}
-                    />
-                  )}
                   {alert.action?.kind === 'repair' && (
                     <Button
                       key={`${alert.key}-repair`}
@@ -490,16 +520,6 @@ export const register: Register = (on) => {
                       label={working === `${alert.worktreeId} repair` ? 'repairing...' : 'repair'}
                       hotkey={hotkey('p')}
                       onPress={() => repair($, alert.worktreeId)}
-                    />
-                  )}
-                  {alert.logs && (
-                    <Button
-                      key={`${alert.key}-logs`}
-                      plain
-                      dimColor
-                      label="logs"
-                      hotkey={hotkey('l')}
-                      onPress={() => openPane($, alert.worktreeId, alert.logs)}
                     />
                   )}
                   {alert.link && <Link href={alert.link} label="open" />}
