@@ -28,7 +28,9 @@
     "preview": "node .output/server/index.mjs",
     "typecheck": "nuxt typecheck && npm run typecheck:plugin",
     "typecheck:plugin": "tsc6 --noEmit -p plugin/tsconfig.json",
-    "start": "node bin/ccwt.mjs --detach"
+    "start": "node bin/ccwt.mjs start",
+    "stop": "node bin/ccwt.mjs stop",
+    "setup": "npm install && npm run build && npm install --global ."
   },
   "dependencies": {
     "kysely": "^0.29.5",

@@ -41,12 +41,13 @@ Needs git 2.20+ and Node 24+.
 ```bash
 git clone https://github.com/isntw/claude-code-worktrees
 cd claude-code-worktrees
-npm install
-npm run build
-npm start          # opens http://localhost:4600
+npm run setup      # install, build, and put ccwt on your path
+ccwt start         # opens http://localhost:4600, from anywhere
 ```
 
-`npm i -g .` after that build puts `ccwt` on your path, to start it from anywhere.
+`ccwt start` runs in the background and gives the terminal back; `ccwt stop` stops it and every
+service it started. `ccwt` alone stays in the foreground. In the checkout, `npm start` and `npm stop`
+do the same.
 
 1. **Register project** — point it at a repository root. Registering reads nothing out of it and
    writes nothing into it.
