@@ -2,7 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Holder, LogLine, Pull, Service, View, Worktree } from '../types'
-import { arrange, attention, chipText, chipWidth, clean, mainService, owning, statusText, summary, tone, touchedPath, uptime, word } from './model'
+import { arrange, attention, chipText, chipWidth, clean, bornInSession, contest, mainService, owning, statusText, summary, tone, touchedPathIn, uptime, word } from './model'
+import type { Contest } from './model'
 
 const PANE = 'ccwt'
 const TICK_MS = 3000
@@ -80,6 +81,7 @@ const local = {
   seen: false,
   ticking: false,
   lastView: '',
+  judged: new Map<string, boolean>(),
 }
 
 async function locate($: EngineInterface, server: Server, cwd: string) {
@@ -116,6 +118,21 @@ async function observe($: EngineInterface): Promise<{ next: View; server: Server
   if (!found) {
     const alive = await call<unknown>($, server, '/api/projects')
     return { next: alive.data ? { kind: 'outside' } : { kind: 'offline' }, server }
+  }
+
+  const unjudged = found.worktrees.filter((worktree) => !worktree.root && !local.judged.has(worktree.id))
+  if (unjudged.length) {
+    const sessionStartedAt = (await $.session.usage()).startedAt
+    const arrived: string[] = []
+    for (const worktree of unjudged) {
+      const marker = await $.fs.stat(`${worktree.path}/.git`).catch(() => null)
+      const isOurs = bornInSession(worktree, marker ? marker.mtimeMs : null, sessionStartedAt)
+      local.judged.set(worktree.id, isOurs)
+      if (isOurs) arrived.push(worktree.path)
+    }
+    if (arrived.length) {
+      await update($, tracked, (list) => [...list, ...arrived.filter((path) => !list.includes(path))])
+    }
   }
 
   const { rows, others } = arrange(found.worktrees, found.here, await read($, tracked))
@@ -181,7 +198,7 @@ async function tick($: EngineInterface) {
 
 async function focused($: EngineInterface, current: Here): Promise<Worktree> {
   const wanted = await read($, focus)
-  return current.rows.find((row) => row.id === wanted) ?? current.rows[0]!
+  return [...current.rows, ...current.others].find((row) => row.id === wanted) ?? current.rows[0]!
 }
 
 async function refreshLogs($: EngineInterface, server: Server, current: Here) {
@@ -213,7 +230,7 @@ async function act($: EngineInterface, worktreeId: string, label: string, suffix
   const server = await reach($)
   if (!server || current?.kind !== 'here') return
 
-  const name = current.rows.find((row) => row.id === worktreeId)?.name ?? worktreeId
+  const name = [...current.rows, ...current.others].find((row) => row.id === worktreeId)?.name ?? worktreeId
   await update($, busy, () => `${worktreeId} ${label}`)
   const done = await call<unknown>(
     $,
@@ -242,16 +259,12 @@ function stopAll($: EngineInterface, worktreeId: string) {
   return act($, worktreeId, 'stop all', 'services/stop')
 }
 
-async function takeOver(
-  $: EngineInterface,
-  worktreeId: string,
-  takeover: { port: number; service: string; pids: number[]; services: { worktreeId: string; service: string }[] },
-) {
+async function runHere($: EngineInterface, worktreeId: string, takeover: Contest) {
   const current = await read($, view)
   const server = await reach($)
   if (!server || current?.kind !== 'here') return
 
-  await update($, busy, () => `${worktreeId} take over ${takeover.port}`)
+  await update($, busy, () => `${worktreeId} run here`)
   const freed = await $.http
     .fetch(`${server.origin}/api/ports/${takeover.port}/free`, {
       method: 'POST',
@@ -259,13 +272,20 @@ async function takeOver(
       body: JSON.stringify({ pids: takeover.pids, services: takeover.services }),
     })
     .catch(() => null)
+  let outcome: { freed?: boolean; why?: string | null; refused?: { why: string }[] } | null = null
+  try {
+    outcome = freed ? JSON.parse(freed.text) : null
+  } catch {
+    outcome = null
+  }
   await update($, busy, () => null)
-  if (!freed?.ok) {
-    $.ui.toast(`ccwt: could not free port ${takeover.port}`)
+  if (!freed?.ok || outcome?.freed !== true) {
+    const why = outcome?.why ?? outcome?.refused?.[0]?.why ?? 'ccwt did not say why'
+    $.ui.toast(`ccwt: port ${takeover.port} is still held: ${why}`)
     await tick($)
     return
   }
-  await startService($, worktreeId, takeover.service)
+  await startAll($, worktreeId)
 }
 
 function repair($: EngineInterface, worktreeId: string) {
@@ -308,7 +328,7 @@ export const register: Register = (on) => {
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     if (ran.deny === undefined && ran.isError !== true) {
-      const path = touchedPath(e.tool, ran.text)
+      const path = touchedPathIn(e.tool, ran)
       if (path) await remember($, path)
     }
     return ran
@@ -352,8 +372,12 @@ export const register: Register = (on) => {
       if (row.services.length === 0) return null
       const which = row.services.length === 1 ? row.services[0]!.name : 'all'
       const anyUp = row.services.some((one) => one.state === 'running' || one.state === 'starting')
-      return anyUp ? { kind: 'stop' as const, label: `stop ${which}` } : { kind: 'start' as const, label: `start ${which}` }
+      if (anyUp) return { kind: 'stop' as const, label: `stop ${which}`, contest: null }
+      const held = contest(row, current.holders)
+      if (held) return { kind: 'run' as const, label: 'run here', contest: held }
+      return { kind: 'start' as const, label: `start ${which}`, contest: null }
     }
+    const actionColumn = Math.max(0, ...shown.rows.map((row) => (verbOf(row)?.label.length ?? 0) + 3))
     const claimed = new Set<string>()
     const hotkey = (key: string) => {
       if (claimed.has(key)) return undefined
@@ -396,16 +420,27 @@ export const register: Register = (on) => {
                     <Link href={main.url ?? `http://localhost:${main.port}`} label={`localhost:${main.port}`} />
                   )}
                 </Box>
-                {verb && (
-                  <Button
-                    key={`act-${row.id}`}
-                    plain
-                    autoFocus={isSelected ? true : undefined}
-                    label={working === `${row.id} ${verb.kind} all` ? `${verb.kind === 'start' ? 'starting' : 'stopping'}...` : verb.label}
-                    hotkey={isSelected ? hotkey(verb.kind === 'start' ? 's' : 'x') : undefined}
-                    onPress={() => (verb.kind === 'start' ? startAll($, row.id) : stopAll($, row.id))}
-                  />
-                )}
+                <Box width={actionColumn} flexShrink={0}>
+                  {verb && (
+                    <Button
+                      key={`act-${row.id}`}
+                      plain
+                      autoFocus={isSelected ? true : undefined}
+                      label={
+                        working === `${row.id} run here` || working === `${row.id} start all`
+                          ? 'starting...'
+                          : working === `${row.id} stop all`
+                            ? 'stopping...'
+                            : verb.label
+                      }
+                      hotkey={isSelected ? hotkey(verb.kind === 'stop' ? 'x' : 's') : undefined}
+                      onPress={() =>
+                        verb.contest ? runHere($, row.id, verb.contest) : verb.kind === 'start' ? startAll($, row.id) : stopAll($, row.id)
+                      }
+                    />
+                  )}
+                </Box>
+                {isSelected && verb?.contest && <Text dimColor wrap="truncate">stops {verb.contest.holder}</Text>}
                 {isHere && many && <Text dimColor>here</Text>}
               </Box>
             )
@@ -446,15 +481,6 @@ export const register: Register = (on) => {
                       label={working === `${alert.worktreeId} start ${alert.action.service}` ? 'starting...' : 'restart'}
                       hotkey={hotkey('r')}
                       onPress={() => startService($, alert.worktreeId, alert.action!.service!)}
-                    />
-                  )}
-                  {alert.takeover && (
-                    <Button
-                      key={`${alert.key}-take`}
-                      plain
-                      label={working === `${alert.worktreeId} take over ${alert.takeover.port}` ? 'taking over...' : 'take over'}
-                      hotkey={hotkey('t')}
-                      onPress={() => takeOver($, alert.worktreeId, alert.takeover!)}
                     />
                   )}
                   {alert.action?.kind === 'repair' && (

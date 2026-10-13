@@ -8,7 +8,6 @@ export type Alert = {
   text: string
   worktreeId: string
   action?: { kind: 'start' | 'repair'; service?: string }
-  takeover?: { port: number; service: string; pids: number[]; services: { worktreeId: string; service: string }[] }
   logs?: string
   link?: string
 }
@@ -77,6 +76,7 @@ function heldPorts(view: Here): Alert[] {
     seen.add(main.port)
 
     const holder = view.holders[String(main.port)]
+    if (main.heldBy || !holder?.foreign.length) continue
     const cwd = holder?.foreign[0]?.cwd ?? null
     const owner =
       view.rows
@@ -84,21 +84,11 @@ function heldPorts(view: Here): Alert[] {
         .sort((a, b) => b.path.length - a.path.length)[0] ??
       view.rows.find((candidate) => candidate.id === view.hereId && mainService(candidate)?.port === main.port) ??
       row
-    const service = mainService(owner)?.name ?? main.name
-
     alerts.push({
       key: `port-${main.port}`,
       tone: 'warning',
       worktreeId: owner.id,
-      text: `port ${main.port} is held by ${holder ? holderText(holder) : 'something else'}`,
-      takeover: holder
-        ? {
-            port: main.port,
-            service,
-            pids: holder.foreign.map((one) => one.pid),
-            services: holder.ours.map((one) => ({ worktreeId: one.worktreeId, service: one.service })),
-          }
-        : undefined,
+      text: `port ${main.port} is held by ${holderText(holder)}`,
     })
   }
 
@@ -226,4 +216,49 @@ export function mainService(row: Worktree): Service | undefined {
 export function chipWidth(service: Service | undefined): number {
   if (!service) return 'no services'.length
   return chipText(service).length + (service.port === null ? 0 : ` localhost:${service.port}`.length)
+}
+
+export type Contest = {
+  port: number
+  holder: string
+  pids: number[]
+  services: { worktreeId: string; service: string }[]
+}
+
+export function contest(row: Worktree, holders: Record<string, Holder>): Contest | null {
+  const main = mainService(row)
+  if (!main || main.port === null || !main.taken || main.movable) return null
+  if (main.state === 'running' || main.state === 'starting') return null
+
+  if (main.heldBy) {
+    return {
+      port: main.port,
+      holder: `${main.heldBy.service} in ${main.heldBy.worktree}`,
+      pids: [],
+      services: [{ worktreeId: main.heldBy.worktreeId, service: main.heldBy.service }],
+    }
+  }
+
+  const holder = holders[String(main.port)]
+  if (!holder || (!holder.foreign.length && !holder.ours.length)) return null
+  return {
+    port: main.port,
+    holder: holderText(holder),
+    pids: holder.foreign.map((one) => one.pid),
+    services: holder.ours.map((one) => ({ worktreeId: one.worktreeId, service: one.service })),
+  }
+}
+
+export function bornInSession(worktree: Worktree, createdAt: number | null, sessionStartedAt: number): boolean {
+  return !worktree.root && createdAt !== null && createdAt >= sessionStartedAt
+}
+
+export function touchedPathIn(tool: string, ran: { text?: unknown; result?: unknown }): string | null {
+  const fromText = touchedPath(tool, ran.text)
+  if (fromText) return fromText
+  try {
+    return touchedPath(tool, JSON.stringify(ran.result ?? null))
+  } catch {
+    return null
+  }
 }

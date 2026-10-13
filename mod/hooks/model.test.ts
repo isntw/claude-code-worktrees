@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Pull, Service, View, Worktree } from '../types'
-import { arrange, attention, clean, mainService, owning, statusText, touchedPath } from './model'
+import { arrange, attention, clean, bornInSession, contest, mainService, owning, statusText, touchedPath, touchedPathIn } from './model'
 
 const service = (over: Partial<Service>): Service => ({
   name: 'web',
@@ -126,11 +126,6 @@ test('the main service is the primary one, else the first', () => {
   expect(mainService(worktree({ services: [] }))).toBe(undefined)
 })
 
-test('a held port is raised for the main service only', () => {
-  const vite = service({ name: 'vite', port: 5237, state: 'stopped', taken: true })
-  const serve = service({ name: 'serve', port: 20086, state: 'stopped', taken: true, primary: true })
-  expect(attention(here([worktree({ services: [vite, serve] })])).map((alert) => alert.key)).toEqual(['port-20086'])
-})
 
 test('a pinned port held by a stray process is raised once, naming it, with a take over for its worktree', () => {
   const pinned = (id: string, path: string) =>
@@ -145,5 +140,52 @@ test('a pinned port held by a stray process is raised once, naming it, with a ta
   expect(alerts.length).toBe(1)
   expect(alerts[0]?.text).toBe('port 3000 is held by next-server (pid 95422) in repo, not started by ccwt')
   expect(alerts[0]?.worktreeId).toBe('root')
-  expect(alerts[0]?.takeover).toEqual({ port: 3000, service: 'dev', pids: [95422], services: [] })
+  expect(contest(view.rows[1]!, view.holders)).toEqual({
+    port: 3000,
+    holder: 'next-server (pid 95422) in repo, not started by ccwt',
+    pids: [95422],
+    services: [],
+  })
+})
+
+test('a pinned port another worktree runs offers run here, stopping that service, and raises no alert', () => {
+  const held = worktree({
+    id: 'a',
+    services: [
+      service({
+        name: 'dev',
+        port: 3000,
+        state: 'stopped',
+        taken: true,
+        heldBy: { worktreeId: 'b', worktree: 'mtech-6080', service: 'dev', same: true },
+      }),
+    ],
+  })
+  expect(contest(held, {})).toEqual({
+    port: 3000,
+    holder: 'dev in mtech-6080',
+    pids: [],
+    services: [{ worktreeId: 'b', service: 'dev' }],
+  })
+  expect(attention(here([held]))).toEqual([])
+})
+
+test('a movable or running service is never contested', () => {
+  const movable = worktree({ services: [service({ port: 5237, state: 'stopped', taken: true, movable: true })] })
+  const running = worktree({ services: [service({ port: 5237, state: 'running', taken: true })] })
+  expect(contest(movable, {})).toBe(null)
+  expect(contest(running, {})).toBe(null)
+})
+
+test('a worktree created after the session started is the session\'s, the root and unknown ones never', () => {
+  const started = Date.parse('2026-10-13T15:30:00Z')
+  expect(bornInSession(worktree({}), Date.parse('2026-10-13T15:45:47Z'), started)).toBe(true)
+  expect(bornInSession(worktree({}), Date.parse('2026-10-13T09:00:00Z'), started)).toBe(false)
+  expect(bornInSession(worktree({}), null, started)).toBe(false)
+  expect(bornInSession(worktree({ root: true }), Date.parse('2026-10-13T15:45:47Z'), started)).toBe(false)
+})
+
+test('the path is also found in a tool result whose text is prose', () => {
+  const ran = { text: 'Created x. It is provisioned and stopped.', result: { structuredContent: { ok: true, path: '/repo/x' } } }
+  expect(touchedPathIn('mcp__plugin_ccwt_ccwt__ccwt_create_worktree', ran)).toBe('/repo/x')
 })

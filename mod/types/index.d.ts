@@ -10,6 +10,8 @@ export type Service = {
   exitCode: number | null
   reachable: boolean | null
   taken?: boolean
+  movable?: boolean
+  heldBy?: { worktreeId: string; worktree: string; service: string; same: boolean } | null
 }
 
 export type Diagnostic = {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "ccwt-mod",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Shows what ccwt runs inside the Claude Code session: a band above the prompt with this session's worktrees, their services and links, a line under the prompt, and a /ccwt pane with logs.",
   "author": {
     "name": "ccwt"
