@@ -458,6 +458,16 @@ export interface PluginParts {
   skills: PluginSkill[]
 }
 
+export interface ModReport {
+  id: string
+  state: PluginState
+  installed: string | null
+  available: string | null
+  approval: PluginApproval
+  shows: string[]
+  issues: Diagnostic[]
+}
+
 export interface PluginReport {
   state: PluginState
   installed: string | null

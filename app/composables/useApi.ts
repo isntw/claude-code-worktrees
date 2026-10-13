@@ -16,6 +16,7 @@ import type {
   MergeMethod,
   MergeOutcome,
   Mergeability,
+  ModReport,
   Overview,
   PluginReport,
   PortHolders,
@@ -91,6 +92,13 @@ export function useApi() {
     disablePlugin: () =>
       call<PluginReport>('/plugin', { method: 'POST', body: { action: 'disable' } }),
     removePlugin: () => call<PluginReport>('/plugin', { method: 'DELETE' }),
+
+    getMod: () => call<ModReport>('/plugin/mod'),
+    installMod: () => call<ModReport>('/plugin/mod', { method: 'POST', body: {} }),
+    enableMod: () => call<ModReport>('/plugin/mod', { method: 'POST', body: { action: 'enable' } }),
+    updateMod: () => call<ModReport>('/plugin/mod', { method: 'POST', body: { action: 'update' } }),
+    disableMod: () => call<ModReport>('/plugin/mod', { method: 'POST', body: { action: 'disable' } }),
+    removeMod: () => call<ModReport>('/plugin/mod', { method: 'DELETE' }),
 
     getForgeSession: () => call<ForgeSession>('/forge/session'),
     signOutForge: () => call<ForgeSession>('/forge/session', { method: 'DELETE' }),

@@ -11,6 +11,12 @@
       "description": "Tells a Claude Code session which services ccwt already runs for the current repository, stops it starting a second copy of one, lets it write the recipe that says what running the project means, and names the session after its worktree.",
       "source": "./plugin",
       "category": "productivity"
+    },
+    {
+      "name": "ccwt-mod",
+      "description": "Shows what ccwt runs inside the Claude Code session: this session's worktrees, their services and links above the prompt, and a /ccwt pane with logs.",
+      "source": "./mod",
+      "category": "productivity"
     }
   ]
 }

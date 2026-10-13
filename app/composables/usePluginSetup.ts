@@ -2,7 +2,7 @@ import { computed, onMounted, ref } from 'vue'
 import type { PluginReport, PluginState } from '#shared/types'
 import type { Variation } from '../components/variation'
 
-const LOOK: Record<PluginState, Variation> = {
+export const PLUGIN_LOOK: Record<PluginState, Variation> = {
   unavailable: 'neutral',
   absent: 'neutral',
   installed: 'success',
@@ -10,7 +10,7 @@ const LOOK: Record<PluginState, Variation> = {
   disabled: 'warning',
 }
 
-const SAYS: Record<PluginState, string> = {
+export const PLUGIN_SAYS: Record<PluginState, string> = {
   unavailable: 'claude code not found',
   absent: 'not installed',
   installed: 'installed',
@@ -28,8 +28,8 @@ export function usePluginSetup() {
   const state = computed<PluginState | null>(() => report.value?.state ?? null)
   const installed = computed(() => state.value === 'installed' || state.value === 'outdated')
   const stale = computed(() => state.value === 'outdated')
-  const look = computed<Variation>(() => (state.value ? LOOK[state.value] : 'neutral'))
-  const says = computed(() => (state.value ? SAYS[state.value] : ''))
+  const look = computed<Variation>(() => (state.value ? PLUGIN_LOOK[state.value] : 'neutral'))
+  const says = computed(() => (state.value ? PLUGIN_SAYS[state.value] : ''))
 
   const events = computed(() =>
     (report.value?.parts.hooks ?? [])

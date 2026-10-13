@@ -12,6 +12,7 @@
     "bin",
     ".output",
     "plugin",
+    "mod",
     ".claude-plugin"
   ],
   "engines": {
@@ -21,7 +22,7 @@
     "dev": "node bin/ccwt.mjs --dev",
     "build": "nuxt build && npm run build:plugin",
     "build:plugin": "node scripts/build-plugin.mjs",
-    "test": "node --test",
+    "test": "node --test \"test/**/*.test.mjs\"",
     "prepare": "nuxt prepare",
     "prepack": "npm run build",
     "preview": "node .output/server/index.mjs",

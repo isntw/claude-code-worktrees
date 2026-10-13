@@ -114,6 +114,8 @@ const confirm = async () => {
         </dl>
       </div>
 
+      <ModSection class="mt-3" />
+
       <Notice
         v-for="issue in report?.issues ?? []"
         :key="issue.code"
