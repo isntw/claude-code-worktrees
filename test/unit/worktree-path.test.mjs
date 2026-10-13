@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { importLib } from '../helpers/tslib.mjs'
+import { importLib, importShared } from '../helpers/tslib.mjs'
 
 const { worktreePathFor } = await importLib('provision')
+const schema = await importShared('recipe-schema')
 
 const ROOT = '/repos/portal'
 
@@ -37,4 +38,12 @@ test('an absolute shared folder keeps the project segment too', () => {
   const path = worktreePathFor(ROOT, recipe('/shared/worktrees'), 'portal', 'tooltip')
 
   assert.equal(path, '/shared/worktrees/portal/tooltip')
+})
+
+test('a recipe that names no directory lands where Claude Code puts its own', () => {
+  const parsed = schema.parseRecipe({ services: [] })
+
+  assert.ok(parsed.ok)
+  assert.equal(parsed.recipe.worktreesDir, schema.emptyRecipe().worktreesDir)
+  assert.equal(worktreePathFor(ROOT, parsed.recipe, 'portal', 'tooltip'), `${ROOT}/.claude/worktrees/tooltip`)
 })

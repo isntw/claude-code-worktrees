@@ -450,12 +450,14 @@ const TONE = { same: 'text-faint', add: 'text-success', remove: 'text-alarm' } a
         <div class="px-3 py-3">
           <Input
             :model-value="draft.worktreesDir"
-            placeholder="../.worktrees"
+            placeholder=".claude/worktrees"
             label="Worktrees directory"
             @update:model-value="(value) => draft && (draft = { ...draft, worktreesDir: value })"
           />
           <p class="mt-1 font-sans text-[0.625rem] text-faint">
-            Relative to the repository root. Each project gets its own folder inside it.
+            Relative to the repository root. Inside the repository a worktree sits in it directly,
+            where <code class="font-mono">claude --worktree</code> puts its own; a directory outside is
+            shared, so each project gets its own folder in it.
           </p>
         </div>
       </Panel>

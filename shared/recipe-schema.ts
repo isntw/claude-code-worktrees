@@ -54,7 +54,7 @@ export const serviceSchema = z
 
 const configObject = z
   .strictObject({
-    worktreesDir: z.string().min(1).default('../.worktrees'),
+    worktreesDir: z.string().min(1).default('.claude/worktrees'),
     provision: z
       .preprocess(
         (value) => without(value, RETIRED_PROVISION_KEYS),
