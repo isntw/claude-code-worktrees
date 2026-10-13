@@ -14,6 +14,7 @@ import { homedir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import type {
   Diagnostic,
+  ModReport,
   PluginApproval,
   PluginCapability,
   PluginHook,
@@ -29,6 +30,8 @@ import { below, parseVersion } from './requirements'
 
 const NAME = 'ccwt'
 const ID = `${NAME}@${NAME}`
+const MOD = 'ccwt-mod'
+const MOD_ID = `${MOD}@${NAME}`
 const PROBE_MS = 20_000
 const INSTALL_MS = 120_000
 const CLAUDE_MIN = '2.1.229'
@@ -49,6 +52,8 @@ export const sourceDir = (): string => join(stateDir(), 'plugin')
 const packageRoot = (): string => process.env.CCWT_ROOT ?? process.cwd()
 
 const producerDir = (): string => join(packageRoot(), 'plugin')
+
+const modDir = (): string => join(packageRoot(), 'mod')
 
 const claudeDir = (): string => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
 
@@ -299,11 +304,11 @@ export async function contentHash(root: string): Promise<string | null> {
   }
 }
 
-export async function availableVersion(): Promise<string | null> {
-  const hash = await contentHash(producerDir())
+export async function availableVersion(dir = producerDir()): Promise<string | null> {
+  const hash = await contentHash(dir)
   if (hash === null) return null
 
-  const manifest = await readJson<Manifest>(manifestPath(producerDir()))
+  const manifest = await readJson<Manifest>(manifestPath(dir))
   return manifest?.version ? `${manifest.version}-${hash}` : hash
 }
 
@@ -315,12 +320,12 @@ interface ConsentFile {
   plugins?: Record<string, Consented[]>
 }
 
-async function acceptedCommand(): Promise<string | null> {
+async function acceptedCommand(id = ID): Promise<string | null> {
   const file = await readJson<ConsentFile>(
     join(claudeDir(), 'plugins', 'installed_plugins.json'),
   )
 
-  for (const entry of file?.plugins?.[ID] ?? []) {
+  for (const entry of file?.plugins?.[id] ?? []) {
     if (typeof entry.sourceCommand === 'string') return entry.sourceCommand
   }
 
@@ -331,9 +336,8 @@ function inSession(): boolean {
   return Boolean(process.env.CLAUDECODE || process.env.CLAUDE_CODE_CHILD_SESSION)
 }
 
-export async function approval(): Promise<PluginApproval> {
-  const command = pluginCommand()
-  const accepted = await acceptedCommand()
+export async function approval(id = ID, command = pluginCommand()): Promise<PluginApproval> {
+  const accepted = await acceptedCommand(id)
 
   return { command, accepted, granted: accepted === command, askable: !inSession() }
 }
@@ -356,6 +360,10 @@ export function pluginCommand(): string {
   return `${join(packageRoot(), 'bin', 'ccwt.mjs')} --plugin-path`
 }
 
+export function modCommand(): string {
+  return `${join(packageRoot(), 'bin', 'ccwt.mjs')} --mod-path`
+}
+
 export function unusable(command: string): string | null {
   if (command.length > COMMAND_MAX) return `it is ${command.length} characters, over the ${COMMAND_MAX} allowed`
   if (!/^[\x20-\x7e]+$/.test(command)) return 'it is not all printable ASCII'
@@ -363,13 +371,13 @@ export function unusable(command: string): string | null {
   return null
 }
 
-async function installed(): Promise<Installed | null> {
+async function installed(id = ID): Promise<Installed | null> {
   const result = await claude(['plugin', 'list', '--json'])
   if (!result || result.code !== 0) return null
 
   try {
     const all = JSON.parse(result.stdout) as Installed[]
-    return all.find((entry) => entry.id === ID) ?? null
+    return all.find((entry) => entry.id === id) ?? null
   } catch {
     return null
   }
@@ -530,11 +538,11 @@ export async function materialise(): Promise<void> {
   const template = await readJson<Marketplace>(join(root, '.claude-plugin', 'marketplace.json'))
   if (!template?.plugins?.length) throw new Error('ccwt ships no marketplace to install from.')
 
-  const listed = template.plugins.map((entry) =>
-    entry.name === NAME
-      ? { ...entry, source: { source: 'command', command: pluginCommand() } }
-      : entry,
-  )
+  const commandFor: Record<string, string> = { [NAME]: pluginCommand(), [MOD]: modCommand() }
+  const listed = template.plugins.map((entry) => {
+    const command = entry.name ? commandFor[entry.name] : undefined
+    return command ? { ...entry, source: { source: 'command', command } } : entry
+  })
 
   await rm(target, { recursive: true, force: true })
   await mkdir(join(target, '.claude-plugin'), { recursive: true, mode: 0o700 })
@@ -544,6 +552,18 @@ export async function materialise(): Promise<void> {
     JSON.stringify({ ...template, plugins: listed }, null, 2) + '\n',
     { mode: 0o600 },
   )
+}
+
+async function offer(): Promise<Diagnostic | null> {
+  await materialise()
+
+  const added = await claude(['plugin', 'marketplace', 'add', sourceDir()], INSTALL_MS)
+  if (added && added.code !== 0 && !/already/i.test(added.stderr)) {
+    return failed('claude plugin marketplace add', added.code, added.stderr)
+  }
+
+  await claude(['plugin', 'marketplace', 'update', NAME], INSTALL_MS)
+  return null
 }
 
 function failed(what: string, code: number, stderr: string): Diagnostic {
@@ -566,14 +586,8 @@ export async function install(): Promise<PluginReport> {
   const missing = await missingSource()
   if (missing.length) return report([absent(missing)])
 
-  await materialise()
-
-  const added = await claude(['plugin', 'marketplace', 'add', sourceDir()], INSTALL_MS)
-  if (added && added.code !== 0 && !/already/i.test(added.stderr)) {
-    return report([failed('claude plugin marketplace add', added.code, added.stderr)])
-  }
-
-  await claude(['plugin', 'marketplace', 'update', NAME], INSTALL_MS)
+  const offered = await offer()
+  if (offered) return report([offered])
 
   const consent = await approval()
   if (!consent.granted && !consent.askable) return report()
@@ -667,6 +681,174 @@ export async function remove(): Promise<PluginReport> {
     return report([failed('claude plugin uninstall', result.code, result.stderr)])
   }
 
-  await rm(sourceDir(), { recursive: true, force: true })
+  if (!(await installed(MOD_ID))) await rm(sourceDir(), { recursive: true, force: true })
   return report()
+}
+
+export const MOD_SHOWS = [
+  'a band above the prompt: the worktrees this session made or works in, each service with its state and a localhost link, start, stop and details',
+  'the current worktree and its services at the end of the line under the prompt',
+  "a /ccwt pane with a worktree's services, the log of the one picked, and the rest of the project",
+  'what needs attention: a crashed service, missing files, a merged pull request',
+]
+
+function modIssues(state: PluginState, version: string | null, consent: PluginApproval): Diagnostic[] {
+  if (state === 'unavailable') return []
+
+  if (tooOld(version)) {
+    return [
+      {
+        code: 'mod.claude-too-old',
+        severity: 'warning',
+        message: `Claude Code ${version} cannot install this; it needs ${CLAUDE_MIN} or newer.`,
+      },
+    ]
+  }
+
+  if (state === 'disabled') {
+    return [
+      {
+        code: 'mod.disabled',
+        severity: 'warning',
+        message: 'The live view is installed but switched off in Claude Code.',
+        hint: `Switch it on here, or with \`claude plugin enable ${MOD_ID}\`.`,
+      },
+    ]
+  }
+
+  const broken = unusable(modCommand())
+  if (broken) {
+    return [
+      {
+        code: 'mod.command-unusable',
+        severity: 'error',
+        message: `Claude Code will not accept the command that prints the live view: ${broken}.`,
+      },
+    ]
+  }
+
+  if (!consent.granted && !consent.askable && state !== 'absent') {
+    return [
+      {
+        code: 'mod.needs-approval',
+        severity: 'warning',
+        message: 'Claude Code has not accepted the command that prints the live view.',
+        hint: `Accept it once from its pane in \`/plugin\`, or run \`claude plugin update ${MOD_ID}\` in your own terminal.`,
+      },
+    ]
+  }
+
+  if (state === 'outdated') {
+    return [
+      {
+        code: 'mod.outdated',
+        severity: 'info',
+        message: 'Your sessions are running an older copy of the live view than the one this ccwt carries.',
+        hint: `Update it here, or run \`claude plugin update ${MOD_ID}\` yourself.`,
+      },
+    ]
+  }
+
+  return []
+}
+
+export async function modReport(extra: Diagnostic[] = []): Promise<ModReport> {
+  const available = await availableVersion(modDir())
+  const consent = await approval(MOD_ID, modCommand())
+  const version = await claudeVersion()
+  const base = { id: MOD_ID, available, approval: consent, shows: MOD_SHOWS }
+
+  if (version === null) {
+    return { ...base, state: 'unavailable', installed: null, issues: extra }
+  }
+
+  const found = await installed(MOD_ID)
+  const state = stateOf(found, available)
+
+  return {
+    ...base,
+    state,
+    installed: found?.version ?? null,
+    issues: [...modIssues(state, version, consent), ...extra],
+  }
+}
+
+async function modMissing(): Promise<Diagnostic | null> {
+  if (await stat(manifestPath(modDir())).catch(() => null)) return null
+  return {
+    code: 'mod.missing-source',
+    severity: 'error',
+    message: `This copy of ccwt does not carry the live view: ${modDir()} is not there.`,
+    hint: 'A published package must list `mod` in its `files`. Reinstall ccwt, or run it from a checkout.',
+  }
+}
+
+export async function modInstall(): Promise<ModReport> {
+  const version = await claudeVersion()
+  if (version === null || tooOld(version) || unusable(modCommand())) return modReport()
+
+  const missing = await modMissing()
+  if (missing) return modReport([missing])
+
+  const offered = await offer()
+  if (offered) return modReport([offered])
+
+  const consent = await approval(MOD_ID, modCommand())
+  if (!consent.granted && !consent.askable) return modReport()
+
+  const put = await claude(['plugin', 'install', MOD_ID, '--scope', 'user', '-y'], INSTALL_MS)
+  if (!put || put.code !== 0) {
+    return modReport([failed('claude plugin install', put?.code ?? -1, put?.stderr ?? 'the command did not finish')])
+  }
+
+  return modReport([
+    {
+      code: 'mod.installed',
+      severity: 'info',
+      message: 'The live view is installed.',
+      hint: 'A session already open picks it up with `/reload-plugins`; a new one has it from the start.',
+    },
+  ])
+}
+
+export async function modUpdate(): Promise<ModReport> {
+  const version = await claudeVersion()
+  if (version === null || tooOld(version)) return modReport()
+
+  const found = await installed(MOD_ID)
+  if (!found) return modReport()
+
+  const missing = await modMissing()
+  if (missing) return modReport([missing])
+
+  await materialise()
+  await claude(['plugin', 'marketplace', 'update', NAME], INSTALL_MS)
+
+  const put = await claude(['plugin', 'update', MOD_ID, '--scope', found.scope ?? 'user', '-y'], INSTALL_MS)
+  if (!put || put.code !== 0) {
+    return modReport([failed('claude plugin update', put?.code ?? -1, put?.stderr ?? 'the command did not finish')])
+  }
+
+  return modReport()
+}
+
+export async function modToggle(on: boolean): Promise<ModReport> {
+  if ((await claudeVersion()) === null) return modReport()
+
+  const verb = on ? 'enable' : 'disable'
+  const result = await claude(['plugin', verb, MOD_ID], INSTALL_MS)
+  if (result && result.code !== 0) return modReport([failed(`claude plugin ${verb}`, result.code, result.stderr)])
+
+  return modReport()
+}
+
+export async function modRemove(): Promise<ModReport> {
+  if ((await claudeVersion()) === null) return modReport()
+
+  const result = await claude(['plugin', 'uninstall', MOD_ID], INSTALL_MS)
+  if (result && result.code !== 0 && !/not installed/i.test(result.stderr)) {
+    return modReport([failed('claude plugin uninstall', result.code, result.stderr)])
+  }
+
+  return modReport()
 }

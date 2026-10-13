@@ -14,12 +14,15 @@ if (typeof version !== 'string' || !version) {
   process.exit(1)
 }
 
-const manifestPath = join(root, 'plugin', '.claude-plugin', 'plugin.json')
-const manifest = await read('plugin/.claude-plugin/plugin.json')
+for (const dir of ['plugin', 'mod']) {
+  const manifest = await read(`${dir}/.claude-plugin/plugin.json`)
+  if (manifest.version === version) continue
 
-if (manifest.version !== version) {
   const { $schema, name, version: _was, ...rest } = manifest
-  await writeFile(manifestPath, `${JSON.stringify({ $schema, name, version, ...rest }, null, 2)}\n`)
+  await writeFile(
+    join(root, dir, '.claude-plugin', 'plugin.json'),
+    `${JSON.stringify({ $schema, name, version, ...rest }, null, 2)}\n`,
+  )
 }
 
 const result = spawnSync(

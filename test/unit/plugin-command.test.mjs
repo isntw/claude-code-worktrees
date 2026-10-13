@@ -102,6 +102,22 @@ test('materialise writes a marketplace naming the command, and copies no plugin'
   })
 })
 
+test('the live view is offered beside the plugin, through its own command', async () => {
+  await withHome(async (home) => {
+    await withRoot(process.cwd(), async () => {
+      await plugin.materialise()
+
+      const written = JSON.parse(
+        readFileSync(join(home, 'plugin', '.claude-plugin', 'marketplace.json'), 'utf8'),
+      )
+      const entry = written.plugins.find((candidate) => candidate.name === 'ccwt-mod')
+      assert.equal(entry.source.source, 'command')
+      assert.equal(entry.source.command, plugin.modCommand())
+      assert.equal(plugin.modCommand(), `${join(process.cwd(), 'bin', 'ccwt.mjs')} --mod-path`)
+    })
+  })
+})
+
 const withConfig = async (dir, work) => {
   const previous = process.env.CLAUDE_CONFIG_DIR
   process.env.CLAUDE_CONFIG_DIR = dir

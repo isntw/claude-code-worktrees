@@ -21,6 +21,7 @@ const { values } = parseArgs({
     help: { type: 'boolean', short: 'h', default: false },
     version: { type: 'boolean', short: 'v', default: false },
     'plugin-path': { type: 'boolean', default: false },
+    'mod-path': { type: 'boolean', default: false },
   },
   allowNegative: true,
 })
@@ -41,6 +42,7 @@ if (values.help) {
     -h, --help            show this
     -v, --version         show the version
         --plugin-path     print the Claude Code plugin directory and exit
+        --mod-path        print the Claude Code mod directory and exit
 
   The port is also settable in Settings, which saves it to ~/.ccwt/config.json.
   A flag here wins over what is saved there. The host is a flag only: ccwt binds
@@ -64,6 +66,11 @@ const readJson = (path) =>
 
 if (values['plugin-path']) {
   process.stdout.write(`${join(root, 'plugin')}\n`)
+  process.exit(0)
+}
+
+if (values['mod-path']) {
+  process.stdout.write(`${join(root, 'mod')}\n`)
   process.exit(0)
 }
 

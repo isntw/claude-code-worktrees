@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "ccwt-mod",
+  "version": "0.2.2",
+  "description": "Shows what ccwt runs inside the Claude Code session: a band above the prompt with this session's worktrees, their services and links, a line under the prompt, and a /ccwt pane with logs.",
+  "author": {
+    "name": "ccwt"
+  },
+  "homepage": "https://github.com/isntw/claude-code-worktrees",
+  "repository": "https://github.com/isntw/claude-code-worktrees",
+  "license": "AGPL-3.0-only",
+  "types": "./types/index.d.ts"
+}
