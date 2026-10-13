@@ -5,6 +5,7 @@ export const TITLE_PREFIX = 'ccwt · '
 export interface Row {
   port: number
   up: boolean
+  heldBy?: string
 }
 
 export type Rows = Record<string, Row>
@@ -22,11 +23,18 @@ export function snapshot(found: Seen): Rows {
   for (const worktree of found.worktrees) {
     for (const service of worktree.services) {
       if (service.port === null) continue
-      rows[`${worktree.name}/${service.name}`] = { port: service.port, up: service.up }
+      rows[`${worktree.name}/${service.name}`] = {
+        port: service.port,
+        up: service.up,
+        ...(service.heldBy ? { heldBy: service.heldBy } : {}),
+      }
     }
   }
   return rows
 }
+
+const held = (heldBy: string | undefined): string =>
+  heldBy ? ` (port held by ${heldBy})` : ''
 
 export function changes(before: Rows, after: Rows): string[] {
   const lines: string[] = []
@@ -36,17 +44,17 @@ export function changes(before: Rows, after: Rows): string[] {
     const where = `http://localhost:${now.port}`
 
     if (!then) {
-      lines.push(`${key} → port ${now.port}${now.up ? `, running at ${where}` : ', stopped'}`)
+      lines.push(`${key} → port ${now.port}${now.up ? `, running at ${where}` : `, stopped${held(now.heldBy)}`}`)
       continue
     }
     if (then.port !== now.port) {
       lines.push(
-        `${key} moved to port ${now.port} (was ${then.port})${now.up ? ` and is running at ${where}` : ' and is stopped'}`,
+        `${key} moved to port ${now.port} (was ${then.port})${now.up ? ` and is running at ${where}` : ` and is stopped${held(now.heldBy)}`}`,
       )
       continue
     }
     if (then.up !== now.up) {
-      lines.push(now.up ? `${key} is now running at ${where}` : `${key} has stopped`)
+      lines.push(now.up ? `${key} is now running at ${where}` : `${key} has stopped${held(now.heldBy)}`)
     }
   }
 
@@ -83,7 +91,7 @@ export function overview(found: Seen): string | null {
         .sort((left, right) => Number(Boolean(right.primary)) - Number(Boolean(left.primary)))
         .map(
           (service) =>
-            `${service.name}${many && service.primary ? ' (main)' : ''} → ${service.port} ${service.up ? `running at http://localhost:${service.port}` : 'stopped'}`,
+            `${service.name}${many && service.primary ? ' (main)' : ''} → ${service.port} ${service.up ? `running at http://localhost:${service.port}` : `stopped${held(service.heldBy)}`}`,
         )
         .join(', ')
       return `  ${worktree.name}${worktree.root ? ' (root)' : ''} — ${services}`

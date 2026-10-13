@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Project } from '../../../shared/types.ts'
 
@@ -11,6 +11,7 @@ const run = promisify(execFile)
 
 const PROBE_MS = 400
 const CALL_MS = 3_000
+const LOOK_MS = 1_500
 
 export const PLACE_MS = 300_000
 
@@ -25,6 +26,7 @@ export interface SeenService {
   primary?: boolean
   port: number | null
   up: boolean
+  heldBy?: string
 }
 
 export interface SeenWorktree {
@@ -234,6 +236,76 @@ async function allocatedPorts(worktreePath: string): Promise<Map<string, number>
   return found
 }
 
+export function ownerOf(paths: string[], cwd: string | null): string | null {
+  if (cwd === null) return null
+  const at = resolve(cwd)
+
+  let best: string | null = null
+  for (const path of paths) {
+    const root = resolve(path)
+    const inside = at === root || at.startsWith(root.endsWith(sep) ? root : root + sep)
+    if (inside && (best === null || root.length > resolve(best).length)) best = path
+  }
+
+  return best
+}
+
+async function look(command: string, args: string[]): Promise<string> {
+  if (process.platform === 'win32') return ''
+  const { stdout } = await run(command, args, { timeout: LOOK_MS }).catch(() => ({ stdout: '' }))
+  return stdout
+}
+
+async function listeners(port: number): Promise<number[]> {
+  const raw = await look('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fp'])
+  const pids = new Set<number>()
+  for (const line of raw.split('\n')) {
+    if (!line.startsWith('p')) continue
+    const pid = Number.parseInt(line.slice(1), 10)
+    if (Number.isFinite(pid) && pid > 1) pids.add(pid)
+  }
+  return [...pids]
+}
+
+async function cwdOf(pid: number): Promise<string | null> {
+  const raw = await look('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'])
+  for (const line of raw.split('\n')) {
+    if (line.startsWith('n')) return line.slice(1) || null
+  }
+  return null
+}
+
+async function nameOf(pid: number): Promise<string | null> {
+  const raw = (await look('ps', ['-o', 'comm=', '-p', String(pid)])).trim()
+  return raw ? basename(raw) : null
+}
+
+const actual = (path: string): Promise<string> => realpath(path).catch(() => path)
+
+interface Holder {
+  path: string | null
+  name: string | null
+}
+
+async function holderOf(port: number, paths: string[]): Promise<Holder> {
+  const pids = await listeners(port)
+  if (!pids.length) return { path: null, name: null }
+
+  const real = await Promise.all(paths.map(actual))
+  let name: string | null = null
+
+  for (const pid of pids) {
+    const cwd = await cwdOf(pid)
+    const owner = ownerOf(real, cwd === null ? null : await actual(cwd))
+    if (owner !== null) return { path: paths[real.indexOf(owner)] ?? null, name: null }
+    name ??= await nameOf(pid)
+  }
+
+  return { path: null, name }
+}
+
+const nameFor = (path: string): string => path.split('/').pop() ?? path
+
 export async function describe(cwd: string, transcriptPath?: unknown): Promise<Seen | null> {
   const toplevel = await git(cwd, ['rev-parse', '--show-toplevel'])
   if (!toplevel) return null
@@ -249,27 +321,66 @@ export async function describe(cwd: string, transcriptPath?: unknown): Promise<S
   const declared = project?.recipe?.services ?? []
   if (!project || !declared.length) return null
 
+  const allocated = await Promise.all(paths.map(allocatedPorts))
+
+  const sharers = new Map<number, string[]>()
+  paths.forEach((path, index) => {
+    for (const service of declared) {
+      const port = allocated[index]?.get(portKey(service.name))
+      if (port === undefined) continue
+      const known = sharers.get(port) ?? []
+      if (!known.includes(path)) known.push(path)
+      sharers.set(port, known)
+    }
+  })
+
+  const verdicts = new Map<number, Promise<Holder | true | false>>()
+  const verdictFor = (port: number): Promise<Holder | true | false> => {
+    let pending = verdicts.get(port)
+    if (!pending) {
+      pending = (async () => {
+        if (!(await isListening(port))) return false
+        const using = sharers.get(port) ?? []
+        if (using.length < 2) return true
+        return holderOf(port, paths)
+      })()
+      verdicts.set(port, pending)
+    }
+    return pending
+  }
+
   const worktrees = await Promise.all(
-    paths.map(async (path): Promise<SeenWorktree> => {
-      const ports = await allocatedPorts(path)
+    paths.map(async (path, index): Promise<SeenWorktree> => {
+      const ports = allocated[index] ?? new Map<string, number>()
 
       const services = await Promise.all(
         declared.map(async (service): Promise<SeenService> => {
           const port = ports.get(portKey(service.name)) ?? null
-          return {
+          const seen: SeenService = {
             name: service.name,
             command: service.command,
             primary: service.primary,
             port,
-            up: port === null ? false : await isListening(port),
+            up: false,
           }
+          if (port === null) return seen
+
+          const verdict = await verdictFor(port)
+          if (typeof verdict === 'boolean') return { ...seen, up: verdict }
+          if (verdict.path !== null && resolve(verdict.path) === resolve(path)) {
+            return { ...seen, up: true }
+          }
+
+          const heldBy =
+            verdict.path !== null ? nameFor(verdict.path) : (verdict.name ?? 'another process')
+          return { ...seen, heldBy }
         }),
       )
 
       return {
         id: idFor(path),
         path,
-        name: path.split('/').pop() ?? path,
+        name: nameFor(path),
         root: resolve(path) === resolve(rootPath),
         services,
       }

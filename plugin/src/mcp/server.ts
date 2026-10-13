@@ -89,6 +89,7 @@ server.registerTool(
                 primary: z.boolean().optional(),
                 port: z.number().nullable(),
                 up: z.boolean(),
+                heldBy: z.string().optional(),
                 url: z.string().nullable(),
               }),
             ),
@@ -110,7 +111,7 @@ server.registerTool(
         const name = `${service.name}${many && service.primary ? ' (main)' : ''}`
         return service.port === null
           ? `    ${name}: no port allocated`
-          : `    ${name}: port ${service.port} — ${service.up ? `running at http://localhost:${service.port}` : 'stopped'}`
+          : `    ${name}: port ${service.port} — ${service.up ? `running at http://localhost:${service.port}` : `stopped${service.heldBy ? ` (port held by ${service.heldBy})` : ''}`}`
       })
       lines.push(`  ${worktree.name}${worktree.root ? ' (root)' : ''} — ${worktree.path}`, ...services)
     }
@@ -134,6 +135,7 @@ server.registerTool(
           primary: service.primary,
           port: service.port,
           up: service.up,
+          ...(service.heldBy ? { heldBy: service.heldBy } : {}),
           url: service.port === null ? null : `http://localhost:${service.port}`,
         })),
       })),

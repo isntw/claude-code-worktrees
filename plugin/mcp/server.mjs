@@ -31003,14 +31003,15 @@ var StdioServerTransport = class {
 // plugin/src/lib/discover.ts
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { connect } from "node:net";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 var run = promisify(execFile);
 var PROBE_MS = 400;
 var CALL_MS = 3e3;
+var LOOK_MS = 1500;
 var PLACE_MS = 3e5;
 var ccwtDir = () => process.env.CCWT_HOME || join(homedir(), ".ccwt");
 var git = async (cwd, args) => {
@@ -31129,6 +31130,58 @@ async function allocatedPorts(worktreePath) {
   }
   return found;
 }
+function ownerOf(paths, cwd) {
+  if (cwd === null) return null;
+  const at = resolve(cwd);
+  let best = null;
+  for (const path of paths) {
+    const root = resolve(path);
+    const inside = at === root || at.startsWith(root.endsWith(sep) ? root : root + sep);
+    if (inside && (best === null || root.length > resolve(best).length)) best = path;
+  }
+  return best;
+}
+async function look(command, args) {
+  if (process.platform === "win32") return "";
+  const { stdout } = await run(command, args, { timeout: LOOK_MS }).catch(() => ({ stdout: "" }));
+  return stdout;
+}
+async function listeners(port) {
+  const raw = await look("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fp"]);
+  const pids = /* @__PURE__ */ new Set();
+  for (const line of raw.split("\n")) {
+    if (!line.startsWith("p")) continue;
+    const pid = Number.parseInt(line.slice(1), 10);
+    if (Number.isFinite(pid) && pid > 1) pids.add(pid);
+  }
+  return [...pids];
+}
+async function cwdOf(pid) {
+  const raw = await look("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"]);
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("n")) return line.slice(1) || null;
+  }
+  return null;
+}
+async function nameOf(pid) {
+  const raw = (await look("ps", ["-o", "comm=", "-p", String(pid)])).trim();
+  return raw ? basename(raw) : null;
+}
+var actual = (path) => realpath(path).catch(() => path);
+async function holderOf(port, paths) {
+  const pids = await listeners(port);
+  if (!pids.length) return { path: null, name: null };
+  const real = await Promise.all(paths.map(actual));
+  let name = null;
+  for (const pid of pids) {
+    const cwd = await cwdOf(pid);
+    const owner = ownerOf(real, cwd === null ? null : await actual(cwd));
+    if (owner !== null) return { path: paths[real.indexOf(owner)] ?? null, name: null };
+    name ??= await nameOf(pid);
+  }
+  return { path: null, name };
+}
+var nameFor = (path) => path.split("/").pop() ?? path;
 async function describe3(cwd, transcriptPath) {
   const toplevel = await git(cwd, ["rev-parse", "--show-toplevel"]);
   if (!toplevel) return null;
@@ -31141,25 +31194,58 @@ async function describe3(cwd, transcriptPath) {
   );
   const declared = project?.recipe?.services ?? [];
   if (!project || !declared.length) return null;
+  const allocated = await Promise.all(paths.map(allocatedPorts));
+  const sharers = /* @__PURE__ */ new Map();
+  paths.forEach((path, index) => {
+    for (const service of declared) {
+      const port = allocated[index]?.get(portKey(service.name));
+      if (port === void 0) continue;
+      const known = sharers.get(port) ?? [];
+      if (!known.includes(path)) known.push(path);
+      sharers.set(port, known);
+    }
+  });
+  const verdicts = /* @__PURE__ */ new Map();
+  const verdictFor = (port) => {
+    let pending = verdicts.get(port);
+    if (!pending) {
+      pending = (async () => {
+        if (!await isListening(port)) return false;
+        const using = sharers.get(port) ?? [];
+        if (using.length < 2) return true;
+        return holderOf(port, paths);
+      })();
+      verdicts.set(port, pending);
+    }
+    return pending;
+  };
   const worktrees = await Promise.all(
-    paths.map(async (path) => {
-      const ports = await allocatedPorts(path);
+    paths.map(async (path, index) => {
+      const ports = allocated[index] ?? /* @__PURE__ */ new Map();
       const services = await Promise.all(
         declared.map(async (service) => {
           const port = ports.get(portKey(service.name)) ?? null;
-          return {
+          const seen = {
             name: service.name,
             command: service.command,
             primary: service.primary,
             port,
-            up: port === null ? false : await isListening(port)
+            up: false
           };
+          if (port === null) return seen;
+          const verdict = await verdictFor(port);
+          if (typeof verdict === "boolean") return { ...seen, up: verdict };
+          if (verdict.path !== null && resolve(verdict.path) === resolve(path)) {
+            return { ...seen, up: true };
+          }
+          const heldBy = verdict.path !== null ? nameFor(verdict.path) : verdict.name ?? "another process";
+          return { ...seen, heldBy };
         })
       );
       return {
         id: idFor(path),
         path,
-        name: path.split("/").pop() ?? path,
+        name: nameFor(path),
         root: resolve(path) === resolve(rootPath),
         services
       };
@@ -31262,7 +31348,7 @@ var describeWorktree = (worktree) => [
 ];
 
 // plugin/src/mcp/reach.ts
-import { resolve as resolve2, sep } from "node:path";
+import { resolve as resolve2, sep as sep2 } from "node:path";
 var NO_SERVER = "ccwt is not running, so its recipe store is not reachable. Start the ccwt dashboard and try again.";
 var SOURCES = {
   ccwt: "a recipe stored in ccwt",
@@ -31277,7 +31363,7 @@ async function place(path) {
 function within(parent, child) {
   const above = resolve2(parent);
   const below = resolve2(child);
-  return below === above || below.startsWith(`${above}${sep}`);
+  return below === above || below.startsWith(`${above}${sep2}`);
 }
 var unregistered = (found) => `${found.rootPath} is not registered with ccwt. Register it with ccwt_add_project first.`;
 function why(result, what) {
@@ -31339,7 +31425,7 @@ var TAIL = 100;
 var READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 var ACTS = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 var server = new McpServer(
-  { name: "ccwt-mcp-server", version: "0.2.2" },
+  { name: "ccwt-mcp-server", version: "0.2.3" },
   { capabilities: { tools: {} } }
 );
 var NAMES = [];
@@ -31377,6 +31463,7 @@ server.registerTool(
               primary: external_exports.boolean().optional(),
               port: external_exports.number().nullable(),
               up: external_exports.boolean(),
+              heldBy: external_exports.string().optional(),
               url: external_exports.string().nullable()
             })
           )
@@ -31393,7 +31480,7 @@ server.registerTool(
       const many = worktree.services.length > 1;
       const services = worktree.services.map((service) => {
         const name = `${service.name}${many && service.primary ? " (main)" : ""}`;
-        return service.port === null ? `    ${name}: no port allocated` : `    ${name}: port ${service.port} \u2014 ${service.up ? `running at http://localhost:${service.port}` : "stopped"}`;
+        return service.port === null ? `    ${name}: no port allocated` : `    ${name}: port ${service.port} \u2014 ${service.up ? `running at http://localhost:${service.port}` : `stopped${service.heldBy ? ` (port held by ${service.heldBy})` : ""}`}`;
       });
       lines.push(`  ${worktree.name}${worktree.root ? " (root)" : ""} \u2014 ${worktree.path}`, ...services);
     }
@@ -31415,6 +31502,7 @@ server.registerTool(
           primary: service.primary,
           port: service.port,
           up: service.up,
+          ...service.heldBy ? { heldBy: service.heldBy } : {},
           url: service.port === null ? null : `http://localhost:${service.port}`
         }))
       }))

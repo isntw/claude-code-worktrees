@@ -182,3 +182,26 @@ test('context with no rename carries no title key', () => {
 test('nothing to say emits nothing at all', () => {
   assert.deepEqual(payloadFor('UserPromptSubmit', null, null), {})
 })
+
+test('a stopped service whose shared port another worktree holds says who holds it', () => {
+  const found = repo([
+    worktree('kp', [service('dev', 3000, true)], true),
+    worktree('feature', [{ ...service('dev', 3000, false), heldBy: 'kp' }]),
+  ])
+
+  const text = overview(found)
+
+  assert.match(text, /kp \(root\) — dev → 3000 running at http:\/\/localhost:3000/)
+  assert.match(text, /feature — dev → 3000 stopped \(port held by kp\)/)
+})
+
+test('a snapshot carries who holds a shared port, and the change lines say so', () => {
+  const found = repo([worktree('feature', [{ ...service('dev', 3000, false), heldBy: 'kp' }])])
+  const after = snapshot(found)
+
+  assert.deepEqual(after, { 'feature/dev': { port: 3000, up: false, heldBy: 'kp' } })
+  assert.deepEqual(changes({}, after), ['feature/dev → port 3000, stopped (port held by kp)'])
+  assert.deepEqual(changes({ 'feature/dev': { port: 3000, up: true } }, after), [
+    'feature/dev has stopped (port held by kp)',
+  ])
+})

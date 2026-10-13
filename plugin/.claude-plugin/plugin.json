@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "ccwt",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Tells a Claude Code session what ccwt already runs here, and stops it starting a second dev server on a port ccwt owns. Its tools let a session write the recipe, create a worktree, start it, read what it printed and stop it again — and nothing is written into your repository.",
   "author": {
     "name": "ccwt"

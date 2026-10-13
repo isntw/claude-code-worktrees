@@ -6,14 +6,15 @@ import { resolve as resolve2 } from "node:path";
 // plugin/src/lib/discover.ts
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { connect } from "node:net";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 var run = promisify(execFile);
 var PROBE_MS = 400;
 var CALL_MS = 3e3;
+var LOOK_MS = 1500;
 var ccwtDir = () => process.env.CCWT_HOME || join(homedir(), ".ccwt");
 var git = async (cwd, args) => {
   const { stdout } = await run("git", args, { cwd }).catch(() => ({ stdout: "" }));
@@ -110,6 +111,58 @@ async function allocatedPorts(worktreePath) {
   }
   return found2;
 }
+function ownerOf(paths, cwd) {
+  if (cwd === null) return null;
+  const at = resolve(cwd);
+  let best = null;
+  for (const path of paths) {
+    const root = resolve(path);
+    const inside = at === root || at.startsWith(root.endsWith(sep) ? root : root + sep);
+    if (inside && (best === null || root.length > resolve(best).length)) best = path;
+  }
+  return best;
+}
+async function look(command, args) {
+  if (process.platform === "win32") return "";
+  const { stdout } = await run(command, args, { timeout: LOOK_MS }).catch(() => ({ stdout: "" }));
+  return stdout;
+}
+async function listeners(port) {
+  const raw = await look("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fp"]);
+  const pids = /* @__PURE__ */ new Set();
+  for (const line of raw.split("\n")) {
+    if (!line.startsWith("p")) continue;
+    const pid = Number.parseInt(line.slice(1), 10);
+    if (Number.isFinite(pid) && pid > 1) pids.add(pid);
+  }
+  return [...pids];
+}
+async function cwdOf(pid) {
+  const raw = await look("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"]);
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("n")) return line.slice(1) || null;
+  }
+  return null;
+}
+async function nameOf(pid) {
+  const raw = (await look("ps", ["-o", "comm=", "-p", String(pid)])).trim();
+  return raw ? basename(raw) : null;
+}
+var actual = (path) => realpath(path).catch(() => path);
+async function holderOf(port, paths) {
+  const pids = await listeners(port);
+  if (!pids.length) return { path: null, name: null };
+  const real = await Promise.all(paths.map(actual));
+  let name = null;
+  for (const pid of pids) {
+    const cwd = await cwdOf(pid);
+    const owner = ownerOf(real, cwd === null ? null : await actual(cwd));
+    if (owner !== null) return { path: paths[real.indexOf(owner)] ?? null, name: null };
+    name ??= await nameOf(pid);
+  }
+  return { path: null, name };
+}
+var nameFor = (path) => path.split("/").pop() ?? path;
 async function describe(cwd, transcriptPath) {
   const toplevel = await git(cwd, ["rev-parse", "--show-toplevel"]);
   if (!toplevel) return null;
@@ -122,25 +175,58 @@ async function describe(cwd, transcriptPath) {
   );
   const declared = project?.recipe?.services ?? [];
   if (!project || !declared.length) return null;
+  const allocated = await Promise.all(paths.map(allocatedPorts));
+  const sharers = /* @__PURE__ */ new Map();
+  paths.forEach((path, index) => {
+    for (const service of declared) {
+      const port = allocated[index]?.get(portKey(service.name));
+      if (port === void 0) continue;
+      const known = sharers.get(port) ?? [];
+      if (!known.includes(path)) known.push(path);
+      sharers.set(port, known);
+    }
+  });
+  const verdicts = /* @__PURE__ */ new Map();
+  const verdictFor = (port) => {
+    let pending = verdicts.get(port);
+    if (!pending) {
+      pending = (async () => {
+        if (!await isListening(port)) return false;
+        const using = sharers.get(port) ?? [];
+        if (using.length < 2) return true;
+        return holderOf(port, paths);
+      })();
+      verdicts.set(port, pending);
+    }
+    return pending;
+  };
   const worktrees = await Promise.all(
-    paths.map(async (path) => {
-      const ports = await allocatedPorts(path);
+    paths.map(async (path, index) => {
+      const ports = allocated[index] ?? /* @__PURE__ */ new Map();
       const services = await Promise.all(
         declared.map(async (service) => {
           const port = ports.get(portKey(service.name)) ?? null;
-          return {
+          const seen = {
             name: service.name,
             command: service.command,
             primary: service.primary,
             port,
-            up: port === null ? false : await isListening(port)
+            up: false
           };
+          if (port === null) return seen;
+          const verdict = await verdictFor(port);
+          if (typeof verdict === "boolean") return { ...seen, up: verdict };
+          if (verdict.path !== null && resolve(verdict.path) === resolve(path)) {
+            return { ...seen, up: true };
+          }
+          const heldBy = verdict.path !== null ? nameFor(verdict.path) : verdict.name ?? "another process";
+          return { ...seen, heldBy };
         })
       );
       return {
         id: idFor(path),
         path,
-        name: path.split("/").pop() ?? path,
+        name: nameFor(path),
         root: resolve(path) === resolve(rootPath),
         services
       };
@@ -197,28 +283,33 @@ function snapshot(found2) {
   for (const worktree of found2.worktrees) {
     for (const service of worktree.services) {
       if (service.port === null) continue;
-      rows[`${worktree.name}/${service.name}`] = { port: service.port, up: service.up };
+      rows[`${worktree.name}/${service.name}`] = {
+        port: service.port,
+        up: service.up,
+        ...service.heldBy ? { heldBy: service.heldBy } : {}
+      };
     }
   }
   return rows;
 }
+var held = (heldBy) => heldBy ? ` (port held by ${heldBy})` : "";
 function changes(before, after) {
   const lines = [];
   for (const [key, now] of Object.entries(after)) {
     const then = before[key];
     const where = `http://localhost:${now.port}`;
     if (!then) {
-      lines.push(`${key} \u2192 port ${now.port}${now.up ? `, running at ${where}` : ", stopped"}`);
+      lines.push(`${key} \u2192 port ${now.port}${now.up ? `, running at ${where}` : `, stopped${held(now.heldBy)}`}`);
       continue;
     }
     if (then.port !== now.port) {
       lines.push(
-        `${key} moved to port ${now.port} (was ${then.port})${now.up ? ` and is running at ${where}` : " and is stopped"}`
+        `${key} moved to port ${now.port} (was ${then.port})${now.up ? ` and is running at ${where}` : ` and is stopped${held(now.heldBy)}`}`
       );
       continue;
     }
     if (then.up !== now.up) {
-      lines.push(now.up ? `${key} is now running at ${where}` : `${key} has stopped`);
+      lines.push(now.up ? `${key} is now running at ${where}` : `${key} has stopped${held(now.heldBy)}`);
     }
   }
   for (const key of Object.keys(before)) {
@@ -239,7 +330,7 @@ function overview(found2) {
     const listed = worktree.services.filter((service) => service.port !== null);
     const many = listed.length > 1;
     const services = [...listed].sort((left, right) => Number(Boolean(right.primary)) - Number(Boolean(left.primary))).map(
-      (service) => `${service.name}${many && service.primary ? " (main)" : ""} \u2192 ${service.port} ${service.up ? `running at http://localhost:${service.port}` : "stopped"}`
+      (service) => `${service.name}${many && service.primary ? " (main)" : ""} \u2192 ${service.port} ${service.up ? `running at http://localhost:${service.port}` : `stopped${held(service.heldBy)}`}`
     ).join(", ");
     return `  ${worktree.name}${worktree.root ? " (root)" : ""} \u2014 ${services}`;
   });
@@ -268,8 +359,8 @@ function payloadFor(event, context, title) {
 var markerId = (sessionId) => encodeURIComponent(sessionId.replace(/[^A-Za-z0-9_-]/g, ""));
 async function readMarker(sessionId) {
   if (!sessionId) return null;
-  const held = await ask(`/api/plugin/session/${markerId(sessionId)}`);
-  return held && typeof held.at === "string" ? held : null;
+  const held2 = await ask(`/api/plugin/session/${markerId(sessionId)}`);
+  return held2 && typeof held2.at === "string" ? held2 : null;
 }
 async function writeMarker(sessionId, rows, title) {
   if (!sessionId) return;

@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   duplicates,
   encodedName,
+  ownerOf,
   parseWorktrees,
   portKey,
   shapeOf,
@@ -152,4 +153,24 @@ test('neither cwd nor the transcript is trusted alone — a worktree wins over t
 
   assert.equal(underTranscript(paths, inWorktree), '/repo/.claude/worktrees/feature')
   assert.equal(underTranscript(paths, inRoot), '/repo')
+})
+
+test('a listener in a worktree nested under the root belongs to the worktree, not the root', () => {
+  const paths = ['/repo', '/repo/.claude/worktrees/feature']
+
+  assert.equal(ownerOf(paths, '/repo/.claude/worktrees/feature'), '/repo/.claude/worktrees/feature')
+  assert.equal(ownerOf(paths, '/repo/.claude/worktrees/feature/apps/web'), '/repo/.claude/worktrees/feature')
+  assert.equal(ownerOf(paths, '/repo/apps/web'), '/repo')
+  assert.equal(ownerOf(paths, '/repo'), '/repo')
+})
+
+test('a listener whose directory shares only a name prefix belongs to no worktree', () => {
+  assert.equal(ownerOf(['/repo', '/repo-two'], '/repo-two/src'), '/repo-two')
+  assert.equal(ownerOf(['/repo'], '/repository'), null)
+})
+
+test('a listener outside every worktree, or with no known directory, has no owner', () => {
+  assert.equal(ownerOf(['/repo', '/repo/.claude/worktrees/a'], '/elsewhere/app'), null)
+  assert.equal(ownerOf(['/repo'], null), null)
+  assert.equal(ownerOf([], '/repo'), null)
 })
