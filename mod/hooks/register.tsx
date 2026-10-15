@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Holder, LogLine, Pull, Service, View, Worktree } from '../types'
-import { arrange, attention, clean, bornInSession, contest, mainService, owning, statusText, summary, tone, touchedPathIn, uptime, word } from './model'
+import { arrange, attention, clean, bornInSession, fit, contest, mainService, owning, provision, statusText, summary, tone, touchedPathIn, uptime, word } from './model'
 import type { Contest } from './model'
 
 const PANE = 'ccwt'
@@ -379,10 +379,16 @@ export const register: Register = (on) => {
     }
     const CURSOR = 2
     const GAP = 3
-    const nameColumn = Math.max(CURSOR + 'WORKTREE'.length, ...shown.rows.map((row) => CURSOR + row.name.length))
+    const widest = Math.max(CURSOR + 'WORKTREE'.length, ...shown.rows.map((row) => CURSOR + row.name.length))
     const stateColumn = Math.max('STATE'.length, ...shown.rows.map((row) => { const main = mainService(row); return main ? word(main).length : 'none'.length }))
+    const provisionColumn = Math.max('PROVISION'.length, ...shown.rows.map((row) => provision(row).text.length))
     const portColumn = Math.max('PORT'.length, ...shown.rows.map((row) => String(mainService(row)?.port ?? '-').length))
     const actionColumn = Math.max('ACTION'.length, 'starting...'.length + 3, ...shown.rows.map((row) => (verbOf(row)?.label.length ?? 0) + 3))
+    const DASHBOARD = 'dashboard'.length + GAP
+    const inner = e.props.bodyColumns - 4
+    const fixed = stateColumn + provisionColumn + portColumn + actionColumn + GAP * 4
+    const showDashboard = inner - fixed - DASHBOARD >= widest
+    const nameColumn = Math.max(CURSOR + 'WORKTREE'.length, Math.min(widest, inner - fixed - (showDashboard ? DASHBOARD : 0)))
     const claimed = new Set<string>()
     const hotkey = (key: string) => {
       if (claimed.has(key)) return undefined
@@ -422,32 +428,52 @@ export const register: Register = (on) => {
             <Box width={stateColumn} flexShrink={0}>
               <Text dimColor>STATE</Text>
             </Box>
+            <Box width={provisionColumn} flexShrink={0}>
+              <Text dimColor>PROVISION</Text>
+            </Box>
             <Box width={portColumn} flexShrink={0}>
               <Text dimColor>PORT</Text>
             </Box>
             <Box width={actionColumn} flexShrink={0}>
               <Text dimColor>ACTION</Text>
             </Box>
-            <Box flexGrow={1} justifyContent="flex-end">
-              <Link href={current.dashboard} label="dashboard" />
-            </Box>
+            {showDashboard && (
+              <Box flexGrow={1} justifyContent="flex-end">
+                <Link href={current.dashboard} label="dashboard" />
+              </Box>
+            )}
           </Box>
           {shown.rows.map((row) => {
             const verb = verbOf(row)
             const main = mainService(row)
             const colour = main ? tone(main) : 'dim'
+            const files = provision(row)
             const isSelected = row.id === selected.id
             return (
               <Box key={`row-${row.id}`} flexDirection="row" gap={GAP}>
                 <Box width={nameColumn} flexShrink={0}>
-                  <Text bold={isSelected} dimColor={!isSelected} wrap="truncate">
-                    {isSelected ? '> ' : '  '}
-                    {row.name}
-                  </Text>
+                  {e.surface === 'terminal' ? (
+                    <Text bold={isSelected} dimColor={!isSelected} wrap="truncate">
+                      {isSelected ? '> ' : '  '}
+                      {fit(row.name, nameColumn - CURSOR)}
+                    </Text>
+                  ) : (
+                    <Button key={`pick-${row.id}`} plain onPress={() => update($, cursor, () => row.id)}>
+                      <Text bold={isSelected} dimColor={!isSelected}>
+                        {isSelected ? '> ' : '  '}
+                        {fit(row.name, nameColumn - CURSOR)}
+                      </Text>
+                    </Button>
+                  )}
                 </Box>
                 <Box width={stateColumn} flexShrink={0}>
                   <Text color={colour === 'dim' ? undefined : colour} dimColor={colour === 'dim'}>
                     {main ? word(main) : 'none'}
+                  </Text>
+                </Box>
+                <Box width={provisionColumn} flexShrink={0}>
+                  <Text color={files.tone === 'dim' ? undefined : files.tone} dimColor={files.tone === 'dim'}>
+                    {files.text}
                   </Text>
                 </Box>
                 <Box width={portColumn} flexShrink={0}>
@@ -503,7 +529,7 @@ export const register: Register = (on) => {
               />
             )}
             <Button key="minimize" plain dimColor label="minimize" hotkey={hotkey('m')} onPress={() => update($, minimized, () => true)} />
-            {many && <Text dimColor>up/down . enter</Text>}
+            {many && e.surface === 'terminal' && <Text dimColor>up/down . enter</Text>}
           </Box>
           {alerts.length > 0 && (
             <Box flexDirection="column" marginTop={1}>

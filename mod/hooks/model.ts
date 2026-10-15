@@ -26,6 +26,12 @@ export function tone(service: Service): Tone | 'dim' | 'success' {
   return 'dim'
 }
 
+export function provision(row: Worktree): { text: string; tone: Tone | 'dim' } {
+  if (row.repairing) return { text: 'repairing', tone: 'warning' }
+  if (!row.provisioned) return { text: 'missing', tone: 'warning' }
+  return { text: 'ok', tone: 'dim' }
+}
+
 export function current(view: Here): Worktree | null {
   return view.rows.find((row) => row.id === view.hereId) ?? null
 }
@@ -261,4 +267,12 @@ export function touchedPathIn(tool: string, ran: { text?: unknown; result?: unkn
   } catch {
     return null
   }
+}
+
+export function fit(text: string, width: number): string {
+  if (text.length <= width) return text
+  if (width <= 3) return text.slice(0, Math.max(0, width))
+  const room = width - 3
+  const head = Math.ceil(room / 2)
+  return `${text.slice(0, head)}...${text.slice(text.length - (room - head))}`
 }

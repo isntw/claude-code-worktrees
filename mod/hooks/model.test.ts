@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Pull, Service, View, Worktree } from '../types'
-import { arrange, attention, clean, bornInSession, contest, mainService, owning, statusText, touchedPath, touchedPathIn } from './model'
+import { arrange, attention, clean, bornInSession, contest, fit, mainService, owning, provision, statusText, touchedPath, touchedPathIn } from './model'
 
 const service = (over: Partial<Service>): Service => ({
   name: 'web',
@@ -188,4 +188,17 @@ test('a worktree created after the session started is the session\'s, the root a
 test('the path is also found in a tool result whose text is prose', () => {
   const ran = { text: 'Created x. It is provisioned and stopped.', result: { structuredContent: { ok: true, path: '/repo/x' } } }
   expect(touchedPathIn('mcp__plugin_ccwt_ccwt__ccwt_create_worktree', ran)).toBe('/repo/x')
+})
+
+test('a long name is cut in the middle to the room it has, keeping both ends', () => {
+  expect(fit('mtech-6080-payment-methods-design-fixes', 50)).toBe('mtech-6080-payment-methods-design-fixes')
+  expect(fit('mtech-6080-payment-methods-design-fixes', 24)).toBe('mtech-6080-...sign-fixes')
+  expect(fit('mtech-6080-payment-methods-design-fixes', 24).length).toBe(24)
+  expect(fit('abcdef', 3)).toBe('abc')
+})
+
+test('the provision column says ok, repairing or missing', () => {
+  expect(provision(worktree({}))).toEqual({ text: 'ok', tone: 'dim' })
+  expect(provision(worktree({ provisioned: false }))).toEqual({ text: 'missing', tone: 'warning' })
+  expect(provision(worktree({ provisioned: false, repairing: { label: 'node_modules', done: 1, total: 3 } }))).toEqual({ text: 'repairing', tone: 'warning' })
 })
