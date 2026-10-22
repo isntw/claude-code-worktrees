@@ -195,6 +195,9 @@ project. Nothing is written into any repository.
   behind your back lets a dev server's own sidecar steal the port the app was given.
 - **`CCWT_URL_<SERVICE>` is exported** so services can find each other. Nothing to import.
 - **A worktree keeps its port.** If something else takes it, the card says so and the next start moves.
+- **A worktree's branch keeps the case of its name**; the directory is lowercased. On macOS's
+  case-insensitive disk, renaming a branch only by case needs a stop on the way:
+  `git branch -m mtech-1 tmp && git branch -m tmp MTECH-1`.
 - **Removal names the path first**, keeps your branch unless you tick the box, and won't delete a
   worktree you made yourself if it has anything to lose.
 - **Local only** — binds `127.0.0.1`, new token every run, nothing leaves your machine. Settings

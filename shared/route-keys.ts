@@ -11,6 +11,14 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
+export function branchName(name: string): string {
+  return name
+    .trim()
+    .replace(/[\s\x00-\x1f\x7f~^:?*[\\]+|\.{2,}|@\{/g, '-')
+    .replace(/\/{2,}/g, '/')
+    .replace(/^[-./]+|[-./]+$/g, '')
+}
+
 export function routeKeys(items: Named[]): Map<string, string> {
   const taken = new Map<string, number>()
   for (const item of items) {

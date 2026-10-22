@@ -47,6 +47,11 @@ export async function branchExists(rootPath: string, branch: string): Promise<bo
   return result.code === 0
 }
 
+export async function isValidBranch(rootPath: string, branch: string): Promise<boolean> {
+  const result = await git(rootPath, ['check-ref-format', '--branch', branch])
+  return result.code === 0
+}
+
 const HEADERS = {
   head: '# branch.head ',
   upstream: '# branch.upstream ',
