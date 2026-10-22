@@ -96,6 +96,24 @@ A service is a command or a container stack. Each worktree gets its own compose 
 
 ![A container stack running in a worktree](docs/images/container-stack.png)
 
+## From the terminal
+
+The everyday moves work without the dashboard open in a browser. Run them anywhere inside a registered
+repository; a worktree defaults to the one you are standing in.
+
+```bash
+ccwt ls                       # every worktree, its services, ports and what is up
+ccwt up [worktree] [-s web]   # start a worktree's services, or one of them
+ccwt down [worktree]          # stop them; the worktree is kept
+ccwt logs [worktree] -n 50    # what a service printed; --offset pages back
+ccwt open [worktree]          # open a running service in the browser
+ccwt path <worktree>          # cd "$(ccwt path my-feature)"
+ccwt repair [worktree]        # put back files the recipe names; never runs postCreate
+```
+
+`--json` prints the structured answer instead of text. `ls`, `path` and `open` read git directly and
+answer with ccwt stopped; the rest need it running.
+
 ## GitHub
 
 Optional. Sign in once with a device code — the token stays in `~/.ccwt`, and signing out is one click.

@@ -23,23 +23,27 @@ if (manifest.version !== version) {
   )
 }
 
-const result = spawnSync(
-  join(root, 'node_modules', '.bin', 'esbuild'),
-  [
-    'plugin/src/mcp/server.ts',
-    'plugin/src/hooks/ccwt.ts',
-    '--bundle',
-    '--platform=node',
-    '--target=node24',
-    '--format=esm',
+const esbuild = (entries, flags) =>
+  spawnSync(
+    join(root, 'node_modules', '.bin', 'esbuild'),
+    [
+      ...entries,
+      '--bundle',
+      '--platform=node',
+      '--target=node24',
+      '--format=esm',
+      ...flags,
+      `--define:VERSION=${JSON.stringify(version)}`,
+      '--log-level=warning',
+    ],
+    { cwd: root, stdio: 'inherit' },
+  ).status ?? 1
+
+process.exit(
+  esbuild(['plugin/src/mcp/server.ts', 'plugin/src/hooks/ccwt.ts'], [
     '--outdir=plugin',
     '--outbase=plugin/src',
     '--out-extension:.js=.mjs',
     '--banner:js=#!/usr/bin/env node',
-    `--define:VERSION=${JSON.stringify(version)}`,
-    '--log-level=warning',
-  ],
-  { cwd: root, stdio: 'inherit' },
+  ]) || esbuild(['cli/ccwt.ts'], ['--outfile=bin/cli.mjs']),
 )
-
-process.exit(result.status ?? 1)
