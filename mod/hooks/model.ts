@@ -146,6 +146,14 @@ function alertsFor(row: Worktree, view: Here, prefix: string): Alert[] {
       text: `${prefix}PR #${pull.number} merged, worktree still on disk`,
       link: pull.url,
     })
+  } else if ((pull?.state === 'open' || pull?.state === 'draft') && !row.root) {
+    alerts.push({
+      ...own,
+      key: `${row.id}-pull`,
+      tone: 'suggestion',
+      text: `${prefix}PR #${pull.number} ${pull.state === 'draft' ? 'in draft' : 'open for review'}`,
+      link: pull.url,
+    })
   }
 
   return alerts
