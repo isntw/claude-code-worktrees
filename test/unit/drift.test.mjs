@@ -113,13 +113,30 @@ test('a scratch directory only the root has is nothing to be short of', async (t
   assert.equal(await missing(trio), false)
 })
 
-test('a dependency only the root has is missing', async (t) => {
+test('a dependency the root gained for another worktree is not missing here, only drift', async (t) => {
   const trio = trees()
   t.after(() => rmSync(trio.dir, { recursive: true, force: true }))
 
   pack(trio.root, 'left', '1.0.0')
   share(trio.root, trio.worktree, 'left')
+  writeFileSync(join(trio.root, 'installed.json'), '["left"]')
+  linkSync(join(trio.root, 'installed.json'), join(trio.worktree, 'installed.json'))
+
   pack(trio.root, 'right', '1.0.0')
+  rmSync(join(trio.root, 'installed.json'))
+  writeFileSync(join(trio.root, 'installed.json'), '["left","right"]')
+
+  assert.equal(await missing(trio), false)
+  assert.equal(await diverged(trio), true)
+})
+
+test('a linked directory holding nothing of the root is missing', async (t) => {
+  const trio = trees()
+  t.after(() => rmSync(trio.dir, { recursive: true, force: true }))
+
+  pack(trio.root, 'left', '1.0.0')
+  mkdirSync(join(trio.worktree, '.cache'))
+  writeFileSync(join(trio.worktree, '.cache', 'entry'), 'x')
 
   assert.equal(await missing(trio), true)
 })
