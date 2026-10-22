@@ -70,6 +70,14 @@ test('crashed, unprovisioned and merged each raise one alert', () => {
   expect(attention(view).map((alert) => alert.key)).toEqual(['w1-crashed-api', 'w1-unprovisioned', 'w1-merged'])
 })
 
+test('an open or draft pull request raises a notice, a closed one nothing', () => {
+  const pull = (state: Pull['state']) => ({ w1: { number: 62, title: 't', url: 'https://x/62', state } })
+  const texts = (state: Pull['state']) => attention(here([worktree({})], pull(state))).map((alert) => alert.text)
+  expect(texts('open')).toEqual(['PR #62 open for review'])
+  expect(texts('draft')).toEqual(['PR #62 in draft'])
+  expect(texts('closed')).toEqual([])
+})
+
 test('with several rows an alert names its worktree and carries its id', () => {
   const view = here([worktree({}), worktree({ id: 'w2', name: 'other', services: [service({ state: 'crashed' })] })])
   const [alert] = attention(view)

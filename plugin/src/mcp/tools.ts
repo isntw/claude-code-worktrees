@@ -553,12 +553,14 @@ server.registerTool(
         .string()
         .min(1)
         .describe(
-          "Name for the worktree. It becomes the directory name under the recipe's `worktreesDir`, and the branch name unless `branch` says otherwise.",
+          "Name for the worktree. It becomes the directory name under the recipe's `worktreesDir`, lowercased, and the branch name with its case kept, unless `branch` says otherwise.",
         ),
       branch: z
         .string()
         .optional()
-        .describe('An existing branch to check out. Defaults to a new branch named after the worktree.'),
+        .describe(
+          'The branch to check out if it exists, or the name of a new one. Defaults to `name` with its case kept.',
+        ),
       start: z
         .boolean()
         .optional()
@@ -597,6 +599,9 @@ server.registerTool(
       [
         'Created and provisioned:',
         ...describeWorktree(worktree),
+        ...(!branch && worktree.branch !== name.trim()
+          ? [`The branch is \`${worktree.branch}\`: \`${name.trim()}\` is not a valid branch name as given.`]
+          : []),
         '',
         ...(start === true
           ? ['Its services were started. Call ccwt_get_status to see where they landed.']

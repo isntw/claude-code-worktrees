@@ -31802,9 +31802,11 @@ server.registerTool(
     description: "Create a worktree of this repository and provision it from the recipe \u2014 place the declared files, hardlink what the recipe links, run `postCreate`, allocate a port per service. It arrives ready and stopped. This is how a recipe gets tested, since a recipe only ever takes effect on a worktree created after it was stored. Do not use `git worktree add` and set one up by hand: ccwt hardlinks `node_modules` where an install would duplicate it.",
     inputSchema: external_exports.strictObject({
       name: external_exports.string().min(1).describe(
-        "Name for the worktree. It becomes the directory name under the recipe's `worktreesDir`, and the branch name unless `branch` says otherwise."
+        "Name for the worktree. It becomes the directory name under the recipe's `worktreesDir`, lowercased, and the branch name with its case kept, unless `branch` says otherwise."
       ),
-      branch: external_exports.string().optional().describe("An existing branch to check out. Defaults to a new branch named after the worktree."),
+      branch: external_exports.string().optional().describe(
+        "The branch to check out if it exists, or the name of a new one. Defaults to `name` with its case kept."
+      ),
       start: external_exports.boolean().optional().describe(
         "Start every service once it is provisioned. Off by default \u2014 a provisioned worktree costs nothing, a dev server nobody asked for costs a port and a process."
       ),
@@ -31836,6 +31838,7 @@ server.registerTool(
       [
         "Created and provisioned:",
         ...describeWorktree(worktree),
+        ...!branch && worktree.branch !== name.trim() ? [`The branch is \`${worktree.branch}\`: \`${name.trim()}\` is not a valid branch name as given.`] : [],
         "",
         ...start === true ? ["Its services were started. Call ccwt_get_status to see where they landed."] : [
           "It is provisioned and stopped. Start it with ccwt_start_worktree, then check the service",
