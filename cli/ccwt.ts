@@ -11,7 +11,9 @@ export const USAGE = `
   Worktrees  (these talk to the ccwt that is running: \`ccwt start\` first)
     ccwt ls [path]                     every worktree, its services, ports and what is up;
                                        every project when run outside one
-    ccwt up [worktree] [-s service]    start the services of a worktree
+    ccwt up [worktree] [-s service] [--take-over]
+                                       start the services of a worktree; --take-over
+                                       stops a sibling holding a pinned port first
     ccwt down [worktree] [-s service]  stop them; the worktree is kept
     ccwt logs [worktree] [-s service] [-n lines] [--offset n]
                                        what a service printed
@@ -86,6 +88,7 @@ export function inputFor(
     return { worktree, service, limit: number(values.lines), offset: number(values.offset), path }
   }
   if (command === 'repair') return { worktree, refresh: values.refresh === true ? true : undefined, path }
+  if (command === 'up') return { worktree, service, takeOver: values['take-over'] === true ? true : undefined, path }
   return { worktree, service, path }
 }
 
@@ -132,6 +135,7 @@ const plain = (text: string) =>
     .replace(/ccwt_[a-z_]+/g, (name) => SAID[name] ?? name)
     .replace(/`offset: (\d+)`/g, '`--offset $1`')
     .replace(/`service: "([^"]+)"`/g, '`-s $1`')
+    .replace(/\btakeOver\b/g, '--take-over')
 
 function listing(status: Status, cwd: string): string {
   const worktrees = status.worktrees ?? []
@@ -191,6 +195,7 @@ export async function run(argv: string[]): Promise<number> {
         offset: { type: 'string' },
         project: { type: 'string', short: 'p' },
         refresh: { type: 'boolean' },
+        'take-over': { type: 'boolean' },
         json: { type: 'boolean' },
       },
       allowPositionals: true,

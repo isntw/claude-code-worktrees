@@ -110,6 +110,7 @@ export interface ServiceLike {
   port?: number | null
   url?: string | null
   exitCode?: number | null
+  tookOver?: { worktree: string; service: string }[]
 }
 
 export interface WorktreeLike {
