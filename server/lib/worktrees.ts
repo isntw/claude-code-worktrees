@@ -9,7 +9,7 @@ import type {
   ServiceStatus,
   Worktree,
 } from '../../shared/types'
-import { slugify } from '../../shared/route-keys'
+import { branchName, slugify } from '../../shared/route-keys'
 import {
   addWorktree,
   classify,
@@ -18,6 +18,7 @@ import {
   idFor,
   isIgnored,
   isProvisionedByCcwt,
+  isValidBranch,
   listWorktrees,
   lockWorktree,
   pruneWorktrees,
@@ -364,7 +365,13 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   }
 
   const id = idFor(path)
-  const branch = input.branch.trim() || slug
+  const wanted = branchName(input.name)
+  const branch =
+    input.branch.trim() || ((await isValidBranch(project.rootPath, wanted)) ? wanted : slug)
+
+  if (!input.branch.trim() && branch !== wanted) {
+    supervisor.note(id, 'provision', `"${wanted}" is not a valid branch name, using ${slug}`)
+  }
 
   supervisor.note(id, 'provision', `git worktree add ${path} (${branch})`)
   await addWorktree(project.rootPath, path, branch)
