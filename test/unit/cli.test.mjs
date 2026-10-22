@@ -13,7 +13,18 @@ test('the worktree a directory is in is the deepest one containing it', () => {
 })
 
 test('flags map onto the tool inputs, aimed at a path', () => {
-  assert.deepEqual(inputFor('up', 'feature', { service: 'web' }, '/repo'), { worktree: 'feature', service: 'web', path: '/repo' })
+  assert.deepEqual(inputFor('up', 'feature', { service: 'web' }, '/repo'), {
+    worktree: 'feature',
+    service: 'web',
+    takeOver: undefined,
+    path: '/repo',
+  })
+  assert.deepEqual(inputFor('up', 'feature', { 'take-over': true }, '/repo'), {
+    worktree: 'feature',
+    service: undefined,
+    takeOver: true,
+    path: '/repo',
+  })
   assert.deepEqual(inputFor('logs', undefined, { lines: '5', offset: '10' }, '/repo'), {
     worktree: undefined,
     service: undefined,

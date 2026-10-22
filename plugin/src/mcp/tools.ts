@@ -670,7 +670,7 @@ server.registerTool(
   {
     title: 'Start a worktree',
     description:
-      "Ask ccwt to start the services it declares for a worktree — the worktree the session is in unless one is named. ccwt still owns the lifecycle: it allocates the port, repairs anything missing from the recipe, spawns the process group and probes the port. Use this instead of running a dev server yourself. A service that is already up is left alone and nothing is re-applied, so stop it first if the recipe changed.",
+      "Ask ccwt to start the services it declares for a worktree — the worktree the session is in unless one is named. ccwt still owns the lifecycle: it allocates the port, repairs anything missing from the recipe, spawns the process group and probes the port. Use this instead of running a dev server yourself. A service that is already up is left alone and nothing is re-applied, so stop it first if the recipe changed. A service pinned to one port can run in only one worktree at a time: pass `takeOver: true` to stop it in the sibling worktree of this project that holds the port and start it here. That stop is part of this request and is reported in `stopped`; a port held by anything else is refused, naming the holder.",
     inputSchema: z.strictObject({
       service: z
         .string()
@@ -680,6 +680,12 @@ server.registerTool(
         .string()
         .optional()
         .describe('Name of the worktree to start. Defaults to the one the session is in.'),
+      takeOver: z
+        .boolean()
+        .optional()
+        .describe(
+          'When a pinned port is held by the same service in a sibling worktree of this project, stop it there first. Never stops anything outside this project.',
+        ),
       path: PATH_ARG,
     }),
     outputSchema: {
@@ -694,11 +700,15 @@ server.registerTool(
         .array(z.string())
         .optional()
         .describe('Services left untouched because they were already up. Nothing was re-applied to these.'),
+      stopped: z
+        .array(z.strictObject({ worktree: z.string(), service: z.string() }))
+        .optional()
+        .describe('Services stopped in sibling worktrees to hand their pinned port over, with `takeOver`.'),
       services: z.array(SERVICE).optional(),
     },
     annotations: ACTS,
   },
-  async ({ service, worktree, path }): Promise<Told> => {
+  async ({ service, worktree, takeOver, path }): Promise<Told> => {
     const found = await standing(path)
     const missing = needsProject(found)
     if (missing) return nope(missing)
@@ -720,11 +730,19 @@ server.registerTool(
       ? `/api/projects/${id}/worktrees/${wanted.id}/services/${encodeURIComponent(service)}/start`
       : `/api/projects/${id}/worktrees/${wanted.id}/services/start`
 
-    const started = await request<ServiceLike | ServiceLike[]>('POST', route, {}, PLACE_MS)
+    const started = await request<ServiceLike | ServiceLike[]>(
+      'POST',
+      route,
+      takeOver === true ? { takeOver: true } : {},
+      PLACE_MS,
+    )
     if (!answered(started)) return broke(why(started, 'start that service'))
 
     const statuses = (Array.isArray(started.body) ? started.body : [started.body!]).filter(Boolean)
     const settling = statuses.some((status) => status.state === 'starting')
+    const stopped = statuses.flatMap((status) =>
+      (status.tookOver ?? []).map(({ worktree, service }) => ({ worktree, service })),
+    )
 
     return told(
       [
@@ -734,6 +752,12 @@ server.registerTool(
           ? [
               '',
               `${already.join(', ')} ${already.length > 1 ? 'were' : 'was'} already up, so ${already.length > 1 ? 'they were' : 'it was'} left alone — nothing was re-applied. A recipe is read when a service starts, so stop it with ccwt_stop_worktree first if you changed one.`,
+            ]
+          : []),
+        ...(stopped.length
+          ? [
+              '',
+              `To hand the pinned port over, ccwt stopped ${stopped.map((entry) => `\`${entry.service}\` in ${entry.worktree}`).join(', ')}. Its log says why; start it there again when it is wanted back.`,
             ]
           : []),
         ...(settling
@@ -748,6 +772,7 @@ server.registerTool(
         path: wanted.path,
         settling,
         alreadyRunning: already,
+        ...(stopped.length ? { stopped } : {}),
         services: statuses.map(shapeService),
       },
     )

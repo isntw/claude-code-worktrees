@@ -104,6 +104,7 @@ export async function readAllocated(
 
 export interface Claim {
   keep?: boolean
+  idle?: boolean
   reserved?: Set<number>
 }
 
@@ -114,7 +115,7 @@ export interface Allocated {
 
 const pinned = (service: string, port: number) =>
   new Error(
-    `\`${service}\` is pinned to port ${port} and something is already listening there, so only one worktree can run it at a time.`,
+    `\`${service}\` is pinned to port ${port} and something is already listening there, so only one worktree can run it at a time. If another worktree of this project holds it, start this one with takeOver to stop that one and start here.`,
   )
 
 async function usable(port: number, reserved: Set<number>): Promise<boolean> {
@@ -132,6 +133,11 @@ export async function allocate(
   const [low, high] = range
 
   const existing = await readAllocated(worktreePath, service, range)
+
+  if (low === high && claim.idle) {
+    if (existing !== low) await writeWorktreeConfig(worktreePath, KEY(service), String(low))
+    return { port: low, from: null }
+  }
 
   if (existing !== null) {
     if (claim.keep) return { port: existing, from: null }

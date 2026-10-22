@@ -85,6 +85,7 @@ export interface ServiceStatus {
   taken?: boolean
   movable?: boolean
   heldBy?: PortHold | null
+  tookOver?: PortHold[]
   extra?: Record<string, number>
 }
 

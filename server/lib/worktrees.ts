@@ -22,12 +22,13 @@ import {
   lockWorktree,
   pruneWorktrees,
   readUnsaved,
+  readWorktreeConfig,
   removeWorktree,
   unlockWorktree,
   writeWorktreeConfig,
 } from './git'
 import { isDirectory, isSymlink, pathExists } from './fs'
-import { reapWithin, straysWithin } from './holders'
+import { free, holders, reapWithin, straysWithin } from './holders'
 import { allocate, isFree, pruneSharedPorts, readAllocated, release } from './ports'
 import type { Placeholders } from './provision'
 import {
@@ -195,6 +196,7 @@ async function allocateAll(
   project: Project,
   worktreeId: string,
   worktreePath: string,
+  starting: string[] = [],
 ): Promise<Allocation> {
   await enableWorktreeConfig(project.rootPath)
   await pruneSharedPorts(project.rootPath)
@@ -210,15 +212,20 @@ async function allocateAll(
   for (const service of project.recipe?.services ?? []) {
     const live = supervisor.status(worktreeId, service.name)
     const keep = isLive(live)
+    const idle = !starting.includes(service.name)
 
-    const main = await allocate(worktreePath, service.name, service.portRange, { keep, reserved })
+    const main = await allocate(worktreePath, service.name, service.portRange, { keep, idle, reserved })
     if (main.from !== null) moved(service.name, service.name, main.from, main.port)
     reserved.add(main.port)
     ports[service.name] = main.port
 
     const extra: Record<string, number> = {}
     for (const [variable, range] of Object.entries(service.ports ?? {})) {
-      const one = await allocate(worktreePath, portKey(service, variable), range, { keep, reserved })
+      const one = await allocate(worktreePath, portKey(service, variable), range, {
+        keep,
+        idle,
+        reserved,
+      })
       if (one.from !== null) moved(service.name, variable, one.from, one.port)
       reserved.add(one.port)
       extra[variable] = one.port
@@ -360,7 +367,13 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   const path = worktreePathFor(project.rootPath, recipe, slugify(project.name), slug)
 
   if (await pathExists(path)) {
-    throw new Error(`${path} already exists.`)
+    const earlier = await find(project, idFor(path))
+    const wanted = input.branch.trim()
+    const ours = (await readWorktreeConfig(path, 'ccwt.created')) === 'true'
+    if (!earlier || !ours || (wanted && earlier.branch !== wanted)) {
+      throw new Error(`${path} already exists.`)
+    }
+    return finish(project, earlier, input.start)
   }
 
   const id = idFor(path)
@@ -414,6 +427,24 @@ export async function create(project: Project, input: CreateInput): Promise<Work
   const created = await find(project, id)
   if (!created) throw new Error('The worktree was created but did not appear in git worktree list.')
   return created
+}
+
+async function finish(project: Project, earlier: Worktree, start: boolean): Promise<Worktree> {
+  supervisor.note(
+    earlier.id,
+    'provision',
+    `${earlier.path} is already here from an earlier create, so it is finished rather than made again. postCreate is not run twice.`,
+  )
+
+  const repaired = await repair(project, earlier.id)
+
+  if (start) {
+    await startAll(project, repaired.id, repaired.path, repaired.branch).catch((cause: Error) => {
+      supervisor.note(repaired.id, 'provision', cause.message, 'stderr')
+    })
+  }
+
+  return (await find(project, earlier.id)) ?? repaired
 }
 
 function liveServices(recipe: Recipe, worktreeId: string): string[] {
@@ -582,6 +613,7 @@ export async function startService(
   serviceName: string,
   branch: string | null,
   mayRepair = true,
+  takeOver = false,
 ): Promise<ServiceStatus> {
   const recipe = project.recipe
   if (!recipe) throw new Error('This project has no resolvable recipe.')
@@ -595,8 +627,9 @@ export async function startService(
     })
   }
 
-  const { ports, named } = await allocateAll(project, worktreeId, worktreePath)
   const order = startOrder(recipe.services, service.name)
+  const tookOver = takeOver ? await handOver(project, worktreeId, worktreePath, order) : []
+  const { ports, named } = await allocateAll(project, worktreeId, worktreePath, order)
 
   let status: ServiceStatus | null = null
 
@@ -635,7 +668,53 @@ export async function startService(
     }
   }
 
-  return status!
+  return tookOver.length ? { ...status!, tookOver } : status!
+}
+
+async function notOurs(port: number, held: PortHold | null): Promise<string> {
+  const lead = `Port ${port} is pinned and held by`
+  const rule = 'takeOver only hands a port over between worktrees of the same project.'
+
+  if (held) return `${lead} \`${held.service}\` in ${held.worktree} of another project. ${rule}`
+
+  const found = await holders(port)
+  const foreign = found.foreign[0]
+  if (foreign) {
+    return `${lead} pid ${foreign.pid} (${foreign.name})${foreign.cwd ? ` in ${foreign.cwd}` : ''}, which ccwt does not run. ${rule}`
+  }
+
+  return `${found.why ?? `${lead} something ccwt does not run.`} ${rule}`
+}
+
+async function handOver(
+  project: Project,
+  worktreeId: string,
+  worktreePath: string,
+  order: string[],
+): Promise<PortHold[]> {
+  const stopped: PortHold[] = []
+
+  for (const name of order) {
+    const service = project.recipe!.services.find((candidate) => candidate.name === name)!
+    const [low, high] = service.portRange
+    if (low !== high || isLive(supervisor.status(worktreeId, name)) || (await isFree(low))) continue
+
+    const held = holdOf(project, worktreeId, name, low)
+    if (!held?.same || held.worktreeId === worktreeId) throw new Error(await notOurs(low, held))
+
+    const outcome = await free(low, {
+      pids: [],
+      services: [{ worktreeId: held.worktreeId, service: held.service }],
+    })
+    if (!outcome.freed) throw new Error(outcome.why ?? `Port ${low} is still held.`)
+
+    const here = basename(worktreePath)
+    supervisor.note(held.worktreeId, held.service, `stopped so ${here} could take port ${low}`)
+    supervisor.note(worktreeId, name, `stopped ${held.service} in ${held.worktree} to take port ${low}`)
+    stopped.push(held)
+  }
+
+  return stopped
 }
 
 export function startOrder(services: Service[], target?: string): string[] {
@@ -667,13 +746,14 @@ export async function startAll(
   worktreeId: string,
   worktreePath: string,
   branch: string | null,
+  takeOver = false,
 ): Promise<ServiceStatus[]> {
   const recipe = project.recipe
   if (!recipe) throw new Error('This project has no resolvable recipe.')
 
   const out: ServiceStatus[] = []
   for (const name of startOrder(recipe.services)) {
-    out.push(await startService(project, worktreeId, worktreePath, name, branch))
+    out.push(await startService(project, worktreeId, worktreePath, name, branch, true, takeOver))
   }
   return out
 }
