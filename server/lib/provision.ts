@@ -244,9 +244,9 @@ async function relinked(here: string, there: string): Promise<boolean | null> {
 export async function missingBeneath(entry: string, source: string, target: string): Promise<boolean> {
   const sides = await bothSides(entry, source, target)
   if (typeof sides === 'string') return sides === 'absent'
+  if (sides.shared.some((name) => sides.have.has(name))) return false
 
   for (const name of sides.shared) {
-    if (sides.have.has(name)) continue
     if (await holdsContent(join(source, name))) return true
   }
 

@@ -1,5 +1,6 @@
 import { basename, join, resolve } from 'node:path'
 import type {
+  Diagnostic,
   Recipe,
   LockState,
   PortHold,
@@ -99,19 +100,28 @@ function isLive(status: ServiceStatus | null): boolean {
   return status !== null && (status.state === 'running' || status.state === 'starting')
 }
 
-async function diverged(project: Project, worktreePath: string): Promise<boolean> {
+async function drift(project: Project, worktreePath: string): Promise<Diagnostic[]> {
   const recipe = project.recipe
-  if (!recipe) return false
+  if (!recipe) return []
+
+  const issues: Diagnostic[] = []
 
   for (const path of recipe.provision.link) {
     const source = join(project.rootPath, path)
     const target = join(worktreePath, path)
 
     if (!(await isDirectory(source)) || !(await isDirectory(target))) continue
-    if (await divergedBeneath(path, source, target)) return true
+    if (!(await divergedBeneath(path, source, target))) continue
+
+    issues.push({
+      code: 'worktree.drift',
+      severity: 'info',
+      message: `${path} differs from the root checkout`,
+      hint: 'Repair with refresh to relink it from the root.',
+    })
   }
 
-  return false
+  return issues
 }
 
 async function missing(project: Project, worktreePath: string): Promise<boolean> {
@@ -139,10 +149,6 @@ async function missing(project: Project, worktreePath: string): Promise<boolean>
   }
 
   return needsWriting(worktreePath, recipe.provision.write, placeholders(project, worktreePath))
-}
-
-async function outOfDate(project: Project, worktreePath: string): Promise<boolean> {
-  return (await missing(project, worktreePath)) || (await diverged(project, worktreePath))
 }
 
 async function noteExposed(
@@ -331,10 +337,10 @@ export async function list(project: Project): Promise<Worktree[]> {
           lockState: await lockStateOf(entry.locked, entry.lockReason),
           lockedAt: lockedAtOf(entry.locked, entry.lockReason),
           prunable: entry.prunable,
-          provisioned: !(await outOfDate(project, entry.path)),
+          provisioned: !(await missing(project, entry.path)),
           repairing: supervisor.progressFor(id),
           services: await servicesFor(project, id, entry.path),
-          issues: [],
+          issues: await drift(project, entry.path),
         }
       }),
   )
