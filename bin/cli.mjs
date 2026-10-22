@@ -7,11 +7,8 @@ var __export = (target, all) => {
 // cli/ccwt.ts
 import { spawn } from "node:child_process";
 import { homedir as homedir2 } from "node:os";
-import { resolve as resolve3 } from "node:path";
+import { basename as basename2, resolve as resolve3 } from "node:path";
 import { parseArgs } from "node:util";
-
-// plugin/src/mcp/reach.ts
-import { resolve as resolve2, sep as sep2 } from "node:path";
 
 // plugin/src/lib/discover.ts
 import { execFile } from "node:child_process";
@@ -278,6 +275,7 @@ async function describe(cwd, transcriptPath) {
 }
 
 // plugin/src/mcp/reach.ts
+import { resolve as resolve2, sep as sep2 } from "node:path";
 var NO_SERVER = "ccwt is not running, so its recipe store is not reachable. Start the ccwt dashboard and try again.";
 var SOURCES = {
   ccwt: "a recipe stored in ccwt",
@@ -15682,18 +15680,21 @@ server.registerTool(
 
 // cli/ccwt.ts
 var USAGE = `
-  Worktrees  (the dashboard must be running, except for ls, path and open)
-    ccwt ls [path]                     every worktree, its services, ports and what is up
+  Worktrees  (these talk to the ccwt that is running: \`ccwt start\` first)
+    ccwt ls [path]                     every worktree, its services, ports and what is up;
+                                       every project when run outside one
     ccwt up [worktree] [-s service]    start the services of a worktree
     ccwt down [worktree] [-s service]  stop them; the worktree is kept
     ccwt logs [worktree] [-s service] [-n lines] [--offset n]
                                        what a service printed
     ccwt open [worktree] [-s service]  open a running service in the browser
-    ccwt path <worktree>               print a worktree's path: cd "$(ccwt path name)"
+    ccwt path <worktree|-p project>    print a worktree's path: cd "$(ccwt path name)"
     ccwt repair [worktree] [--refresh] put back the files the recipe names
 
-    A worktree defaults to the one the current directory is in.
-    --json prints the structured answer instead of text.
+    They work from any directory. A worktree defaults to the one the current
+    directory is in; a named one is looked up in every registered project.
+    -p, --project <name>  pick the project, from anywhere, when a name is ambiguous
+    --json                print the structured answer instead of text
 `;
 var SAID = {
   ccwt_get_status: "ccwt ls",
@@ -15713,16 +15714,38 @@ var TOOL_FOR = {
 };
 var tilde = (path) => path.startsWith(homedir2()) ? `~${path.slice(homedir2().length)}` : path;
 var here = (worktrees, cwd) => worktrees.filter((entry) => within(entry.path, cwd)).sort((a, b) => resolve3(b.path).length - resolve3(a.path).length)[0] ?? null;
-function inputFor(command, worktree, values) {
+function inputFor(command, worktree, values, path) {
   const service = values.service;
-  if (command === "ls") return { path: worktree };
-  if (command === "path" || command === "open") return {};
+  if (command === "ls" || command === "path" || command === "open") return { path };
   if (command === "logs") {
     const number4 = (value) => value === void 0 ? void 0 : Number(value);
-    return { worktree, service, limit: number4(values.lines), offset: number4(values.offset) };
+    return { worktree, service, limit: number4(values.lines), offset: number4(values.offset), path };
   }
-  if (command === "repair") return { worktree, refresh: values.refresh === true ? true : void 0 };
-  return { worktree, service };
+  if (command === "repair") return { worktree, refresh: values.refresh === true ? true : void 0, path };
+  return { worktree, service, path };
+}
+var worktreesOf = async (rootPath) => parseWorktrees(await git(rootPath, ["worktree", "list", "--porcelain"]));
+function matching(found, worktree) {
+  return found.flatMap(
+    ({ project, paths }) => paths.filter((path) => basename2(path) === worktree).map((path) => ({ project, path }))
+  );
+}
+async function aim(projects, project, worktree, cwd) {
+  if (project) {
+    const found2 = projects.find((entry) => entry.name === project);
+    if (found2) return found2.rootPath;
+    return { error: `No registered project is called ${project}. ccwt has: ${projects.map((entry) => entry.name).join(", ") || "none"}.` };
+  }
+  const local = (await locate(cwd))?.project ?? null;
+  if (!worktree) return local ? cwd : null;
+  if (local && (await worktreesOf(local.rootPath)).some((path) => basename2(path) === worktree)) return cwd;
+  const found = await Promise.all(projects.map(async (entry) => ({ project: entry, paths: await worktreesOf(entry.rootPath) })));
+  const matches = matching(found, worktree);
+  if (matches.length === 1) return matches[0].path;
+  if (!matches.length) return { error: `No registered project has a worktree called ${worktree}. \`ccwt ls\` lists them.` };
+  return {
+    error: `${worktree} is a worktree in more than one project: ${matches.map((entry) => entry.project.name).join(", ")}. Pick one with -p.`
+  };
 }
 var plain = (text) => text.replace(/ccwt_[a-z_]+/g, (name) => SAID[name] ?? name).replace(/`offset: (\d+)`/g, "`--offset $1`").replace(/`service: "([^"]+)"`/g, "`-s $1`");
 function listing(status, cwd) {
@@ -15742,9 +15765,9 @@ function listing(status, cwd) {
   }
   return lines.join("\n");
 }
-function chosen(status, name, cwd) {
+function chosen(status, name, at) {
   const worktrees = status.worktrees ?? [];
-  const found = name ? worktrees.find((entry) => entry.name === name) : here(worktrees, cwd);
+  const found = name ? worktrees.find((entry) => entry.name === name) : here(worktrees, at);
   if (found) return found;
   return [
     name ? `This repository has no worktree called ${name}. It has:` : "This directory is not in one of ccwt's worktrees. Name one of:",
@@ -15770,6 +15793,7 @@ async function run2(argv) {
         service: { type: "string", short: "s" },
         lines: { type: "string", short: "n" },
         offset: { type: "string" },
+        project: { type: "string", short: "p" },
         refresh: { type: "boolean" },
         json: { type: "boolean" }
       },
@@ -15789,12 +15813,32 @@ ${USAGE}
 `);
     return 1;
   }
-  if (command === "path" && !worktree) {
-    process.stderr.write("ccwt path needs the name of a worktree. `ccwt ls` lists them.\n");
+  if (command === "path" && !worktree && !values.project) {
+    process.stderr.write("ccwt path needs a worktree name or -p. `ccwt ls` lists them.\n");
+    return 1;
+  }
+  if (!await reachServer()) {
+    process.stderr.write("ccwt is not running, so there is nothing to ask. Start it with `ccwt start`.\n");
+    return 1;
+  }
+  const projects = ((await readState())?.projects ?? []).map((entry) => ({
+    name: basename2(entry.rootPath),
+    rootPath: entry.rootPath
+  }));
+  const cwd = process.cwd();
+  const aimed = command === "ls" && worktree ? resolve3(worktree) : await aim(projects, values.project, worktree, cwd);
+  if (aimed !== null && typeof aimed === "object") {
+    process.stderr.write(`${aimed.error}
+`);
+    return 1;
+  }
+  if (aimed === null && command === "ls") return everything(projects, values.json === true, cwd);
+  if (aimed === null) {
+    process.stderr.write("This directory is not inside a project ccwt manages. Name a worktree, or pick a project with -p.\n");
     return 1;
   }
   const { inputSchema, handler } = tool(TOOL_FOR[command]);
-  const input = inputSchema.safeParse(inputFor(command, worktree, values));
+  const input = inputSchema.safeParse(inputFor(command, worktree, values, aimed));
   if (!input.success) {
     process.stderr.write(`${input.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("\n")}
 `);
@@ -15813,11 +15857,11 @@ ${USAGE}
     return 1;
   }
   if (command !== "path" && command !== "open") {
-    process.stdout.write(values.json ? json2 : `${command === "ls" ? listing(data, resolve3(worktree ?? ".")) : text}
+    process.stdout.write(values.json ? json2 : `${command === "ls" ? listing(data, cwd) : text}
 `);
     return 0;
   }
-  const picked = chosen(data, worktree, process.cwd());
+  const picked = chosen(data, worktree, aimed);
   if (typeof picked === "string") {
     process.stderr.write(`${picked}
 `);
@@ -15837,9 +15881,36 @@ ${USAGE}
   }
   return 0;
 }
+async function everything(projects, json2, cwd) {
+  if (!projects.length) {
+    process.stdout.write("No projects are registered with ccwt yet.\n");
+    return 0;
+  }
+  const { handler } = tool("ccwt_get_status");
+  const statuses = await Promise.all(
+    projects.map(async (project) => ({
+      project,
+      status: (await handler({ path: project.rootPath })).structuredContent
+    }))
+  );
+  if (json2) {
+    process.stdout.write(`${JSON.stringify({ ok: true, projects: statuses.map(({ status }) => status) }, null, 2)}
+`);
+    return 0;
+  }
+  const blocks = statuses.map(
+    ({ project, status }) => status.ok ? listing(status, cwd) : `${project.name}  ${tilde(project.rootPath)}
+
+  nothing to run: its recipe declares no services`
+  );
+  process.stdout.write(`${blocks.join("\n\n")}
+`);
+  return 0;
+}
 export {
   USAGE,
   here,
   inputFor,
+  matching,
   run2 as run
 };
