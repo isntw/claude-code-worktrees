@@ -15,6 +15,13 @@ const STOP_WAIT_MS = 15_000
 
 const COMMANDS = ['start', 'stop', 'help']
 
+const WORKTREE_COMMANDS = ['ls', 'up', 'down', 'logs', 'open', 'path', 'repair']
+
+if (WORKTREE_COMMANDS.includes(process.argv[2])) {
+  const { run } = await import('./cli.mjs')
+  process.exit(await run(process.argv.slice(2)))
+}
+
 const { values, positionals, tokens } = parseArgs({
   options: {
     port: { type: 'string', short: 'p' },
@@ -42,6 +49,7 @@ if ((command !== undefined && !COMMANDS.includes(command)) || extra.length > 0) 
 if (command === 'start') values.detach = true
 
 if (values.help || command === 'help') {
+  const { USAGE } = await import('./cli.mjs')
   process.stdout.write(`
   ccwt — manage git worktrees as running environments
 
@@ -50,7 +58,7 @@ if (values.help || command === 'help') {
     ccwt start [options]    run in the background and give the terminal back
     ccwt stop               stop the ccwt that is running, and the services it supervises
     ccwt help               show this
-
+${USAGE}
   Options
     -p, --port <number>   port to listen on            (default 4600)
         --host <host>     host to bind                 (default 127.0.0.1)

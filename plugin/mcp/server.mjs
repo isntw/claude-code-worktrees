@@ -31024,9 +31024,9 @@ var encodedName = (path) => path.replace(/[/._]/g, "-");
 function underTranscript(paths, transcriptPath) {
   if (typeof transcriptPath !== "string" || !transcriptPath) return null;
   const parts = transcriptPath.split("/");
-  const named2 = parts[parts.length - 2];
-  if (!named2) return null;
-  return paths.find((path) => encodedName(path) === named2) ?? null;
+  const named = parts[parts.length - 2];
+  if (!named) return null;
+  return paths.find((path) => encodedName(path) === named) ?? null;
 }
 function reaches(port, host) {
   return new Promise((done) => {
@@ -31061,30 +31061,30 @@ async function reachServer() {
   return { origin: `http://${host}:${runtime.port}`, token: runtime.token };
 }
 async function ask(path) {
-  const server2 = await reachServer();
-  if (!server2) return null;
-  const answered2 = await fetch(`${server2.origin}${path}`, {
-    headers: { "x-ccwt-token": server2.token },
+  const server3 = await reachServer();
+  if (!server3) return null;
+  const answered2 = await fetch(`${server3.origin}${path}`, {
+    headers: { "x-ccwt-token": server3.token },
     signal: AbortSignal.timeout(CALL_MS)
   }).catch(() => null);
   if (!answered2?.ok) return null;
   return answered2.json().catch(() => null);
 }
 async function call(method, path, body, timeoutMs = CALL_MS) {
-  const server2 = await reachServer();
-  if (!server2) return { server: false, ok: false, status: 0, timedOut: false, body: null };
-  const answered2 = await fetch(`${server2.origin}${path}`, {
+  const server3 = await reachServer();
+  if (!server3) return { server: false, ok: false, status: 0, timedOut: false, body: null };
+  const answered2 = await fetch(`${server3.origin}${path}`, {
     method,
     headers: {
-      "x-ccwt-token": server2.token,
+      "x-ccwt-token": server3.token,
       ...body === void 0 ? {} : { "content-type": "application/json" }
     },
     ...body === void 0 ? {} : { body: JSON.stringify(body) },
     signal: AbortSignal.timeout(timeoutMs)
   }).catch((cause) => cause);
   if (!(answered2 instanceof Response)) {
-    const named2 = answered2?.name;
-    const timedOut = named2 === "TimeoutError" || named2 === "AbortError";
+    const named = answered2?.name;
+    const timedOut = named === "TimeoutError" || named === "AbortError";
     return { server: true, ok: false, status: 0, timedOut, body: null };
   }
   const payload = await answered2.json().catch(() => null);
@@ -31420,18 +31420,15 @@ function renderNotes(notes) {
 }
 var renderIssues = (issues) => (issues ?? []).map((issue2) => `  ${issue2.path}: ${issue2.message}`);
 
-// plugin/src/mcp/server.ts
+// plugin/src/mcp/tools.ts
 var TAIL = 100;
 var READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 var ACTS = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-var server = new McpServer(
-  { name: "ccwt-mcp-server", version: "0.2.3" },
-  { capabilities: { tools: {} } }
-);
-var NAMES = [];
-var named = (name) => {
-  NAMES.push(name);
-  return name;
+var TOOLS = /* @__PURE__ */ new Map();
+var server = {
+  registerTool: ((...registration) => {
+    TOOLS.set(registration[0], registration);
+  })
 };
 var standing = async (path) => place(path);
 var needsProject = (found) => {
@@ -31440,7 +31437,7 @@ var needsProject = (found) => {
   return null;
 };
 server.registerTool(
-  named("ccwt_get_status"),
+  "ccwt_get_status",
   {
     title: "What ccwt runs here",
     description: "What ccwt runs for the current repository: every worktree, its services, the port each is assigned, and whether that port is answering right now. Answers even when the ccwt dashboard is closed. Use this instead of starting a dev server to find out what is up.",
@@ -31510,7 +31507,7 @@ server.registerTool(
   }
 );
 server.registerTool(
-  named("ccwt_get_logs"),
+  "ccwt_get_logs",
   {
     title: "What a service printed",
     description: "A ccwt-managed service's recent output, so a change can be checked without starting or building anything. Requires the ccwt dashboard to be running.",
@@ -31605,7 +31602,7 @@ server.registerTool(
   }
 );
 server.registerTool(
-  named("ccwt_add_project"),
+  "ccwt_add_project",
   {
     title: "Register a repository",
     description: "Register a repository with ccwt so it can hold a recipe and manage worktrees for it. Registers the repository the session is in unless a path says otherwise. Writes nothing into the repository. Requires the ccwt dashboard to be running.",
@@ -31641,7 +31638,7 @@ server.registerTool(
   }
 );
 server.registerTool(
-  named("ccwt_read_recipe"),
+  "ccwt_read_recipe",
   {
     title: "The stored recipe",
     description: "The recipe ccwt holds for this repository and whether one is stored at all. ccwt detects nothing, so a repository with no stored recipe has none. Read this before writing a recipe: it says whether one already exists and whether a person wrote it.",
@@ -31690,7 +31687,7 @@ server.registerTool(
   }
 );
 server.registerTool(
-  named("ccwt_check_recipe"),
+  "ccwt_check_recipe",
   {
     title: "Validate a recipe",
     description: "Validate a candidate recipe without storing it. Returns schema errors with the path of each, plus advisory notes about things that parse but will misbehave \u2014 a container stack every worktree would share, an allocated port nothing passes on, a hardlink that would edit the root checkout. Iterate here until it is clean, then write it.",
@@ -31737,7 +31734,7 @@ server.registerTool(
   }
 );
 server.registerTool(
-  named("ccwt_write_recipe"),
+  "ccwt_write_recipe",
   {
     title: "Store a recipe",
     description: "Store a recipe for this repository. It is validated first and nothing is stored if it fails, so the saved recipe never passes through a broken state. It is kept in ccwt's own storage \u2014 no file is written into the repository. Replacing a recipe that is already stored needs `replace`.",
@@ -31799,7 +31796,7 @@ server.registerTool(
   }
 );
 server.registerTool(
-  named("ccwt_create_worktree"),
+  "ccwt_create_worktree",
   {
     title: "Create a worktree",
     description: "Create a worktree of this repository and provision it from the recipe \u2014 place the declared files, hardlink what the recipe links, run `postCreate`, allocate a port per service. It arrives ready and stopped. This is how a recipe gets tested, since a recipe only ever takes effect on a worktree created after it was stored. Do not use `git worktree add` and set one up by hand: ccwt hardlinks `node_modules` where an install would duplicate it.",
@@ -31851,7 +31848,7 @@ server.registerTool(
   }
 );
 server.registerTool(
-  named("ccwt_provision_worktree"),
+  "ccwt_provision_worktree",
   {
     title: "Repair a worktree",
     description: "Put back whatever the recipe names and a worktree is missing \u2014 files only. Use it after adding a `copy`, `link` or `write` entry, so an existing worktree picks it up without being recreated. It never runs `postCreate`: those commands generate keys, seed databases and build, and a worktree that already exists is not ccwt's to rebuild. If what changed was an install, the worktree has to be created again.",
@@ -31893,7 +31890,7 @@ server.registerTool(
   }
 );
 server.registerTool(
-  named("ccwt_start_worktree"),
+  "ccwt_start_worktree",
   {
     title: "Start a worktree",
     description: "Ask ccwt to start the services it declares for a worktree \u2014 the worktree the session is in unless one is named. ccwt still owns the lifecycle: it allocates the port, repairs anything missing from the recipe, spawns the process group and probes the port. Use this instead of running a dev server yourself. A service that is already up is left alone and nothing is re-applied, so stop it first if the recipe changed.",
@@ -31953,7 +31950,7 @@ server.registerTool(
   }
 );
 server.registerTool(
-  named("ccwt_stop_worktree"),
+  "ccwt_stop_worktree",
   {
     title: "Stop a worktree",
     description: "Ask ccwt to stop the services it runs for a worktree. It kills the process group, so nothing is left holding the port, and a stack's own `stopCommand` runs. The port is freed and the worktree kept \u2014 nothing is deleted. This is also how a changed recipe reaches a service that is already up: a recipe is read when a service starts, and starting one that is already running re-applies nothing.",
@@ -32012,7 +32009,7 @@ async function workingIn(projectId, worktreeId) {
   return (report.body?.occupants ?? []).filter((one) => !one.ours).map((one) => `pid ${one.pid} ${one.name}`);
 }
 server.registerTool(
-  named("ccwt_remove_worktree"),
+  "ccwt_remove_worktree",
   {
     title: "Remove a worktree",
     description: "Delete a worktree ccwt manages: its services are stopped, the ports it held are released, the directory goes, and the branch is kept unless `branch` says otherwise. Call it once **without** `confirm` and nothing is removed \u2014 the answer says what removal would destroy, which is what you put to the person before asking to go ahead. It refuses the repository root and the directory this session started in.",
@@ -32152,8 +32149,15 @@ server.registerTool(
     );
   }
 );
+
+// plugin/src/mcp/server.ts
 if (process.argv[2] === "--tools") {
-  process.stdout.write(JSON.stringify(NAMES));
+  process.stdout.write(JSON.stringify([...TOOLS.keys()]));
   process.exit(0);
 }
-await server.connect(new StdioServerTransport());
+var server2 = new McpServer(
+  { name: "ccwt-mcp-server", version: "0.2.3" },
+  { capabilities: { tools: {} } }
+);
+for (const [name, config2, handler] of TOOLS.values()) server2.registerTool(name, config2, handler);
+await server2.connect(new StdioServerTransport());
