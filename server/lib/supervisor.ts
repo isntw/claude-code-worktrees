@@ -318,6 +318,8 @@ export function subscribeProgress(listener: ProgressListener): () => void {
   return () => progressListeners.delete(listener)
 }
 
+const LAUNCHER_ENV = ['NUXT_TOKEN', 'NITRO_PORT', 'NITRO_HOST', 'PORT', 'HOST', 'CCWT_ROOT']
+
 export function environmentFor(service: Service, vars: Vars): NodeJS.ProcessEnv {
   const declared: Record<string, string> = {}
 
@@ -334,8 +336,11 @@ export function environmentFor(service: Service, vars: Vars): NodeJS.ProcessEnv 
     declared[key] = render(value, vars)
   }
 
+  const inherited = { ...process.env }
+  for (const key of LAUNCHER_ENV) delete inherited[key]
+
   return {
-    ...process.env,
+    ...inherited,
     FORCE_COLOR: '0',
     BROWSER: 'none',
     ...declared,
