@@ -208,5 +208,5 @@ test('a long name is cut in the middle to the room it has, keeping both ends', (
 test('the provision column says ok, repairing or missing', () => {
   expect(provision(worktree({}))).toEqual({ text: 'ok', tone: 'dim' })
   expect(provision(worktree({ provisioned: false }))).toEqual({ text: 'missing', tone: 'warning' })
-  expect(provision(worktree({ provisioned: false, repairing: { label: 'node_modules', done: 1, total: 3 } }))).toEqual({ text: 'repairing', tone: 'warning' })
+  expect(provision(worktree({ provisioned: false, repairing: { label: 'node_modules', done: 1, total: 3 } }))).toEqual({ text: 'running', tone: 'warning' })
 })

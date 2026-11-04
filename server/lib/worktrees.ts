@@ -399,7 +399,9 @@ export async function create(project: Project, input: CreateInput): Promise<Work
 
   supervisor.note(id, 'provision', 'provisioning…')
   try {
-    const report = await provision(project.rootPath, path, recipe, placeholders(project, path))
+    const report = await provision(project.rootPath, path, recipe, placeholders(project, path), (progress) =>
+      supervisor.progress(id, progress),
+    )
 
     if (report.written.length) {
       supervisor.note(id, 'provision', `wrote ${report.written.join(', ')}`)
@@ -418,6 +420,8 @@ export async function create(project: Project, input: CreateInput): Promise<Work
       supervisor.note(id, 'provision', `${failure.path} — ${failure.message}`, 'stderr')
   } catch (cause) {
     supervisor.note(id, 'provision', (cause as Error).message, 'stderr')
+  } finally {
+    supervisor.progress(id, null)
   }
 
   const { ports, named } = await allocateAll(project, id, path)

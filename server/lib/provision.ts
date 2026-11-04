@@ -507,8 +507,10 @@ export async function provision(
   worktreePath: string,
   recipe: Recipe,
   at: Placeholders,
+  watch?: ProvisionWatch,
 ): Promise<ProvisionReport> {
-  const report = await placeFiles(rootPath, worktreePath, recipe, at)
+  const report = await placeFiles(rootPath, worktreePath, recipe, at, false, watch)
+  if (recipe.provision.postCreate.length) watch?.({ label: 'running postCreate', done: 0, total: 0 })
   await runPostCreate(worktreePath, recipe.provision.postCreate, at)
 
   return report
