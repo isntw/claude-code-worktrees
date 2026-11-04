@@ -65,7 +65,7 @@ function projectFor(low) {
       worktreesDir: '../worktrees',
       provision: { copy: [], link: [], write: [], postCreate: [], postRemove: [] },
       services: [
-        { name: 'dev', cwd: '.', command: `node ${serve} {{port}}`, portRange: [low, low + 20] },
+        { name: 'dev', cwd: '.', command: `sh -c "node ${serve} {{port}}; true"`, portRange: [low, low + 20] },
       ],
       claude: { ownWorktreeCreation: false },
     },
@@ -76,6 +76,15 @@ async function answers(port, withinMs) {
   const deadline = Date.now() + withinMs
   while (Date.now() < deadline) {
     if (await ports.isListening(port, 200)) return true
+    await new Promise((wait) => setTimeout(wait, 50))
+  }
+  return false
+}
+
+async function quiet(port, withinMs) {
+  const deadline = Date.now() + withinMs
+  while (Date.now() < deadline) {
+    if (!(await ports.isListening(port, 200))) return true
     await new Promise((wait) => setTimeout(wait, 50))
   }
   return false
@@ -95,12 +104,16 @@ test('a service stopped by hand is not resumed, one stopped by shutdown comes ba
     assert.ok(await answers(started.port, 5000))
 
     await supervisor.stopAll()
-    assert.equal(await ports.isListening(started.port, 200), false)
+    assert.ok(await quiet(started.port, 3000))
 
     await worktrees.resume([project])
 
     const back = supervisor.status(made.id, 'dev')
     assert.equal(back.port, started.port)
     assert.ok(await answers(started.port, 5000))
+
+    await worktrees.resume([project])
+    assert.equal(supervisor.status(made.id, 'dev').pid, back.pid)
+    assert.ok(await answers(started.port, 1000))
   })
 })
