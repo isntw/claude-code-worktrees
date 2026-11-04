@@ -27,7 +27,7 @@ export function tone(service: Service): Tone | 'dim' | 'success' {
 }
 
 export function provision(row: Worktree): { text: string; tone: Tone | 'dim' } {
-  if (row.repairing) return { text: 'repairing', tone: 'warning' }
+  if (row.repairing) return { text: 'running', tone: 'warning' }
   if (!row.provisioned) return { text: 'missing', tone: 'warning' }
   return { text: 'ok', tone: 'dim' }
 }
