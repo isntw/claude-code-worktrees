@@ -791,6 +791,7 @@ export async function resume(projects: Project[]): Promise<void> {
     const project = projects.find((candidate) => resolve(candidate.rootPath) === resolve(left.rootPath))
     const worktree = project ? await find(project, left.worktreeId).catch(() => null) : null
     if (!project || !worktree) continue
+    if (isLive(supervisor.status(worktree.id, left.service))) continue
 
     await reapWithin(left.port, worktree.path).catch(() => [])
     supervisor.note(worktree.id, left.service, 'ccwt restarted, starting this service again')

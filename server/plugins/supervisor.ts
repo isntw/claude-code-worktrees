@@ -26,6 +26,8 @@ export default defineNitroPlugin((nitro) => {
     void shutdown().finally(() => process.exit(0))
   })
 
+  if (!useRuntimeConfig().token) return
+
   void projects
     .list()
     .then(worktrees.resume)

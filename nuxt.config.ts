@@ -32,7 +32,7 @@ export default defineNuxtConfig({
 
   nitro: {
     experimental: { websocket: true },
-    output: { dir: process.env.CCWT_OUTPUT_DIR || '.output' },
+    ...(process.env.CCWT_OUTPUT_DIR ? { output: { dir: process.env.CCWT_OUTPUT_DIR } } : {}),
   },
 
   devServer: {
