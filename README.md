@@ -49,6 +49,11 @@ ccwt start         # opens http://localhost:4600, from anywhere
 service it started. `ccwt` alone stays in the foreground. In the checkout, `npm start` and `npm stop`
 do the same.
 
+`ccwt update` pulls the checkout, installs dependencies when the lockfile changed, and builds
+beside the running ccwt. Only then does it stop the services that were running, swap the build
+in, restart ccwt on the same port and start those services again. A failed pull or build leaves
+the running ccwt untouched.
+
 1. **Register project** — point it at a repository root. Registering reads nothing out of it and
    writes nothing into it.
 2. **Write its recipe** — what a worktree of this project needs, in your words. A session can do it

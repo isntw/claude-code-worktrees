@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { randomBytes } from 'node:crypto'
-import { spawn } from 'node:child_process'
-import { closeSync, existsSync, openSync, unlinkSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { closeSync, existsSync, openSync, renameSync, rmSync, unlinkSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
@@ -13,7 +13,7 @@ const LOOPBACK = ['127.0.0.1', 'localhost', '::1']
 
 const STOP_WAIT_MS = 15_000
 
-const COMMANDS = ['start', 'stop', 'help']
+const COMMANDS = ['start', 'stop', 'update', 'help']
 
 const WORKTREE_COMMANDS = ['ls', 'up', 'down', 'logs', 'open', 'path', 'repair']
 
@@ -57,6 +57,7 @@ if (values.help || command === 'help') {
     ccwt [options]          run in the foreground
     ccwt start [options]    run in the background and give the terminal back
     ccwt stop               stop the ccwt that is running, and the services it supervises
+    ccwt update             pull, build, and restart ccwt and the services that were running
     ccwt help               show this
 ${USAGE}
   Options
@@ -200,6 +201,146 @@ const running = await readJson(runtimeFile)
 
 const answering = async () =>
   Boolean(running) && alive(running.pid) && !(await isFree(running.port, running.host ?? '127.0.0.1'))
+
+if (command === 'update') {
+  const self = fileURLToPath(import.meta.url)
+  const live = join(root, '.output')
+  const next = join(root, '.output.next')
+  const prev = join(root, '.output.prev')
+
+  const step = (text) => process.stdout.write(`\n  ${faint('->')} ${text}\n`)
+  const fail = (text) => {
+    process.stderr.write(`\n  ${dot('alarm')} ${text}\n\n`)
+    process.exit(1)
+  }
+  const run = (cmd, args, env = {}, quiet = false) =>
+    new Promise((resolve) => {
+      const child = spawn(cmd, args, {
+        cwd: root,
+        stdio: quiet ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+        env: { ...process.env, ...env },
+      })
+      let said = ''
+      child.stdout?.on('data', (chunk) => (said += chunk))
+      child.stderr?.on('data', (chunk) => (said += chunk))
+      child.once('error', () => resolve(1))
+      child.once('exit', (code) => {
+        if (code && quiet) process.stderr.write(`${said.split('\n').slice(-30).join('\n')}\n`)
+        resolve(code ?? 1)
+      })
+    })
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
+
+  const api = async (at, method, path) => {
+    const where = at.host === '::1' ? '[::1]' : (at.host ?? '127.0.0.1')
+    const res = await fetch(`http://${where}:${at.port}/api${path}`, {
+      method,
+      headers: { 'content-type': 'application/json', 'x-ccwt-token': at.token },
+      body: method === 'POST' ? '{}' : undefined,
+    })
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 300)}`)
+    return res.json()
+  }
+
+  if (!existsSync(join(root, '.git'))) {
+    fail(`${tilde(root)} is not a git checkout, so there is nothing to pull. Reinstall ccwt to update it.`)
+  }
+
+  const before = git('rev-parse', 'HEAD')
+  step('pulling')
+  if (await run('git', ['pull', '--ff-only'])) fail('git pull failed. Nothing was changed.')
+  const after = git('rev-parse', 'HEAD')
+  const changed = before === after ? [] : git('diff', '--name-only', before, after).split('\n')
+
+  const nuxt = join(root, 'node_modules/nuxt/bin/nuxt.mjs')
+  if (changed.includes('package-lock.json') || !existsSync(nuxt)) {
+    step('installing dependencies')
+    if (await run('npm', ['install'])) fail('npm install failed. The running ccwt was not touched.')
+  }
+
+  step('building')
+  rmSync(join(root, '.nuxt'), { recursive: true, force: true })
+  rmSync(next, { recursive: true, force: true })
+  if (await run(process.execPath, [nuxt, 'build'], { CCWT_OUTPUT_DIR: next }, true)) {
+    rmSync(next, { recursive: true, force: true })
+    fail('The build failed. The running ccwt was not touched.')
+  }
+
+  const was = (await answering()) ? running : null
+  const services = []
+
+  if (was) {
+    try {
+      for (const project of await api(was, 'GET', '/projects')) {
+        for (const worktree of await api(was, 'GET', `/projects/${project.id}/worktrees`)) {
+          for (const service of worktree.services ?? []) {
+            if (service.state !== 'running' && service.state !== 'starting') continue
+            services.push({ project: project.id, worktree: worktree.id, name: service.name, label: `${worktree.name}/${service.name}` })
+          }
+        }
+      }
+    } catch (cause) {
+      process.stdout.write(`  could not list the running services (${cause.message}); they stop with ccwt and are not restarted\n`)
+    }
+
+    step(`stopping ${services.length} service${services.length === 1 ? '' : 's'}`)
+    for (const key of new Set(services.map((one) => `${one.project}/worktrees/${one.worktree}`))) {
+      await api(was, 'POST', `/projects/${key}/services/stop`).catch((cause) => {
+        process.stdout.write(`  ${key}: ${cause.message}\n`)
+      })
+    }
+
+    if (await run(process.execPath, [self, 'stop'])) {
+      fail(`ccwt did not stop. The new build is in ${tilde(next)}.`)
+    }
+  }
+
+  rmSync(prev, { recursive: true, force: true })
+  if (existsSync(live)) renameSync(live, prev)
+  renameSync(next, live)
+
+  if (!was) {
+    rmSync(prev, { recursive: true, force: true })
+    process.stdout.write(`\n  ${dot('success')} updated to ${after.slice(0, 7)}. ccwt was not running; \`ccwt start\` starts it.\n\n`)
+    process.exit(0)
+  }
+
+  const start = () =>
+    run(process.execPath, [self, 'start', '--port', String(was.port), '--host', was.host ?? '127.0.0.1', '--no-open'])
+
+  if (await start()) {
+    rmSync(live, { recursive: true, force: true })
+    if (existsSync(prev)) renameSync(prev, live)
+    await start()
+    fail('The new build did not start, so the previous one was put back.')
+  }
+  rmSync(prev, { recursive: true, force: true })
+
+  const now = await readJson(runtimeFile)
+  for (let tries = 0; tries < 50; tries += 1) {
+    if (await api(now, 'GET', '/projects').then(() => true, () => false)) break
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+
+  if (services.length) step(`starting ${services.length} service${services.length === 1 ? '' : 's'} again`)
+  let failed = 0
+  for (const one of services) {
+    const path = `/projects/${one.project}/worktrees/${one.worktree}/services/${encodeURIComponent(one.name)}/start`
+    const outcome = await api(now, 'POST', path).then(
+      () => 'started',
+      (cause) => {
+        failed += 1
+        return cause.message
+      },
+    )
+    process.stdout.write(`  ${one.label}: ${outcome}\n`)
+  }
+
+  process.stdout.write(
+    `\n  ${dot(failed ? 'alarm' : 'success')} updated ${before.slice(0, 7)} -> ${after.slice(0, 7)}${failed ? `, ${failed} service${failed === 1 ? '' : 's'} did not start` : ''}\n\n`,
+  )
+  process.exit(failed ? 1 : 0)
+}
 
 if (command === 'stop') {
   if (!(await answering())) {

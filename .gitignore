@@ -1,6 +1,8 @@
 node_modules/
 .nuxt/
 .output/
+.output.next/
+.output.prev/
 .data/
 .tslib/
 dist/
