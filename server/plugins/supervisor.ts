@@ -1,4 +1,6 @@
+import * as projects from '../lib/projects'
 import * as supervisor from '../lib/supervisor'
+import * as worktrees from '../lib/worktrees'
 import { broadcast } from '../routes/_ws'
 
 export default defineNitroPlugin((nitro) => {
@@ -14,17 +16,18 @@ export default defineNitroPlugin((nitro) => {
     broadcast({ type: 'provision', worktreeId, progress })
   })
 
-  const shutdown = () => {
-    void supervisor.stopAll()
-  }
+  const shutdown = () => supervisor.stopAll()
 
   nitro.hooks.hook('close', shutdown)
   process.once('SIGINT', () => {
-    shutdown()
-    process.exit(0)
+    void shutdown().finally(() => process.exit(0))
   })
   process.once('SIGTERM', () => {
-    shutdown()
-    process.exit(0)
+    void shutdown().finally(() => process.exit(0))
   })
+
+  void projects
+    .list()
+    .then(worktrees.resume)
+    .catch(() => undefined)
 })

@@ -782,6 +782,21 @@ export async function stopAll(project: Project, worktreeId: string): Promise<Ser
   return out
 }
 
+export async function resume(projects: Project[]): Promise<void> {
+  for (const left of await supervisor.takeResumable()) {
+    const project = projects.find((candidate) => resolve(candidate.rootPath) === resolve(left.rootPath))
+    const worktree = project ? await find(project, left.worktreeId).catch(() => null) : null
+    if (!project || !worktree) continue
+
+    await reapWithin(left.port, worktree.path).catch(() => [])
+    supervisor.note(worktree.id, left.service, 'ccwt restarted, starting this service again')
+
+    await startService(project, worktree.id, worktree.path, left.service, worktree.branch).catch(
+      (cause: Error) => supervisor.note(worktree.id, left.service, cause.message, 'stderr'),
+    )
+  }
+}
+
 export const CCWT_LOCK_REASON = 'locked from ccwt'
 
 export async function lock(project: Project, worktreeId: string): Promise<Worktree> {

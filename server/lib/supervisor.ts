@@ -8,6 +8,7 @@ import type {
   ServiceState,
   ServiceStatus,
 } from '../../shared/types'
+import { db } from './db'
 import { argv, exec } from './exec'
 import { envKey } from './env'
 import * as logstore from './logstore'
@@ -71,6 +72,51 @@ const progressListeners = new Set<ProgressListener>()
 const lastProgress = new Map<string, ProvisionProgress>()
 
 const keyFor = (worktreeId: string, service: string) => `${worktreeId}:${service}`
+
+let closing = false
+
+function remember(entry: Entry): void {
+  const row = {
+    worktree_id: entry.worktreeId,
+    service: entry.service,
+    root_path: entry.rootPath,
+    port: entry.port,
+  }
+
+  void db()
+    .insertInto('running')
+    .values(row)
+    .onConflict((conflict) => conflict.columns(['worktree_id', 'service']).doUpdateSet(row))
+    .execute()
+    .catch(() => undefined)
+}
+
+function unremember(entry: Entry): void {
+  void db()
+    .deleteFrom('running')
+    .where('worktree_id', '=', entry.worktreeId)
+    .where('service', '=', entry.service)
+    .execute()
+    .catch(() => undefined)
+}
+
+export interface Resumable {
+  worktreeId: string
+  service: string
+  rootPath: string
+  port: number
+}
+
+export async function takeResumable(): Promise<Resumable[]> {
+  const rows = await db().selectFrom('running').selectAll().execute()
+  await db().deleteFrom('running').execute()
+  return rows.map((row) => ({
+    worktreeId: row.worktree_id,
+    service: row.service,
+    rootPath: row.root_path,
+    port: row.port,
+  }))
+}
 
 export interface Vars {
   project: string
@@ -352,6 +398,7 @@ export async function start(
   entry.child = child
   entry.pid = child.pid ?? null
   entry.identity = identityOf(child.pid)
+  remember(entry)
 
   pipe(entry, child.stdout, 'stdout')
   pipe(entry, child.stderr, 'stderr')
@@ -360,6 +407,7 @@ export async function start(
     entry.state = 'crashed'
     entry.exitCode = -1
     entry.child = null
+    unremember(entry)
     push(entry, 'stderr', cause.message)
     emitStatus(entry)
   })
@@ -372,6 +420,7 @@ export async function start(
     entry.reachable = null
     entry.state = entry.stopping || code === 0 || signal === 'SIGTERM' ? 'stopped' : 'crashed'
     entry.stopping = false
+    if (!closing) unremember(entry)
     emitStatus(entry)
   })
 
@@ -760,6 +809,7 @@ export async function stopWorktree(worktreeId: string): Promise<void> {
 }
 
 export async function stopAll(): Promise<void> {
+  closing = true
   const all = [...entries.values()].map((entry) => stop(entry.worktreeId, entry.service))
   await Promise.all(all)
   entries.clear()
