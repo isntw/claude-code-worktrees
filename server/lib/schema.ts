@@ -29,6 +29,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   snapshot TEXT NOT NULL,
   at TEXT NOT NULL
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS running (
+  worktree_id TEXT NOT NULL,
+  service TEXT NOT NULL,
+  root_path TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  PRIMARY KEY (worktree_id, service)
+) STRICT;
 `
 
 export interface MetaTable {
@@ -60,11 +68,19 @@ export interface SessionTable {
   at: string
 }
 
+export interface RunningTable {
+  worktree_id: string
+  service: string
+  root_path: string
+  port: number
+}
+
 export interface Database {
   meta: MetaTable
   projects: ProjectTable
   credentials: CredentialTable
   sessions: SessionTable
+  running: RunningTable
 }
 
 function reshapeLegacyColumns(open: DatabaseSync): void {

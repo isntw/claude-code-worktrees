@@ -36,7 +36,7 @@ function declaredFields(name) {
   return [...body.matchAll(/^\s{2}(\w+)\??:/gm)].map((hit) => hit[1])
 }
 
-test('the schema declares exactly the four tables the server owns', () => {
+test('the schema declares exactly the five tables the server owns', () => {
   const found = withDatabase((db) =>
     db
       .prepare(
@@ -46,7 +46,7 @@ test('the schema declares exactly the four tables the server owns', () => {
       .map((row) => row.name),
   )
 
-  assert.deepEqual(found, ['credentials', 'meta', 'projects', 'sessions'])
+  assert.deepEqual(found, ['credentials', 'meta', 'projects', 'running', 'sessions'])
 })
 
 test('each table has exactly the columns its TypeScript type declares', () => {
