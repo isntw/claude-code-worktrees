@@ -213,11 +213,21 @@ if (command === 'update') {
     process.stderr.write(`\n  ${dot('alarm')} ${text}\n\n`)
     process.exit(1)
   }
-  const run = (cmd, args, env = {}) =>
+  const run = (cmd, args, env = {}, quiet = false) =>
     new Promise((resolve) => {
-      const child = spawn(cmd, args, { cwd: root, stdio: 'inherit', env: { ...process.env, ...env } })
+      const child = spawn(cmd, args, {
+        cwd: root,
+        stdio: quiet ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+        env: { ...process.env, ...env },
+      })
+      let said = ''
+      child.stdout?.on('data', (chunk) => (said += chunk))
+      child.stderr?.on('data', (chunk) => (said += chunk))
       child.once('error', () => resolve(1))
-      child.once('exit', (code) => resolve(code ?? 1))
+      child.once('exit', (code) => {
+        if (code && quiet) process.stderr.write(`${said.split('\n').slice(-30).join('\n')}\n`)
+        resolve(code ?? 1)
+      })
     })
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
 
@@ -251,7 +261,7 @@ if (command === 'update') {
   step('building')
   rmSync(join(root, '.nuxt'), { recursive: true, force: true })
   rmSync(next, { recursive: true, force: true })
-  if (await run(process.execPath, [nuxt, 'build'], { CCWT_OUTPUT_DIR: next })) {
+  if (await run(process.execPath, [nuxt, 'build'], { CCWT_OUTPUT_DIR: next }, true)) {
     rmSync(next, { recursive: true, force: true })
     fail('The build failed. The running ccwt was not touched.')
   }
