@@ -80,3 +80,21 @@ test('the recipe’s own env is rendered and wins', () => {
   assert.equal(env.WEB_PORT, '5201')
   assert.equal(env.CCWT_URL_WEB, 'mine')
 })
+
+test('what the launcher set for ccwt itself never reaches a service', () => {
+  const saved = { NUXT_TOKEN: process.env.NUXT_TOKEN, PORT: process.env.PORT, CCWT_ROOT: process.env.CCWT_ROOT }
+  Object.assign(process.env, { NUXT_TOKEN: 'secret', PORT: '5600', CCWT_ROOT: '/ccwt' })
+
+  try {
+    const env = environmentFor(service(), vars())
+    assert.equal(env.NUXT_TOKEN, undefined)
+    assert.equal(env.PORT, undefined)
+    assert.equal(env.CCWT_ROOT, undefined)
+    assert.equal(environmentFor(service({ env: { PORT: '{{port}}' } }), vars()).PORT, '5201')
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+})
