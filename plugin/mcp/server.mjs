@@ -31896,7 +31896,7 @@ server.registerTool(
   "ccwt_start_worktree",
   {
     title: "Start a worktree",
-    description: "Ask ccwt to start the services it declares for a worktree \u2014 the worktree the session is in unless one is named. ccwt still owns the lifecycle: it allocates the port, repairs anything missing from the recipe, spawns the process group and probes the port. Use this instead of running a dev server yourself. A service that is already up is left alone and nothing is re-applied, so stop it first if the recipe changed. A service pinned to one port can run in only one worktree at a time: pass `takeOver: true` to stop it in the sibling worktree of this project that holds the port and start it here. That stop is part of this request and is reported in `stopped`; a port held by anything else is refused, naming the holder.",
+    description: "Ask ccwt to start the services it declares for a worktree \u2014 the worktree the session is in unless one is named. ccwt still owns the lifecycle: it allocates the port, repairs anything missing from the recipe, spawns the process group and probes the port. Use this instead of running a dev server yourself. A service that is already up is left alone and nothing is re-applied, so stop it first if the recipe changed. A service pinned to one port can run in only one worktree at a time: pass `takeOver: true` to stop it in the sibling worktree of this project that holds the port and start it here, including a process ccwt does not track whose working directory is inside a worktree of this project. That stop is part of this request and is reported in `stopped`; a port held by anything else is refused, naming the holder.",
     inputSchema: external_exports.strictObject({
       service: external_exports.string().optional().describe("Which service to start, as ccwt_get_status reports it. Omit to start all of them."),
       worktree: external_exports.string().optional().describe("Name of the worktree to start. Defaults to the one the session is in."),
@@ -32176,7 +32176,7 @@ if (process.argv[2] === "--tools") {
   process.exit(0);
 }
 var server2 = new McpServer(
-  { name: "ccwt-mcp-server", version: "0.2.3" },
+  { name: "ccwt-mcp-server", version: "0.2.4" },
   { capabilities: { tools: {} } }
 );
 for (const [name, config2, handler] of TOOLS.values()) server2.registerTool(name, config2, handler);
