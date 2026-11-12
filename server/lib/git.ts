@@ -36,10 +36,22 @@ export async function repoRoot(path: string): Promise<string | null> {
   return top ? resolve(top) : null
 }
 
-export async function defaultBranch(rootPath: string): Promise<string | null> {
+const BRANCH_FOR_MS = 5_000
+const branches = new Map<string, { at: number; value: Promise<string | null> }>()
+
+async function readDefaultBranch(rootPath: string): Promise<string | null> {
   const head = await gitOut(rootPath, ['symbolic-ref', '--quiet', '--short', 'HEAD'])
   if (head) return head
   return gitOut(rootPath, ['rev-parse', '--abbrev-ref', 'HEAD'])
+}
+
+export function defaultBranch(rootPath: string): Promise<string | null> {
+  const known = branches.get(rootPath)
+  if (known && Date.now() - known.at < BRANCH_FOR_MS) return known.value
+
+  const value = readDefaultBranch(rootPath)
+  branches.set(rootPath, { at: Date.now(), value })
+  return value
 }
 
 export async function branchExists(rootPath: string, branch: string): Promise<boolean> {
