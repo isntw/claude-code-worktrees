@@ -697,10 +697,33 @@ async function notOurs(port: number, held: PortHold | null): Promise<string> {
   const found = await holders(port)
   const foreign = found.foreign[0]
   if (foreign) {
-    return `${lead} pid ${foreign.pid} (${foreign.name})${foreign.cwd ? ` in ${foreign.cwd}` : ''}, which ccwt does not run. ${rule}`
+    return `${lead} pid ${foreign.pid} (${foreign.name})${foreign.cwd ? ` in ${foreign.cwd}` : ''}, which ccwt does not run and which is not inside a worktree of this project. ${rule} Stop pid ${foreign.pid} yourself to free the port.`
   }
 
   return `${found.why ?? `${lead} something ccwt does not run.`} ${rule}`
+}
+
+async function reapStrays(project: Project, port: number, service: string): Promise<PortHold[]> {
+  const paths = (await listWorktrees(project.rootPath))
+    .filter((entry) => !entry.bare)
+    .map((entry) => entry.path)
+    .sort((a, b) => b.length - a.length)
+
+  const reaped: PortHold[] = []
+
+  for (const path of paths) {
+    if (!(await reapWithin(port, path)).length) continue
+
+    reaped.push({
+      worktreeId: idFor(path),
+      worktree: resolve(path) === resolve(project.rootPath) ? 'root' : basename(path),
+      service,
+      same: true,
+    })
+    if (await isFree(port)) break
+  }
+
+  return reaped
 }
 
 async function handOver(
@@ -717,7 +740,23 @@ async function handOver(
     if (low !== high || isLive(supervisor.status(worktreeId, name)) || (await isFree(low))) continue
 
     const held = holdOf(project, worktreeId, name, low)
-    if (!held?.same || held.worktreeId === worktreeId) throw new Error(await notOurs(low, held))
+
+    if (!held) {
+      const strays = await reapStrays(project, low, name)
+      if (!(await isFree(low))) throw new Error(await notOurs(low, null))
+
+      for (const stray of strays) {
+        supervisor.note(
+          worktreeId,
+          name,
+          `stopped an untracked process in ${stray.worktree} to take port ${low}`,
+        )
+      }
+      stopped.push(...strays)
+      continue
+    }
+
+    if (!held.same || held.worktreeId === worktreeId) throw new Error(await notOurs(low, held))
 
     const outcome = await free(low, {
       pids: [],

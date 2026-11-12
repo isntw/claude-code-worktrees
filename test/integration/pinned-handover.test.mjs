@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,9 +14,17 @@ const ports = await importLib('ports')
 
 const trash = []
 const open = []
+const strays = []
 
 after(async () => {
   await supervisor.stopAll()
+  for (const stray of strays) {
+    try {
+      process.kill(-stray.pid, 'SIGKILL')
+    } catch {
+      /* already gone */
+    }
+  }
   await Promise.all(open.map((server) => new Promise((done) => server.close(done))))
   for (const dir of trash) rmSync(dir, { recursive: true, force: true })
 })
@@ -133,6 +141,32 @@ test('starting on a pinned port held by something ccwt does not run is refused b
       worktrees.startService(project, made.id, made.path, 'dev', made.branch, true, true),
       new RegExp(`pid ${process.pid} .*which ccwt does not run`),
     )
+  })
+})
+
+test('takeOver stops an untracked process inside a sibling worktree and starts here', async () => {
+  await withHome(async () => {
+    const port = await spare()
+    const project = projectFor(port)
+
+    const a = await worktrees.create(project, { name: 'a', branch: '', start: false })
+    const b = await worktrees.create(project, { name: 'b', branch: '', start: false })
+
+    const stray = spawn(
+      process.execPath,
+      ['-e', 'require("net").createServer().listen(Number(process.argv[1]))', String(port)],
+      { cwd: a.path, detached: true, stdio: 'ignore' },
+    )
+    strays.push(stray)
+    assert.equal(await answers(port, 10_000), true)
+
+    const started = await worktrees.startService(project, b.id, b.path, 'dev', b.branch, true, true)
+
+    assert.deepEqual(
+      started.tookOver.map(({ worktree, service }) => ({ worktree, service })),
+      [{ worktree: 'a', service: 'dev' }],
+    )
+    assert.equal(supervisor.holding(port)[0]?.worktreeId, b.id)
   })
 })
 
