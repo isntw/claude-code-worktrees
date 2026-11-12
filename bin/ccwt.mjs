@@ -208,7 +208,19 @@ if (command === 'update') {
   const next = join(root, '.output.next')
   const prev = join(root, '.output.prev')
 
-  const step = (text) => process.stdout.write(`\n  ${faint('->')} ${text}\n`)
+  const began = Date.now()
+  const took = (since) => `${((Date.now() - since) / 1000).toFixed(1)}s`
+  const count = (many, noun) => `${many} ${noun}${many === 1 ? '' : 's'}`
+  let since = began
+  const doing = (text) => {
+    since = Date.now()
+    if (styled()) process.stdout.write(`  ${faint('->')} ${text}`)
+  }
+  const done = (verb, note = '', tone = 'success') =>
+    process.stdout.write(
+      `${styled() ? '\r\u001b[2K' : ''}  ${dot(tone)} ${verb.padEnd(9)} ${note}${note ? '  ' : ''}${faint(took(since))}\n`,
+    )
+  process.stdout.write('\n')
   const fail = (text) => {
     process.stderr.write(`\n  ${dot('alarm')} ${text}\n\n`)
     process.exit(1)
@@ -225,7 +237,7 @@ if (command === 'update') {
       child.stderr?.on('data', (chunk) => (said += chunk))
       child.once('error', () => resolve(1))
       child.once('exit', (code) => {
-        if (code && quiet) process.stderr.write(`${said.split('\n').slice(-30).join('\n')}\n`)
+        if (code && quiet) process.stderr.write(`\n${said.split('\n').slice(-30).join('\n')}\n`)
         resolve(code ?? 1)
       })
     })
@@ -247,29 +259,35 @@ if (command === 'update') {
   }
 
   const before = git('rev-parse', 'HEAD')
-  step('pulling')
-  if (await run('git', ['pull', '--ff-only'])) fail('git pull failed. Nothing was changed.')
+  doing('pulling')
+  if (await run('git', ['pull', '--ff-only'], {}, true)) fail('git pull failed. Nothing was changed.')
   const after = git('rev-parse', 'HEAD')
   const changed = before === after ? [] : git('diff', '--name-only', before, after).split('\n')
+  const moved = `${before.slice(0, 7)} -> ${after.slice(0, 7)}`
+  done('pulled', changed.length ? `${moved}, ${count(changed.length, 'file')} changed` : 'already up to date')
 
   const nuxt = join(root, 'node_modules/nuxt/bin/nuxt.mjs')
   if (changed.includes('package-lock.json') || !existsSync(nuxt)) {
-    step('installing dependencies')
-    if (await run('npm', ['install'])) fail('npm install failed. The running ccwt was not touched.')
+    doing('installing dependencies')
+    if (await run('npm', ['install'], {}, true)) fail('npm install failed. The running ccwt was not touched.')
+    done('installed', 'dependencies')
   }
 
-  step('building')
+  doing('building')
   rmSync(join(root, '.nuxt'), { recursive: true, force: true })
   rmSync(next, { recursive: true, force: true })
   if (await run(process.execPath, [nuxt, 'build'], { CCWT_OUTPUT_DIR: next }, true)) {
     rmSync(next, { recursive: true, force: true })
     fail('The build failed. The running ccwt was not touched.')
   }
+  done('built')
 
   const was = (await answering()) ? running : null
   const services = []
 
   if (was) {
+    doing('stopping')
+    const trouble = []
     try {
       for (const project of await api(was, 'GET', '/projects')) {
         for (const worktree of await api(was, 'GET', `/projects/${project.id}/worktrees`)) {
@@ -280,19 +298,20 @@ if (command === 'update') {
         }
       }
     } catch (cause) {
-      process.stdout.write(`  could not list the running services (${cause.message}); they stop with ccwt and are not restarted\n`)
+      trouble.push(`could not list the running services (${cause.message}); they stop with ccwt and are not restarted`)
     }
 
-    step(`stopping ${services.length} service${services.length === 1 ? '' : 's'}`)
     for (const key of new Set(services.map((one) => `${one.project}/worktrees/${one.worktree}`))) {
       await api(was, 'POST', `/projects/${key}/services/stop`).catch((cause) => {
-        process.stdout.write(`  ${key}: ${cause.message}\n`)
+        trouble.push(`${key}: ${cause.message}`)
       })
     }
 
-    if (await run(process.execPath, [self, 'stop'])) {
+    if (await run(process.execPath, [self, 'stop'], {}, true)) {
       fail(`ccwt did not stop. The new build is in ${tilde(next)}.`)
     }
+    done('stopped', `ccwt and ${count(services.length, 'service')}`, trouble.length ? 'alarm' : 'success')
+    for (const line of trouble) process.stdout.write(`              ${line}\n`)
   }
 
   rmSync(prev, { recursive: true, force: true })
@@ -301,7 +320,7 @@ if (command === 'update') {
 
   if (!was) {
     rmSync(prev, { recursive: true, force: true })
-    process.stdout.write(`\n  ${dot('success')} updated to ${after.slice(0, 7)}. ccwt was not running; \`ccwt start\` starts it.\n\n`)
+    process.stdout.write(`\n  ${dot('success')} ${changed.length ? `updated ${moved}` : `already up to date, rebuilt ${after.slice(0, 7)}`} in ${took(began)}. ccwt was not running; \`ccwt start\` starts it.\n\n`)
     process.exit(0)
   }
 
@@ -322,22 +341,25 @@ if (command === 'update') {
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
 
-  if (services.length) step(`starting ${services.length} service${services.length === 1 ? '' : 's'} again`)
   let failed = 0
+  const wide = Math.max(0, ...services.map((one) => one.label.length))
   for (const one of services) {
     const path = `/projects/${one.project}/worktrees/${one.worktree}/services/${encodeURIComponent(one.name)}/start`
-    const outcome = await api(now, 'POST', path).then(
-      () => 'started',
-      (cause) => {
-        failed += 1
-        return cause.message
-      },
-    )
-    process.stdout.write(`  ${one.label}: ${outcome}\n`)
+    doing(`starting ${one.label}`)
+    const started = await api(now, 'POST', path).catch((cause) => cause)
+    const name = one.label.padEnd(wide)
+    if (started instanceof Error) {
+      failed += 1
+      done('failed', `${name}  ${started.message}`, 'alarm')
+    } else {
+      const url = started?.url ?? (started?.port ? `http://localhost:${started.port}` : '')
+      done('started', url ? `${name}  ${link(url)}` : name)
+    }
   }
 
+  const what = changed.length ? `updated ${moved}` : `already up to date, rebuilt ${after.slice(0, 7)}`
   process.stdout.write(
-    `\n  ${dot(failed ? 'alarm' : 'success')} updated ${before.slice(0, 7)} -> ${after.slice(0, 7)}${failed ? `, ${failed} service${failed === 1 ? '' : 's'} did not start` : ''}\n\n`,
+    `\n  ${dot(failed ? 'alarm' : 'success')} ${what} in ${took(began)}${failed ? `, ${count(failed, 'service')} did not start` : ''}\n\n`,
   )
   process.exit(failed ? 1 : 0)
 }
